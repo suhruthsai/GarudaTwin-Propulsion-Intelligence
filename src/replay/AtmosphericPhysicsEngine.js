@@ -140,6 +140,29 @@ export class AtmosphericPhysicsEngine {
   ];
 
   /**
+   * Fast lookup map for scenario presets keyed by ID and aliases
+   */
+  static get PRESETS() {
+    const map = {};
+    for (const p of this.SCENARIO_PRESETS) {
+      const obj = {
+        ...p,
+        altitudeFt: p.altFt,
+        deltaIsaTempC: p.tempC,
+        payloadStr: p.payload,
+        headwindKts: p.headwindKts
+      };
+      map[p.id] = obj;
+      if (p.aliases) {
+        for (const alias of p.aliases) {
+          map[alias] = obj;
+        }
+      }
+    }
+    return map;
+  }
+
+  /**
    * Computes ISA 1976 physical aerothermal derivations
    * @param {number} altitudeFt - Pressure altitude in feet (0 to 30,000)
    * @param {number} ambientTempC - Ambient static temperature in °C (-50 to +50)

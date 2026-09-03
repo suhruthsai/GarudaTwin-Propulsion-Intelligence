@@ -77,7 +77,8 @@ export class MissionPredictor {
     rawPhases.forEach((p, idx) => {
       // Calculate phase altitude
       const isRunway = idx === 0 || idx === 7;
-      const phaseAlt = isRunway ? 150 : Math.round(Math.max(1200, altitudeFt * p.altFrac));
+      const minEnrouteAlt = Math.min(1200, altitudeFt);
+      const phaseAlt = isRunway ? 150 : Math.round(Math.max(minEnrouteAlt, altitudeFt * (p.altFrac || 1.0)));
       const phaseFl = isRunway ? 'FL2' : `FL${Math.round(phaseAlt / 100)}`;
       const phaseSpd = p.spd;
       const phaseThr = p.thr;
@@ -147,16 +148,19 @@ export class MissionPredictor {
         phaseHealth = Math.max(48.0, Number((100.0 - actualDegradation).toFixed(1)));
 
         // Bi-LSTM RUL Prediction:
-        // RUL directly correlates with health headroom to 50% MEL limit
-        const healthMargin = Math.max(1.0, phaseHealth - 50.0);
-        phaseRul = Math.max(15.0, Number((healthMargin * (nominalRuls[idx] / 20.0) * (1.0 / fatigueAccel)).toFixed(1)));
+        // RUL scales proportionally from nominal curve with health headroom to 50% MEL limit
+        const nominalMargin = Math.max(1.0, nominalHealths[idx] - 50.0);
+        const currentMargin = Math.max(1.0, phaseHealth - 50.0);
+        const marginRatio = currentMargin / nominalMargin;
+        const calculatedRul = Number((nominalRuls[idx] * marginRatio * (1.0 / Math.max(0.2, fatigueAccel))).toFixed(1));
+        phaseRul = Math.max(15.0, Math.min(850.0, calculatedRul));
       }
 
       trajectory.push(phaseHealth);
 
       // Pack complete formatted telemetry object
       const phaseMap = p.baseMap;
-      const telemetryObj = {
+      let telemetryObj = {
         alt: `${phaseAlt} FT`,
         flTag: phaseFl,
         spd: `${phaseSpd} KTS`,
@@ -182,10 +186,19 @@ export class MissionPredictor {
         rul: `${phaseRul.toFixed(1)} HRS`
       };
 
+      // Apply scenario-specific physical characterizations from atmospheric engine
+      telemetryObj = AtmosphericPhysicsEngine.getScenarioAdjustedTelemetry(
+        telemetryObj,
+        scenarioId,
+        altitudeFt,
+        ambientTempC,
+        idx
+      );
+
       computedPhases.push({
         ...p,
-        alt: `${phaseAlt} FT`,
-        flTag: phaseFl,
+        alt: telemetryObj.alt,
+        flTag: telemetryObj.flTag,
         spd: `${phaseSpd} KT`,
         logNote: logNotes[idx],
         telemetry: telemetryObj

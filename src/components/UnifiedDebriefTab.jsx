@@ -119,12 +119,14 @@ export const UnifiedDebriefTab = () => {
   // Scenario Presets
   const handleSelectPreset = (presetId) => {
     setActivePreset(presetId);
-    const p = AtmosphericPhysicsEngine.PRESETS[presetId];
-    if (p) {
-      setAltitudeFt(p.altitudeFt);
-      setDeltaIsaTempC(p.deltaIsaTempC);
-      setPayloadStr(p.payloadStr);
-      setHeadwindKts(p.headwindKts);
+    const found = AtmosphericPhysicsEngine.SCENARIO_PRESETS.find(
+      p => p.id === presetId || p.aliases?.includes(presetId)
+    );
+    if (found) {
+      setAltitudeFt(found.altFt);
+      setDeltaIsaTempC(found.tempC);
+      setHeadwindKts(found.headwindKts);
+      setPayloadStr(found.payload);
     }
   };
 
@@ -1026,10 +1028,20 @@ export const UnifiedDebriefTab = () => {
                     onChange={(e) => setPayloadStr(e.target.value)}
                     className="bg-slate-950 border border-slate-600 rounded px-2.5 py-1.5 text-xs text-white outline-none focus:border-cyan-400 font-medium"
                   >
-                    <option value="65 kg (EO/IR Light)">65 kg (EO/IR Light)</option>
+                    <option value="65 kg (Minimal Standoff Pod)">65 kg (Minimal Standoff Pod)</option>
+                    <option value="70 kg (Endurance Pod)">70 kg (Endurance Pod)</option>
+                    <option value="75 kg (AIS + SATCOM)">75 kg (AIS + SATCOM)</option>
+                    <option value="80 kg (SAR Weather Penetrator)">80 kg (SAR Weather Penetrator)</option>
                     <option value="85 kg (EO/IR + SAR)">85 kg (EO/IR + SAR - Std)</option>
+                    <option value="85 kg (IPS De-Ice +3.5kW)">85 kg (IPS De-Ice +3.5kW)</option>
+                    <option value="90 kg (Optronic Gimbal)">90 kg (Optronic Gimbal)</option>
+                    <option value="95 kg (Dual EO/IR)">95 kg (Dual EO/IR)</option>
+                    <option value="100 kg (Full Weapons Loadout)">100 kg (Full Weapons Loadout)</option>
                     <option value="110 kg (Heavy Multi-INT)">110 kg (Heavy Multi-INT)</option>
                     <option value="130 kg (Max Payload)">130 kg (Max Payload Limit)</option>
+                    {!['65 kg (Minimal Standoff Pod)', '70 kg (Endurance Pod)', '75 kg (AIS + SATCOM)', '80 kg (SAR Weather Penetrator)', '85 kg (EO/IR + SAR)', '85 kg (IPS De-Ice +3.5kW)', '90 kg (Optronic Gimbal)', '95 kg (Dual EO/IR)', '100 kg (Full Weapons Loadout)', '110 kg (Heavy Multi-INT)', '130 kg (Max Payload)'].includes(payloadStr) && (
+                      <option value={payloadStr}>{payloadStr}</option>
+                    )}
                   </select>
                   <div className="text-xs text-slate-400 font-medium">Directly impacts climb fuel burn & CHT</div>
                 </div>
