@@ -152,7 +152,11 @@ export const CrankcaseAssembly = ({ isSelected, onClick, basePos, ef = 0, tel, v
     <group position={basePos} onClick={e => { e.stopPropagation(); onClick?.('ENGINE_BLOCK'); }}>
       <mesh>
         <boxGeometry args={[2.2, 0.95, 1.65]} />
-        <meshStandardMaterial {...matProps(col, isSelected)} />
+        <meshStandardMaterial
+          {...matProps(col, isSelected)}
+          transparent={vm === 'XRAY' || vm === 'PISTON_VIEW'}
+          opacity={vm === 'XRAY' || vm === 'PISTON_VIEW' ? 0.22 : 1.0}
+        />
       </mesh>
       <mesh position={[0, 0, 0.84]}>
         <boxGeometry args={[1.85, 0.75, 0.04]} />
@@ -251,7 +255,11 @@ export const CylinderUnit = ({ compId, cylIdx, basePos, side, tel, isSelected, o
         <meshStandardMaterial
           {...matProps(col, isSelected, isFault ? 0.65 : 0.22)}
           transparent={true}
-          opacity={isSelected ? 0.38 : (ef > 0.05 ? Math.max(0.28, 0.88 - ef * 0.7) : 0.88)}
+          opacity={
+            vm === 'XRAY' || vm === 'PISTON_VIEW' ? 0.22 :
+            isSelected ? 0.38 :
+            (ef > 0.05 ? Math.max(0.28, 0.88 - ef * 0.7) : 0.88)
+          }
           roughness={isSelected ? 0.1 : 0.35}
         />
       </mesh>

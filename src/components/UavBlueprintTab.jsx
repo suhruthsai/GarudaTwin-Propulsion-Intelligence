@@ -32,6 +32,7 @@ import {
   Layers, AlertTriangle, Activity, Zap, Info, Cpu,
   Gauge, GitBranch, BarChart2, Eye, Flame
 } from 'lucide-react';
+import { PistonInspectionModal } from './PistonInspectionModal';
 
 // ─────────────────────────────────────────────────────────────
 // COLOR HELPERS — all driven by live telemetry, never hard-coded
@@ -204,7 +205,11 @@ const CrankcaseAssembly = ({ isSelected, onClick, basePos, ef, tel, vm }) => {
     <group position={basePos} onClick={e => { e.stopPropagation(); onClick('ENGINE_BLOCK'); }}>
       <mesh>
         <boxGeometry args={[2.2, 0.95, 1.65]} />
-        <meshStandardMaterial {...matProps(col, isSelected)} />
+        <meshStandardMaterial
+          {...matProps(col, isSelected)}
+          transparent={vm === 'XRAY' || vm === 'PISTON_VIEW'}
+          opacity={vm === 'XRAY' || vm === 'PISTON_VIEW' ? 0.22 : 1.0}
+        />
       </mesh>
       <mesh position={[0, 0, 0.84]}>
         <boxGeometry args={[1.85, 0.75, 0.04]} />
@@ -307,7 +312,11 @@ const CylinderUnit = ({ compId, cylIdx, basePos, side, tel, isSelected, onClick,
         <meshStandardMaterial
           {...matProps(col, isSelected, isFault ? 0.65 : 0.22)}
           transparent={true}
-          opacity={isSelected ? 0.38 : (ef > 0.05 ? Math.max(0.28, 0.88 - ef * 0.7) : 0.88)}
+          opacity={
+            vm === 'XRAY' || vm === 'PISTON_VIEW' ? 0.22 :
+            isSelected ? 0.38 :
+            (ef > 0.05 ? Math.max(0.28, 0.88 - ef * 0.7) : 0.88)
+          }
           roughness={isSelected ? 0.1 : 0.35}
         />
       </mesh>
@@ -959,7 +968,7 @@ const Sparkline = ({ data, color = '#00F0FF' }) => {
 // ─────────────────────────────────────────────────────────────
 // INSPECTOR PANEL — structured per-field telemetry display
 // ─────────────────────────────────────────────────────────────
-const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, selectedUav = 'Vahak-1', uavSpec }) => {
+const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, selectedUav = 'Vahak-1', uavSpec, onOpenPistonLab }) => {
   const comp = REGISTRY[compId];
   if (!comp) return <div className="text-slate-500 text-xs font-mono p-4">Select a component.</div>;
 
@@ -1163,6 +1172,16 @@ const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, se
         {DESCS[compId] || '—'}
       </div>
 
+      {compId.startsWith('CYL_') && (
+        <button
+          onClick={() => onOpenPistonLab?.()}
+          className="w-full py-2 px-3 rounded-lg bg-gradient-to-r from-cyan-600/30 to-blue-600/30 border border-cyan-400/60 text-cyan-300 font-mono text-[10px] font-bold hover:bg-cyan-500/40 flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(0,240,255,0.25)] transition-all"
+        >
+          <Eye className="w-3.5 h-3.5 text-cyan-400" />
+          🔬 LAUNCH PISTON 4-STROKE LAB
+        </button>
+      )}
+
       <div className="mt-auto pt-2 border-t border-slate-800 shrink-0">
         {selectedUav === 'Vahak-1' ? (
           <>
@@ -1338,6 +1357,7 @@ export const UavBlueprintTab = () => {
   const [vm,        setVm]        = useState('OPERATIONAL');
   const [camKey,    setCamKey]    = useState('ISO');
   const [showSchem, setShowSchem] = useState(false);
+  const [showPistonModal, setShowPistonModal] = useState(false);
 
   const ctrlRef      = useRef();
   const camTargetRef = useRef(null);
@@ -1630,6 +1650,7 @@ export const UavBlueprintTab = () => {
 
         {/* View mode + camera presets — top right */}
         <div className="absolute top-3 right-3 z-10 flex flex-col items-end gap-1.5">
+          {/* Camera Presets */}
           <div className="flex items-center gap-1 bg-slate-950/90 border border-white/[0.08] p-1 rounded-xl backdrop-blur-xl shadow-lg">
             {Object.keys(CAM_PRESETS).map(k => (
               <button key={k} onClick={() => handlePreset(k)}
@@ -1642,10 +1663,42 @@ export const UavBlueprintTab = () => {
               </button>
             ))}
           </div>
+
+          {/* View Modes (Default / Thermal / X-Ray / Pistons) + Launch Modal */}
+          <div className="flex items-center gap-1.5 bg-slate-950/90 border border-white/[0.08] p-1 rounded-xl backdrop-blur-xl shadow-lg">
+            {[
+              { id: 'OPERATIONAL', label: 'STD' },
+              { id: 'THERMAL', label: 'THERMAL' },
+              { id: 'XRAY', label: '💎 X-RAY' },
+              { id: 'PISTON_VIEW', label: '🔬 PISTONS' }
+            ].map(m => (
+              <button
+                key={m.id}
+                onClick={() => setVm(m.id)}
+                className={`px-2 py-1 text-[10px] font-mono rounded-lg transition-all ${
+                  vm === m.id
+                    ? 'bg-cyan-400 text-black font-bold shadow-hud-cyan'
+                    : 'text-slate-400 hover:text-white hover:bg-white/[0.05]'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+
+            <div className="h-3.5 w-px bg-slate-700 mx-0.5" />
+
+            <button
+              onClick={() => setShowPistonModal(true)}
+              className="px-2.5 py-1 text-[10px] font-mono rounded-lg bg-gradient-to-r from-cyan-500/20 to-blue-500/30 border border-cyan-400/60 text-cyan-300 font-bold hover:bg-cyan-500/40 flex items-center gap-1 shadow-[0_0_10px_rgba(0,240,255,0.3)] transition-all"
+            >
+              <Eye className="w-3 h-3 text-cyan-300" />
+              PISTON LAB
+            </button>
+          </div>
         </div>
 
         {/* Explode slider */}
-        <div className="absolute top-[52px] right-3 z-10 flex items-center gap-2 bg-slate-950/90 border border-white/[0.08] rounded-xl px-3 py-1.5 backdrop-blur-xl shadow-lg">
+        <div className="absolute top-[88px] right-3 z-10 flex items-center gap-2 bg-slate-950/90 border border-white/[0.08] rounded-xl px-3 py-1.5 backdrop-blur-xl shadow-lg">
           <Layers className="w-3.5 h-3.5 text-cyan-400" />
           <span className="text-[10px] font-mono text-cyan-300 font-bold">EXPLODE</span>
           <input type="range" min={0} max={100} step={1}
@@ -1706,9 +1759,16 @@ export const UavBlueprintTab = () => {
             compId={sel} tel={activeTel} aiProg={activeAiProg}
             hist={historyBuffer} injectFault={injectFault} clearFault={clearFault}
             selectedUav={selectedUav} uavSpec={curSpec}
+            onOpenPistonLab={() => setShowPistonModal(true)}
           />
         </div>
       </div>
+
+      <PistonInspectionModal
+        isOpen={showPistonModal}
+        onClose={() => setShowPistonModal(false)}
+        tel={activeTel}
+      />
     </div>
   );
 };
