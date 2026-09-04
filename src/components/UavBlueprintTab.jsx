@@ -260,6 +260,7 @@ const CylinderUnit = ({ compId, cylIdx, basePos, side, tel, isSelected, onClick,
     (cylIdx === 2 && af === 'CYL3_INJECTOR') ||
     (cylIdx === 1 && af === 'BLOW_BY') ||
     af === 'COOLING_DEGRADATION';
+  const isBlowBy = (cylIdx === 1 && af === 'BLOW_BY');
 
   const col = vm === 'THERMAL' ? thermalColor(egt, 820, 990)
             : vm === 'HEALTH'  ? healthColor(tel.health.index)
@@ -271,6 +272,9 @@ const CylinderUnit = ({ compId, cylIdx, basePos, side, tel, isSelected, onClick,
   const rotZ = side === 'left' ? -Math.PI/2 : Math.PI/2;
 
   const groupRef = useRef();
+  const pistonRef = useRef();
+  const conRodRef = useRef();
+
   useFrame(({ clock }) => {
     if (!groupRef.current) return;
     const vib = tel.engine.vibrationGrms;
@@ -280,33 +284,127 @@ const CylinderUnit = ({ compId, cylIdx, basePos, side, tel, isSelected, onClick,
     } else {
       groupRef.current.position.y = base;
     }
+
+    // Dynamic 4-stroke piston reciprocation
+    if (pistonRef.current) {
+      const rpm = tel.engine.rpm || 4800;
+      const firingPhases = [0, Math.PI, Math.PI * 0.5, Math.PI * 1.5];
+      const strokePhase = clock.elapsedTime * (rpm / 60) * Math.PI * 2 + firingPhases[cylIdx];
+      const strokeTravel = Math.sin(strokePhase) * 0.16;
+      pistonRef.current.position.x = (0.28 + strokeTravel) * xDir + (ef * 0.45 * xDir);
+
+      if (conRodRef.current) {
+        conRodRef.current.rotation.z = -Math.cos(strokePhase) * 0.14 * xDir;
+      }
+    }
   });
 
   return (
     <group ref={groupRef} position={pos} onClick={e => { e.stopPropagation(); onClick(compId); }}>
+      {/* Outer Cylinder Barrel (Translucent when selected or exploded to reveal internal piston) */}
       <mesh rotation={[0, 0, rotZ]}>
         <cylinderGeometry args={[0.27, 0.27, 1.35, 20]} />
-        <meshStandardMaterial {...matProps(col, isSelected, isFault ? 0.65 : 0.22)} />
+        <meshStandardMaterial
+          {...matProps(col, isSelected, isFault ? 0.65 : 0.22)}
+          transparent={true}
+          opacity={isSelected ? 0.38 : (ef > 0.05 ? Math.max(0.28, 0.88 - ef * 0.7) : 0.88)}
+          roughness={isSelected ? 0.1 : 0.35}
+        />
       </mesh>
+
+      {/* ── INTERNAL RECIPROCATING PISTON ASSEMBLY ── */}
+      <group ref={pistonRef} position={[xDir * 0.28, 0, 0]}>
+        {/* Piston Crown & Skirt (Forged Aircraft Aluminum) */}
+        <mesh rotation={[0, 0, rotZ]}>
+          <cylinderGeometry args={[0.245, 0.245, 0.32, 20]} />
+          <meshStandardMaterial
+            color={isBlowBy ? '#F59E0B' : (isSelected ? '#38BDF8' : '#CBD5E1')}
+            metalness={0.92}
+            roughness={0.18}
+            emissive={isBlowBy ? '#EF4444' : (isSelected ? '#00F0FF' : '#000000')}
+            emissiveIntensity={isBlowBy ? 0.6 : (isSelected ? 0.2 : 0)}
+          />
+        </mesh>
+
+        {/* Piston Crown Top Face (Combustion Dome) */}
+        <mesh position={[xDir * 0.17, 0, 0]} rotation={[0, 0, rotZ]}>
+          <cylinderGeometry args={[0.246, 0.246, 0.02, 20]} />
+          <meshStandardMaterial
+            color={vm === 'THERMAL' ? thermalColor(egt, 820, 990) : (isBlowBy ? '#DC2626' : '#94A3B8')}
+            metalness={0.95}
+            roughness={0.15}
+            emissive={vm === 'THERMAL' ? thermalColor(egt, 820, 990) : (isBlowBy ? '#EF4444' : '#000000')}
+            emissiveIntensity={isBlowBy ? 0.7 : (vm === 'THERMAL' ? 0.4 : 0)}
+          />
+        </mesh>
+
+        {/* 3x Piston Compression & Oil Scraper Rings */}
+        {[-0.04, 0.0, 0.04].map((ringZ, rIdx) => (
+          <mesh key={rIdx} position={[xDir * (0.10 + ringZ), 0, 0]} rotation={[0, 0, rotZ]}>
+            <cylinderGeometry args={[0.252, 0.252, 0.015, 20]} />
+            <meshStandardMaterial
+              color={isBlowBy ? '#EF4444' : '#334155'}
+              metalness={0.98}
+              roughness={0.1}
+              emissive={isBlowBy ? '#EF4444' : '#000000'}
+              emissiveIntensity={isBlowBy ? 0.9 : 0}
+            />
+          </mesh>
+        ))}
+
+        {/* Wrist Pin (Gudgeon Pin) */}
+        <mesh position={[-xDir * 0.02, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.042, 0.042, 0.24, 12]} />
+          <meshStandardMaterial color="#64748B" metalness={0.95} roughness={0.1} />
+        </mesh>
+
+        {/* H-Beam Connecting Rod */}
+        <group ref={conRodRef} position={[-xDir * 0.02, 0, 0]}>
+          <mesh position={[-xDir * 0.28, 0, 0]} rotation={[0, 0, rotZ]}>
+            <boxGeometry args={[0.065, 0.48, 0.065]} />
+            <meshStandardMaterial color="#64748B" metalness={0.88} roughness={0.25} />
+          </mesh>
+          {/* Rod Small End (Around Wrist Pin) */}
+          <mesh position={[0, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.065, 0.065, 0.12, 12]} />
+            <meshStandardMaterial color="#94A3B8" metalness={0.9} roughness={0.2} />
+          </mesh>
+          {/* Rod Big End (Around Crankshaft Pin) */}
+          <mesh position={[-xDir * 0.54, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.088, 0.088, 0.14, 16]} />
+            <meshStandardMaterial color="#475569" metalness={0.92} roughness={0.2} />
+          </mesh>
+        </group>
+      </group>
+
+      {/* Cylinder Head Cap */}
       <mesh position={[xDir * 0.78, 0, 0]} rotation={[0, 0, rotZ]}>
         <cylinderGeometry args={[0.31, 0.27, 0.24, 20]} />
         <meshStandardMaterial color={isSelected ? '#00F0FF' : '#3B4B5F'} metalness={0.82} roughness={0.3} />
       </mesh>
+
+      {/* Cooling Fins */}
       {[0,1,2,3,4].map(fi => (
         <mesh key={fi} position={[xDir * (0.05 + fi * 0.26), 0, 0]} rotation={[0, 0, rotZ]}>
           <cylinderGeometry args={[0.35, 0.35, 0.045, 20]} />
           <meshStandardMaterial color="#273040" metalness={0.72} roughness={0.55} />
         </mesh>
       ))}
+
+      {/* Spark Plug & Fuel Injector Port */}
       <mesh position={[xDir * 0.55, 0.32, 0.08]}>
         <cylinderGeometry args={[0.022, 0.022, 0.38, 8]} />
         <meshStandardMaterial color="#F59E0B" metalness={0.92} roughness={0.1}
           emissive="#F59E0B" emissiveIntensity={0.45} />
       </mesh>
+
+      {/* Exhaust Flange */}
       <mesh position={[xDir * 0.12, -0.28, 0.18]} rotation={[0.38, 0, 0.28 * xDir]}>
         <cylinderGeometry args={[0.065, 0.055, 0.48, 8]} />
         <meshStandardMaterial color="#7C3AED" metalness={0.62} roughness={0.6} />
       </mesh>
+
+      {/* Inspection Wireframe & HUD Overlay */}
       {isSelected && (
         <>
           <mesh position={[xDir * 0.05, 0, 0]} rotation={[0, 0, rotZ]}>
@@ -314,11 +412,12 @@ const CylinderUnit = ({ compId, cylIdx, basePos, side, tel, isSelected, onClick,
             <meshBasicMaterial color="#00F0FF" wireframe />
           </mesh>
           <InlineLabel pos={[xDir * 1.6, 0.9, 0]} rows={[
-            { value: compId, color: '#00F0FF' },
+            { value: `${compId} • PISTON & CYLINDER`, color: '#00F0FF' },
             { label: 'EGT', value: `${egt.toFixed(1)}°C`, color: egtRes > 40 ? '#EF4444' : egtRes > 15 ? '#F59E0B' : '#10B981' },
             { label: 'CHT', value: `${cht.toFixed(1)}°C` },
-            { label: 'Δ EGT', value: `${(tel.residuals.egtResiduals[cylIdx] > 0 ? '+' : '')}${(tel.residuals.egtResiduals[cylIdx]??0).toFixed(1)}°C` },
-            ...(isFault ? [{ value: '⚠ FAULT', color: '#EF4444' }] : []),
+            { label: 'Piston Speed', value: `${(((tel.engine.rpm || 4800) * 2 * 0.061) / 60).toFixed(1)} m/s` },
+            { label: 'Piston Ring', value: isBlowBy ? '⚠ BLOW-BY LEAK' : 'SEALED (100%)', color: isBlowBy ? '#EF4444' : '#10B981' },
+            ...(isFault ? [{ value: '⚠ FAULT DETECTED', color: '#EF4444' }] : []),
           ]} />
         </>
       )}
@@ -901,9 +1000,13 @@ const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, se
         ];
       case 'CYL_01':case 'CYL_02':case 'CYL_03':case 'CYL_04': {
         const i = parseInt(compId.slice(-1)) - 1;
+        const isCylBlowBy = (i === 1 && tel.health.activeFault === 'BLOW_BY');
+        const pistonSpeed = ((tel.engine.rpm || 4800) * 2 * 0.061) / 60;
         return [
           { label:'EGT', value:tel.engine.egt[i], unit:'°C',p:1, res:tel.residuals.egtResiduals[i], hist:hist[`egt${i+1}`] },
           { label:'CHT', value:tel.engine.cht[i], unit:'°C',p:1, res:tel.residuals.chtResiduals[i], hist:hist[`cht${i+1}`] },
+          { label:'Piston Speed', value:pistonSpeed, unit:'m/s', p:1 },
+          { label:'Ring Sealing', value:isCylBlowBy ? 64.2 : 99.8, unit:'%', p:1, res:isCylBlowBy ? -35.6 : 0 },
         ];
       }
       case 'TURBO_01':
