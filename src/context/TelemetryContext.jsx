@@ -184,6 +184,50 @@ export const TelemetryProvider = ({ children }) => {
     ]
   });
 
+  // ── FCS / Flight Controller State (updated at 20 Hz from server) ──
+  const [fcsState, setFcsState] = useState({
+    // Attitude
+    roll_deg:    0,
+    pitch_deg:   2.87,
+    heading_deg: 0,
+    // Kinematics
+    ias_kts:     110,
+    tas_kts:     110,
+    alt_ft:      14500,
+    vsi_fpm:     0,
+    mach:        0.167,
+    alpha_deg:   2.87,
+    beta_deg:    0,
+    Nz:          1.0,
+    north_m:     0,
+    east_m:      0,
+    // Body rates
+    p_dps: 0, q_dps: 0, r_dps: 0,
+    // Aerodynamic
+    CL: 0.28, CD: 0.02, LD: 14.0,
+    // Control surfaces
+    elevator_deg: -2.58,
+    aileron_deg:  0,
+    rudder_deg:   0,
+    flap_deg:     0,
+    throttle_pct: 38,
+    speed_brake:  false,
+    thrust_N:     684,
+    // Autopilot
+    ap_mode:  'ALT_HOLD',
+    ap_armed: true,
+    // FADEC interlock
+    engine_derate:  'NOMINAL',
+    stall_warn:     false,
+    overspeed_warn: false,
+    engine_out:     false,
+    g_limit_active: false,
+    fuel_bingo:     false,
+    // Glide
+    glide_range_m: 0,
+    fcs_time_s: 0,
+  });
+
   // Initial Local Physics-Grounded Prognostics Baseline
   const initialPrognostics = useMemo(() => {
     try {
@@ -397,6 +441,11 @@ export const TelemetryProvider = ({ children }) => {
 
       setTelemetry(data);
 
+      // Extract FCS data from telemetry frame if present
+      if (data.fcs) {
+        setFcsState(data.fcs);
+      }
+
       // Trigger Audio Alarm on Status Transition
       if (data.health.status !== lastAlertStatusRef.current) {
         playAlertTone(data.health.status);
@@ -411,31 +460,46 @@ export const TelemetryProvider = ({ children }) => {
       if (now - lastMlFetchRef.current >= 1000 && !isFetchingMlRef.current) {
         lastMlFetchRef.current = now;
         isFetchingMlRef.current = true;
-        const aiHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        const primaryHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
           ? `http://${window.location.hostname}:8001`
           : '/ai';
-        fetch(`${aiHost}/api/health-rul/predict`, {
+        const gatewayHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+          ? `http://${window.location.hostname}:5002`
+          : '';
+
+        const payload = JSON.stringify({
+          timestamp_s: data.timestamp / 1000,
+          rpm: data.engine.rpm,
+          true_cht: data.engine.cht[2],
+          sensor_cht: data.engine.cht[2],
+          egt: data.engine.egt[2],
+          oil_pressure: data.engine.oilPressBar,
+          oil_temp: data.engine.oilTempC,
+          fuel_flow: data.engine.fuelFlowLph,
+          vibration: data.engine.vibrationGrms,
+          battery_voltage: data.engine.genVoltageV,
+          injection_timing: 18.5,
+          health_index: data.health.index / 100.0,
+          altitude: data.mission.altitudeFt,
+          ambient_temp: data.mission.ambientTempC,
+          throttle: data.engine.throttlePct
+        });
+
+        // Try primary port 8001, then fallback to port 5002 gateway
+        fetch(`${primaryHost}/api/health-rul/predict`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            timestamp_s: data.timestamp / 1000,
-            rpm: data.engine.rpm,
-            true_cht: data.engine.cht[2],
-            sensor_cht: data.engine.cht[2],
-            egt: data.engine.egt[2],
-            oil_pressure: data.engine.oilPressBar,
-            oil_temp: data.engine.oilTempC,
-            fuel_flow: data.engine.fuelFlowLph,
-            vibration: data.engine.vibrationGrms,
-            battery_voltage: data.engine.genVoltageV,
-            injection_timing: 18.5,
-            health_index: data.health.index / 100.0,
-            altitude: data.mission.altitudeFt,
-            ambient_temp: data.mission.ambientTempC,
-            throttle: data.engine.throttlePct
-          })
+          body: payload
         })
-        .then(res => res.ok ? res.json() : null)
+        .catch(() => fetch(`${gatewayHost}/api/health-rul/predict`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload
+        }))
+        .then(res => {
+          if (!res.ok) throw new Error(`AI service returned HTTP ${res.status}`);
+          return res.json();
+        })
         .then(mlData => {
           if (mlData && mlData.rul) {
             // Map Python evidence items to UI format
@@ -624,6 +688,49 @@ export const TelemetryProvider = ({ children }) => {
     }
   }, []);
 
+  // ── FCS Autopilot Control Helpers (WebSocket + REST Fallback) ──
+  const _emitFcs = (event, data) => {
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit(event, data ?? {});
+    }
+    const host = window.location.hostname ? `http://${window.location.hostname}:5002` : 'http://localhost:5002';
+    if (event === 'fcs_set_mode') {
+      fetch(`${host}/api/fcs/mode`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).catch(() => {});
+      setFcsState(prev => ({ ...prev, ap_mode: data.mode }));
+    } else if (event === 'fcs_set_altitude') {
+      fetch(`${host}/api/fcs/altitude`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).catch(() => {});
+      setFcsState(prev => ({ ...prev, alt_sp_ft: data.alt_ft, ap_armed: true }));
+    } else if (event === 'fcs_set_airspeed') {
+      fetch(`${host}/api/fcs/airspeed`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).catch(() => {});
+      setFcsState(prev => ({ ...prev, ias_sp_kts: data.ias_kts, ap_armed: true }));
+    } else if (event === 'fcs_set_heading') {
+      fetch(`${host}/api/fcs/heading`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).catch(() => {});
+      setFcsState(prev => ({ ...prev, heading_sp_deg: data.heading_deg, ap_armed: true }));
+    } else if (event === 'fcs_arm') {
+      fetch(`${host}/api/fcs/arm`, { method: 'POST' }).catch(() => {});
+      setFcsState(prev => ({ ...prev, ap_armed: true }));
+    } else if (event === 'fcs_disarm') {
+      fetch(`${host}/api/fcs/disarm`, { method: 'POST' }).catch(() => {});
+      setFcsState(prev => ({ ...prev, ap_armed: false, ap_mode: 'MANUAL_FBW' }));
+    } else if (event === 'fcs_load_waypoints') {
+      fetch(`${host}/api/fcs/waypoints`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).catch(() => {});
+      setFcsState(prev => ({ ...prev, ap_mode: 'AUTO_MISSION', ap_armed: true }));
+    } else if (event === 'fcs_reset') {
+      fetch(`${host}/api/fcs/reset`, { method: 'POST' }).catch(() => {});
+    }
+  };
+
+  const setFcsMode      = useCallback((mode) => _emitFcs('fcs_set_mode', { mode }), []);
+  const setFcsAltitude  = useCallback((alt_ft) => _emitFcs('fcs_set_altitude', { alt_ft }), []);
+  const setFcsAirspeed  = useCallback((ias_kts) => _emitFcs('fcs_set_airspeed', { ias_kts }), []);
+  const setFcsHeading   = useCallback((heading_deg) => _emitFcs('fcs_set_heading', { heading_deg }), []);
+  const setFcsLoiter    = useCallback((north, east, radius_m, cw) => _emitFcs('fcs_set_loiter', { north, east, radius_m, cw }), []);
+  const loadFcsMission  = useCallback((waypoints) => _emitFcs('fcs_load_waypoints', { waypoints }), []);
+  const fcsArm          = useCallback(() => _emitFcs('fcs_arm'), []);
+  const fcsDisarm       = useCallback(() => _emitFcs('fcs_disarm'), []);
+  const fcsFbwInput     = useCallback((roll, pitch, yaw, throttle) => _emitFcs('fcs_fbw_input', { roll, pitch, yaw, throttle }), []);
+  const fcsReset        = useCallback(() => _emitFcs('fcs_reset'), []);
+
   const analytics = useMemo(() => ({
     thermal: {
       chtMax: Math.max(...telemetry.engine.cht),
@@ -693,7 +800,19 @@ export const TelemetryProvider = ({ children }) => {
         replaySortie,
         replayPlaybackState,
         globalReplayEngine,
-        flightRecorder
+        flightRecorder,
+        // ── FCS / Flight Controller ──
+        fcsState,
+        setFcsMode,
+        setFcsAltitude,
+        setFcsAirspeed,
+        setFcsHeading,
+        setFcsLoiter,
+        loadFcsMission,
+        fcsArm,
+        fcsDisarm,
+        fcsFbwInput,
+        fcsReset,
       }}
     >
       {children}

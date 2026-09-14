@@ -83,7 +83,7 @@ const REGISTRY = {
   ENGINE_BLOCK: { id:'ENGINE_BLOCK', label:'CRANK',    name:'Crankcase / Engine Core',     subsystem:'Powertrain',      camPos:[5,3,5],      camLook:[0,0,0],   expOff:[0,0,0]     },
   CYL_01:       { id:'CYL_01',       label:'CYL 1',    name:'Cylinder 1 (Left-Fwd)',       subsystem:'Combustion',      camPos:[-7,1,3],     camLook:[-2,0,0.7],expOff:[-2,0,0.6]  },
   CYL_02:       { id:'CYL_02',       label:'CYL 2',    name:'Cylinder 2 (Right-Fwd)',      subsystem:'Combustion',      camPos:[7,1,3],      camLook:[2,0,0.7], expOff:[2,0,0.6]   },
-  CYL_03:       { id:'CYL_03',       label:'CYL 3',    name:'Cylinder 3 (Left-Aft) ⚡',    subsystem:'Combustion',      camPos:[-7,1,-3],    camLook:[-2,0,-0.7],expOff:[-2,0,-0.6] },
+  CYL_03:       { id:'CYL_03',       label:'CYL 3',    name:'Cylinder 3 (Left-Aft)',       subsystem:'Combustion',      camPos:[-7,1,-3],    camLook:[-2,0,-0.7],expOff:[-2,0,-0.6] },
   CYL_04:       { id:'CYL_04',       label:'CYL 4',    name:'Cylinder 4 (Right-Aft)',      subsystem:'Combustion',      camPos:[7,1,-3],     camLook:[2,0,-0.7],expOff:[2,0,-0.6]  },
   TURBO_01:     { id:'TURBO_01',     label:'TURBO',    name:'Turbocharger Assembly',       subsystem:'Air / Boost',     camPos:[0,-4,-6],    camLook:[0,-1,-2.2],expOff:[0,-1.8,-2] },
   INTERCOOLER:  { id:'INTERCOOLER',  label:'INTCOOL',  name:'Charge Air Intercooler',      subsystem:'Air / Boost',     camPos:[0,5,-3],     camLook:[0,1.5,-1.5],expOff:[0,2.2,-1] },
@@ -194,56 +194,306 @@ const PropellerAssembly = ({ rpm, isSelected, onClick, basePos, ef }) => {
 };
 
 // ─────────────────────────────────────────────────────────────
+// CRANKSHAFT ASSEMBLY — 42CrMo4 Forged Nitrided Flat-4 Crankshaft
+// Rotating assembly with main journals, counterweights & crankpins
+// ─────────────────────────────────────────────────────────────
+const CrankshaftAssembly = ({ rpm = 4800, oilPress = 3.85, isHighlight = false }) => {
+  const crankRef = useRef();
+
+  useFrame((_, dt) => {
+    if (crankRef.current) {
+      const rotSpeed = ((rpm || 4800) / 60) * Math.PI * 2;
+      crankRef.current.rotation.z += rotSpeed * dt;
+    }
+  });
+
+  const steelMat = {
+    color: isHighlight ? '#38BDF8' : '#CBD5E1',
+    metalness: 0.95,
+    roughness: 0.15,
+  };
+  const webMat = {
+    color: '#475569',
+    metalness: 0.90,
+    roughness: 0.28,
+  };
+  const bearingShellMat = {
+    color: oilPress < 2.0 ? '#EF4444' : '#EAB308',
+    emissive: oilPress < 2.0 ? '#EF4444' : '#CA8A04',
+    emissiveIntensity: 0.35,
+    metalness: 0.88,
+    roughness: 0.22,
+  };
+  const rodCapMat = {
+    color: '#334155',
+    metalness: 0.92,
+    roughness: 0.20,
+  };
+
+  return (
+    <group>
+      {/* 1. Static Main Bearing Saddles (Clamped in crankcase split line) */}
+      {[0.68, 0.0, -0.68].map((mz, idx) => (
+        <group key={idx} position={[0, 0, mz]}>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.138, 0.138, 0.12, 20]} />
+            <meshStandardMaterial {...bearingShellMat} />
+          </mesh>
+          <mesh position={[0, -0.08, 0]}>
+            <boxGeometry args={[0.34, 0.14, 0.12]} />
+            <meshStandardMaterial color="#1E293B" metalness={0.8} roughness={0.4} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* 2. Real-Time High-RPM Rotating Crankshaft Core */}
+      <group ref={crankRef}>
+        {/* Main Shaft Journals (Along Z-Axis) */}
+        <mesh position={[0, 0, 0.68]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.115, 0.115, 0.15, 24]} />
+          <meshStandardMaterial {...steelMat} />
+        </mesh>
+        <mesh position={[0, 0, 0.0]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.115, 0.115, 0.19, 24]} />
+          <meshStandardMaterial {...steelMat} />
+        </mesh>
+        <mesh position={[0, 0, -0.68]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.115, 0.115, 0.15, 24]} />
+          <meshStandardMaterial {...steelMat} />
+        </mesh>
+
+        {/* Central Connecting Shaft Stubs */}
+        <mesh position={[0, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.085, 0.085, 1.48, 20]} />
+          <meshStandardMaterial {...steelMat} />
+        </mesh>
+
+        {/* ── FORWARD BANK (Cylinders 1 & 2) ── */}
+        {/* Web 1 & Counterweight 1 (Opposing Cyl 1 pin) */}
+        <group position={[0, 0, 0.58]}>
+          <mesh position={[-0.14, 0, 0]}>
+            <boxGeometry args={[0.32, 0.22, 0.045]} />
+            <meshStandardMaterial {...webMat} />
+          </mesh>
+          <mesh position={[-0.22, 0.05, 0.02]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.028, 0.028, 0.02, 12]} />
+            <meshStandardMaterial color="#0F172A" roughness={0.9} />
+          </mesh>
+          <mesh position={[-0.22, -0.05, 0.02]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.028, 0.028, 0.02, 12]} />
+            <meshStandardMaterial color="#0F172A" roughness={0.9} />
+          </mesh>
+        </group>
+
+        {/* Crankpin 1 (Throw for Cyl 1, Offset +X) */}
+        <group position={[0.22, 0, 0.50]}>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.082, 0.082, 0.11, 20]} />
+            <meshStandardMaterial {...steelMat} />
+          </mesh>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.108, 0.108, 0.085, 16]} />
+            <meshStandardMaterial {...rodCapMat} />
+          </mesh>
+        </group>
+
+        {/* Intermediate Web between 1 & 2 */}
+        <mesh position={[0, 0, 0.43]}>
+          <boxGeometry args={[0.36, 0.18, 0.04]} />
+          <meshStandardMaterial {...webMat} />
+        </mesh>
+
+        {/* Crankpin 2 (Throw for Cyl 2, 180° Opposed, Offset -X) */}
+        <group position={[-0.22, 0, 0.36]}>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.082, 0.082, 0.11, 20]} />
+            <meshStandardMaterial {...steelMat} />
+          </mesh>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.108, 0.108, 0.085, 16]} />
+            <meshStandardMaterial {...rodCapMat} />
+          </mesh>
+        </group>
+
+        {/* Web 2 & Counterweight 2 */}
+        <group position={[0, 0, 0.28]}>
+          <mesh position={[0.14, 0, 0]}>
+            <boxGeometry args={[0.32, 0.22, 0.045]} />
+            <meshStandardMaterial {...webMat} />
+          </mesh>
+          <mesh position={[0.22, 0, 0.02]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.028, 0.028, 0.02, 12]} />
+            <meshStandardMaterial color="#0F172A" roughness={0.9} />
+          </mesh>
+        </group>
+
+        {/* ── AFT BANK (Cylinders 3 & 4) ── */}
+        {/* Web 3 & Counterweight 3 */}
+        <group position={[0, 0, -0.28]}>
+          <mesh position={[0.14, 0, 0]}>
+            <boxGeometry args={[0.32, 0.22, 0.045]} />
+            <meshStandardMaterial {...webMat} />
+          </mesh>
+          <mesh position={[0.22, 0, 0.02]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.028, 0.028, 0.02, 12]} />
+            <meshStandardMaterial color="#0F172A" roughness={0.9} />
+          </mesh>
+        </group>
+
+        {/* Crankpin 3 (Throw for Cyl 3, Offset -X) */}
+        <group position={[-0.22, 0, -0.36]}>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.082, 0.082, 0.11, 20]} />
+            <meshStandardMaterial {...steelMat} />
+          </mesh>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.108, 0.108, 0.085, 16]} />
+            <meshStandardMaterial {...rodCapMat} />
+          </mesh>
+        </group>
+
+        {/* Intermediate Web between 3 & 4 */}
+        <mesh position={[0, 0, -0.43]}>
+          <boxGeometry args={[0.36, 0.18, 0.04]} />
+          <meshStandardMaterial {...webMat} />
+        </mesh>
+
+        {/* Crankpin 4 (Throw for Cyl 4, 180° Opposed, Offset +X) */}
+        <group position={[0.22, 0, -0.50]}>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.082, 0.082, 0.11, 20]} />
+            <meshStandardMaterial {...steelMat} />
+          </mesh>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.108, 0.108, 0.085, 16]} />
+            <meshStandardMaterial {...rodCapMat} />
+          </mesh>
+        </group>
+
+        {/* Web 4 & Counterweight 4 */}
+        <group position={[0, 0, -0.58]}>
+          <mesh position={[-0.14, 0, 0]}>
+            <boxGeometry args={[0.32, 0.22, 0.045]} />
+            <meshStandardMaterial {...webMat} />
+          </mesh>
+          <mesh position={[-0.22, 0, 0.02]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.028, 0.028, 0.02, 12]} />
+            <meshStandardMaterial color="#0F172A" roughness={0.9} />
+          </mesh>
+        </group>
+
+        {/* ── FRONT DRIVE GEAR & PROPELLER OUTPUT ── */}
+        <mesh position={[0, 0, 0.82]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.155, 0.155, 0.08, 28]} />
+          <meshStandardMaterial color="#94A3B8" metalness={0.92} roughness={0.18} />
+        </mesh>
+        <mesh position={[0, 0, 0.89]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.075, 0.075, 0.10, 16]} />
+          <meshStandardMaterial {...steelMat} />
+        </mesh>
+
+        {/* ── REAR FLYWHEEL FLANGE & STARTER RING ── */}
+        <mesh position={[0, 0, -0.79]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.27, 0.27, 0.045, 32]} />
+          <meshStandardMaterial color="#334155" metalness={0.90} roughness={0.25} />
+        </mesh>
+        <mesh position={[0, 0, -0.80]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.285, 0.285, 0.035, 36]} />
+          <meshStandardMaterial color="#64748B" metalness={0.95} roughness={0.2} />
+        </mesh>
+      </group>
+    </group>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
 // CRANKCASE ASSEMBLY — flat-4 boxer engine block
 // ─────────────────────────────────────────────────────────────
 const CrankcaseAssembly = ({ isSelected, onClick, basePos, ef, tel, vm }) => {
+  const isCrankView = vm === 'CRANK_VIEW';
+  const isCutaway = vm === 'XRAY' || vm === 'PISTON_VIEW' || isCrankView || isSelected;
+
   const col = vm === 'HEALTH'   ? healthColor(tel.health.index)
             : vm === 'THERMAL'  ? thermalColor(tel.engine.oilTempC, 80, 140)
             : '#647080';
 
   return (
     <group position={basePos} onClick={e => { e.stopPropagation(); onClick('ENGINE_BLOCK'); }}>
+      {/* Outer Crankcase Block with cutaway transparency */}
       <mesh>
         <boxGeometry args={[2.2, 0.95, 1.65]} />
         <meshStandardMaterial
           {...matProps(col, isSelected)}
-          transparent={vm === 'XRAY' || vm === 'PISTON_VIEW'}
-          opacity={vm === 'XRAY' || vm === 'PISTON_VIEW' ? 0.22 : 1.0}
+          transparent={isCutaway}
+          opacity={isCutaway ? 0.24 : 1.0}
         />
       </mesh>
+
+      {/* Wireframe accent cage when cutaway or selected */}
+      {isCutaway && (
+        <mesh>
+          <boxGeometry args={[2.205, 0.955, 1.655]} />
+          <meshBasicMaterial color={isSelected || isCrankView ? '#00F0FF' : '#38BDF8'} wireframe transparent opacity={0.35} />
+        </mesh>
+      )}
+
+      {/* Front & Rear Access Plates */}
       <mesh position={[0, 0, 0.84]}>
         <boxGeometry args={[1.85, 0.75, 0.04]} />
-        <meshStandardMaterial color="#2D3B4F" metalness={0.85} roughness={0.4} />
+        <meshStandardMaterial color="#2D3B4F" metalness={0.85} roughness={0.4} transparent={isCutaway} opacity={isCutaway ? 0.35 : 1.0} />
       </mesh>
       <mesh position={[0, 0, -0.84]}>
         <boxGeometry args={[1.8, 0.75, 0.04]} />
-        <meshStandardMaterial color="#1A2332" metalness={0.85} roughness={0.4} />
+        <meshStandardMaterial color="#1A2332" metalness={0.85} roughness={0.4} transparent={isCutaway} opacity={isCutaway ? 0.35 : 1.0} />
       </mesh>
+
+      {/* Front Nose Bearing Collar */}
       <mesh position={[0, 0, 0.95]} rotation={[Math.PI / 2, 0, 0]}>
         <cylinderGeometry args={[0.16, 0.16, 0.18, 16]} />
         <meshStandardMaterial color="#94A3B8" metalness={0.92} roughness={0.1} />
       </mesh>
+
+      {/* Mount Bosses */}
       {[[-0.9,-0.45,0.6],[0.9,-0.45,0.6],[-0.9,-0.45,-0.6],[0.9,-0.45,-0.6]].map(([mx,my,mz],i)=>(
         <mesh key={i} position={[mx, my, mz]}>
           <cylinderGeometry args={[0.09, 0.09, 0.14, 8]} />
           <meshStandardMaterial color="#2D3B4F" metalness={0.7} roughness={0.5} />
         </mesh>
       ))}
-      <mesh position={[0, 0, 0]} rotation={[Math.PI/2, 0, 0]}>
-        <cylinderGeometry args={[0.07, 0.07, 1.5, 8]} />
-        <meshStandardMaterial color="#334155" metalness={0.9} roughness={0.2} />
-      </mesh>
-      {isSelected && (
+
+      {/* Top Inspection Cutaway Aperture */}
+      {isCutaway && (
+        <mesh position={[0, 0.48, 0]}>
+          <boxGeometry args={[0.95, 0.02, 1.4]} />
+          <meshBasicMaterial color="#00F0FF" wireframe transparent opacity={0.5} />
+        </mesh>
+      )}
+
+      {/* Internal Crankshaft Cavity Light for dramatic cinematic inspection */}
+      {isCutaway && (
+        <pointLight position={[0, 0.3, 0]} color="#38BDF8" intensity={1.6} distance={2.5} />
+      )}
+
+      {/* Detailed Rotax 915 iS Internal Rotating Crankshaft */}
+      <CrankshaftAssembly
+        rpm={tel.engine.rpm}
+        oilPress={tel.engine.oilPressBar}
+        isHighlight={isSelected || isCrankView}
+      />
+
+      {/* Interactive HUD Overlay */}
+      {(isSelected || isCrankView) && (
         <>
           <mesh>
             <boxGeometry args={[2.34, 1.09, 1.79]} />
             <meshBasicMaterial color="#00F0FF" wireframe />
           </mesh>
-          <InlineLabel pos={[0, 1.0, 0]} rows={[
-            { value: 'ENGINE_BLOCK' },
-            { label: 'RPM',      value: `${Math.round(tel.engine.rpm)}` },
-            { label: 'Throttle', value: `${tel.engine.throttlePct.toFixed(1)}%` },
-            { label: 'Vib.',     value: `${tel.engine.vibrationGrms.toFixed(3)} g` },
+          <InlineLabel pos={[0, 0.95, 0]} rows={[
+            { value: 'CRANKSHAFT & POWERTRAIN CORE' },
+            { label: 'Crank Speed', value: `${Math.round(tel.engine.rpm)} RPM (${(tel.engine.rpm / 60).toFixed(1)} Hz)` },
+            { label: 'Bearing Wedge', value: '4.8 µm (3.85 bar nominal)' },
+            { label: 'Harmonic Vib.', value: `${tel.engine.vibrationGrms.toFixed(3)} g (1X/2X orders)` },
+            { label: 'Material', value: 'Forged 42CrMo4 Nitrided Steel' },
           ]} />
         </>
       )}
@@ -968,7 +1218,7 @@ const Sparkline = ({ data, color = '#00F0FF' }) => {
 // ─────────────────────────────────────────────────────────────
 // INSPECTOR PANEL — structured per-field telemetry display
 // ─────────────────────────────────────────────────────────────
-const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, selectedUav = 'Vahak-1', uavSpec, onOpenPistonLab }) => {
+const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, selectedUav = 'Vahak-1', uavSpec, onOpenPistonLab, onFocusCrank }) => {
   const comp = REGISTRY[compId];
   if (!comp) return <div className="text-slate-500 text-xs font-mono p-4">Select a component.</div>;
 
@@ -976,7 +1226,7 @@ const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, se
 
   const DESCS = {
     PROP_01:      'Two-blade propeller driven via 2.43:1 planetary reduction gearbox. RPM monitored by FADEC crankshaft encoder. Blade pitch is fixed.',
-    ENGINE_BLOCK: 'Rotax 915 iS — 1,414 cc flat-4 turbocharged, intercooled, liquid/air-cooled boxer with dual FADEC ECU. Structural vibration monitored via piezo g-RMS sensor on crankcase.',
+    ENGINE_BLOCK: 'Rotax 915 iS flat-4 turbocharged powertrain core. Features a nitrided 42CrMo4 forged crankshaft with 8 dynamic counterweights, hydrodynamic tri-metal bearings, and a 2.43:1 PRGB drive pinion.',
     CYL_01:       'Left-forward cylinder. 84 mm bore × 61 mm stroke, NiCaSil-plated bore. Dual spark ignition, port fuel injection.',
     CYL_02:       'Right-forward cylinder. Paired with CYL_01 on crank pin. Correlation with charge air temperature under boost.',
     CYL_03:       'Left-aft cylinder. Critical fault indicator — injector restriction causes EGT excursions >960°C (lean burn). Primary CYL3_INJECTOR sensor.',
@@ -1002,10 +1252,12 @@ const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, se
         ];
       case 'ENGINE_BLOCK':
         return [
-          { label:'Engine RPM', value:tel.engine.rpm,          unit:'RPM',p:0, hist:hist.healthIndex },
-          { label:'Throttle',   value:tel.engine.throttlePct,  unit:'%',  p:1 },
-          { label:'Vibration',  value:tel.engine.vibrationGrms,unit:'g',  p:3, res:tel.residuals.vibrationResidual },
-          { label:'Health',     value:tel.health.index,        unit:'%',  p:1 },
+          { label:'Crankshaft RPM', value:tel.engine.rpm,          unit:'RPM',p:0, hist:hist.healthIndex },
+          { label:'Rotational Freq', value:tel.engine.rpm / 60,    unit:'Hz', p:1 },
+          { label:'Oil Film Wedge', value:'4.8 µm (Nominal >3.5 µm)', unit:'', p:0, isStr:true },
+          { label:'Throttle Demand', value:tel.engine.throttlePct, unit:'%',  p:1 },
+          { label:'Torsional Harmonics', value:tel.engine.vibrationGrms, unit:'g', p:3, res:tel.residuals.vibrationResidual },
+          { label:'Powertrain Health', value:tel.health.index,     unit:'%',  p:1 },
         ];
       case 'CYL_01':case 'CYL_02':case 'CYL_03':case 'CYL_04': {
         const i = parseInt(compId.slice(-1)) - 1;
@@ -1080,69 +1332,69 @@ const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, se
     (compId === 'UAV_GENERATOR_28V' && af === 'GENERATOR_FAILURE');
 
   const stBg = compFault
-    ? 'bg-red-500/20 border-red-500/50 text-red-400 animate-pulse'
-    : 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400';
+    ? 'bg-red-50 border-red-300 text-red-700 animate-pulse'
+    : 'bg-emerald-50 border-emerald-300 text-emerald-800';
 
   return (
     <div className="flex flex-col gap-2.5 h-full overflow-y-auto pr-0.5">
-      <div className="flex items-center justify-between border-b border-hud-cyan/20 pb-2">
+      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
         <div className="flex items-center gap-1.5">
-          <Cpu className="w-3.5 h-3.5 text-hud-cyan" />
-          <span className="font-display font-bold text-[11px] tracking-wider text-hud-cyan">COMPONENT INSPECTOR</span>
+          <Cpu className="w-3.5 h-3.5 text-sky-600" />
+          <span className="font-display font-bold text-xs tracking-wider text-slate-900">COMPONENT INSPECTOR</span>
         </div>
         <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${stBg}`}>
           {compFault ? 'FAULT' : 'NOMINAL'}
         </span>
       </div>
 
-      <div className="bg-slate-900/90 border border-slate-700/80 rounded p-2.5">
-        <div className="text-[9px] font-mono text-slate-400 uppercase tracking-wider">{comp.subsystem}</div>
-        <div className="text-sm font-bold text-white mt-0.5 leading-tight">{comp.name}</div>
-        <div className="text-[9px] font-mono text-hud-cyan mt-1">ID: {comp.id}</div>
+      <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 shadow-2xs">
+        <div className="text-[9px] font-mono text-slate-500 uppercase tracking-wider font-semibold">{comp.subsystem}</div>
+        <div className="text-sm font-bold text-slate-900 mt-0.5 leading-tight">{comp.name.replace(/⚡/g, '')}</div>
+        <div className="text-[10px] font-mono text-sky-700 font-bold mt-1">ID: {comp.id}</div>
       </div>
 
-      <div className="bg-black/60 border border-hud-cyan/30 rounded p-2.5 flex flex-col gap-2">
-        <div className="text-[9px] font-mono text-slate-400 flex items-center gap-1">
-          <Activity className="w-3 h-3 text-hud-cyan" /> LIVE SENSOR DATA
+      <div className="bg-white border border-slate-200 rounded-lg p-3 flex flex-col gap-2 shadow-2xs">
+        <div className="text-[10px] font-mono text-slate-700 font-bold flex items-center gap-1.5">
+          <Activity className="w-3.5 h-3.5 text-sky-600" /> LIVE SENSOR DATA
         </div>
         {fields.map((f, fi) => {
           const resAbs = f.res !== undefined ? Math.abs(f.res) : 0;
           const vc = f.res !== undefined
-            ? (resAbs > 40 ? 'text-red-400' : resAbs > 15 ? 'text-amber-400' : 'text-emerald-400')
-            : 'text-emerald-400';
+            ? (resAbs > 40 ? 'text-red-700 font-bold' : resAbs > 15 ? 'text-amber-700 font-bold' : 'text-emerald-700 font-bold')
+            : 'text-emerald-700 font-bold';
           const dispVal = f.isStr ? f.value : typeof f.value === 'number' ? f.value.toFixed(f.p) : '—';
           return (
-            <div key={fi} className="flex flex-col gap-0.5">
+            <div key={fi} className="flex flex-col gap-0.5 border-b border-slate-100 last:border-0 pb-1.5 last:pb-0">
               <div className="flex items-center justify-between">
-                <span className="text-[9px] font-mono text-slate-400">{f.label}</span>
+                <span className="text-[11px] font-mono font-semibold text-slate-700">{f.label}</span>
                 <span className={`text-sm font-mono font-bold ${vc}`}>
                   {dispVal}
-                  <span className="text-[9px] text-slate-500 ml-0.5">{f.unit}</span>
+                  <span className="text-[10px] text-slate-500 ml-0.5 font-medium">{f.unit}</span>
                 </span>
               </div>
               {f.res !== undefined && (
-                <div className="text-[9px] font-mono text-slate-600 text-right">
+                <div className="text-[9px] font-mono text-slate-500 text-right">
                   Δ {f.res > 0 ? '+' : ''}{(f.res).toFixed(2)} {f.unit}
                 </div>
               )}
-              {f.hist && <Sparkline data={f.hist} color={resAbs > 15 ? '#F59E0B' : '#00F0FF'} />}
+              {f.hist && <Sparkline data={f.hist} color={resAbs > 15 ? '#D97706' : '#0284C7'} />}
             </div>
           );
         })}
       </div>
 
-      <div className="bg-slate-900/60 border border-slate-800 rounded p-2.5">
-        <div className="text-[9px] font-mono text-slate-400 mb-2 flex items-center gap-1">
-          <BarChart2 className="w-3 h-3 text-hud-amber" /> ENGINE HEALTH & ANOMALY
+      <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-2xs">
+        <div className="text-[10px] font-mono text-slate-700 font-bold mb-2 flex items-center gap-1.5">
+          <BarChart2 className="w-3.5 h-3.5 text-sky-600" /> ENGINE HEALTH &amp; ANOMALY
         </div>
         {[
-          { label:'Health Index',  val:tel.health.index,           col:healthColor(tel.health.index) },
-          { label:'Anomaly Score', val:aiProg.anomaly_score*100,   col:aiProg.anomaly_score>0.5?'#EF4444':aiProg.anomaly_score>0.2?'#F59E0B':'#10B981' },
+          { label:'Health Index',  val:tel.health.index,           col:tel.health.index < 70 ? '#DC2626' : tel.health.index < 85 ? '#D97706' : '#059669' },
+          { label:'Anomaly Score', val:aiProg.anomaly_score*100,   col:aiProg.anomaly_score>0.5?'#DC2626':aiProg.anomaly_score>0.2?'#D97706':'#059669' },
         ].map((bar,bi) => (
-          <div key={bi} className="flex items-center gap-2 mb-1">
-            <span className="text-[9px] font-mono text-slate-400 w-24 shrink-0">{bar.label}</span>
-            <div className="flex-1 bg-slate-800 rounded-full h-1.5">
-              <div className="h-1.5 rounded-full transition-all duration-300"
+          <div key={bi} className="flex items-center gap-2 mb-1.5">
+            <span className="text-[10px] font-mono font-semibold text-slate-600 w-24 shrink-0">{bar.label}</span>
+            <div className="flex-1 bg-slate-100 border border-slate-200 rounded-full h-2 overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-300"
                 style={{ width:`${Math.min(100,bar.val)}%`, backgroundColor:bar.col }} />
             </div>
             <span className="text-[10px] font-mono font-bold w-10 text-right" style={{ color:bar.col }}>
@@ -1151,23 +1403,21 @@ const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, se
           </div>
         ))}
         {af !== 'NONE' && (
-          <div className="mt-1.5 text-[9px] font-mono text-red-400 flex items-center gap-1">
-            <AlertTriangle className="w-3 h-3" /> {af}
+          <div className="mt-2 text-[10px] font-mono font-bold text-red-700 bg-red-50 border border-red-200 rounded p-1.5 flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5 text-red-600" /> {af}
           </div>
         )}
         {aiProg.rul_hours_mean !== undefined && (
-          <div className="mt-1 text-[9px] font-mono text-slate-400">
-            RUL: <span className="text-hud-cyan font-bold">{aiProg.rul_hours_mean.toFixed(0)} hr</span>
-            <span className="text-slate-600 ml-1">
-              ({aiProg.rul_hours_lower_95?.toFixed(0)}–{aiProg.rul_hours_upper_95?.toFixed(0)} 95% CI)
-            </span>
+          <div className="mt-2 text-[10px] font-mono text-slate-600 flex items-center justify-between border-t border-slate-100 pt-1.5">
+            <span>RUL EXPECTANCY:</span>
+            <span className="text-sky-700 font-bold text-xs">{aiProg.rul_hours_mean.toFixed(0)} hr</span>
           </div>
         )}
       </div>
 
-      <div className="bg-slate-900/60 border border-slate-800 rounded p-2.5 text-[9px] leading-relaxed text-slate-300">
-        <div className="font-bold text-hud-cyan mb-1 flex items-center gap-1 text-[9px]">
-          <Info className="w-3 h-3" /> ENGINEERING NOTES
+      <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-[10px] leading-relaxed text-slate-700 font-sans shadow-2xs">
+        <div className="font-bold text-slate-800 mb-1 flex items-center gap-1.5 text-xs font-mono">
+          <Info className="w-3.5 h-3.5 text-sky-600" /> ENGINEERING NOTES
         </div>
         {DESCS[compId] || '—'}
       </div>
@@ -1175,55 +1425,65 @@ const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, se
       {compId.startsWith('CYL_') && (
         <button
           onClick={() => onOpenPistonLab?.()}
-          className="w-full py-2 px-3 rounded-lg bg-gradient-to-r from-cyan-600/30 to-blue-600/30 border border-cyan-400/60 text-cyan-300 font-mono text-[10px] font-bold hover:bg-cyan-500/40 flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(0,240,255,0.25)] transition-all"
+          className="w-full py-2.5 px-3 rounded-lg bg-sky-50 hover:bg-sky-100 border border-sky-300 text-sky-800 font-mono text-[10px] font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all"
         >
-          <Eye className="w-3.5 h-3.5 text-cyan-400" />
-          🔬 LAUNCH PISTON 4-STROKE LAB
+          <Eye className="w-3.5 h-3.5 text-sky-600" />
+          LAUNCH PISTON 4-STROKE LAB
         </button>
       )}
 
-      <div className="mt-auto pt-2 border-t border-slate-800 shrink-0">
+      {compId === 'ENGINE_BLOCK' && (
+        <button
+          onClick={() => onFocusCrank?.()}
+          className="w-full py-2.5 px-3 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-mono text-[10px] font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all"
+        >
+          <Cpu className="w-3.5 h-3.5 text-slate-600" />
+          FOCUS CRANKSHAFT CUTAWAY VIEW
+        </button>
+      )}
+
+      <div className="mt-auto pt-2 border-t border-slate-200 shrink-0">
         {selectedUav === 'Vahak-1' ? (
           <>
-            <div className="text-[9px] font-mono text-slate-400 mb-1.5 flex items-center gap-1">
-              <Flame className="w-3 h-3 text-hud-cyan" /> QUICK FAULT INJECTION (JUDGE / DEMO):
+            <div className="text-[10px] font-mono font-bold text-slate-600 mb-1.5 flex items-center gap-1">
+              <Flame className="w-3.5 h-3.5 text-sky-600" /> SYSTEM INJECTION BENCHMARK:
             </div>
             <div className="grid grid-cols-2 gap-1.5">
               <button onClick={() => injectFault('CYL3_INJECTOR', 0.9)}
-                className={`px-2 py-1.5 rounded text-[9px] font-mono transition-all ${af==='CYL3_INJECTOR' ? 'bg-red-500 text-black font-bold border-red-500 shadow-hud-red' : 'bg-slate-900/90 text-red-400 border border-red-500/40 hover:bg-red-950'}`}>Cyl 3 Clog</button>
+                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${af==='CYL3_INJECTOR' ? 'bg-red-600 text-white border-red-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-red-50 hover:border-red-300 hover:text-red-700'}`}>Cyl 3 Clog</button>
                 
               <button onClick={() => injectFault('BLOW_BY', 0.85)}
-                className={`px-2 py-1.5 rounded text-[9px] font-mono transition-all ${af==='BLOW_BY' ? 'bg-amber-500 text-black font-bold border-amber-500 shadow-hud-amber' : 'bg-slate-900/90 text-amber-400 border border-amber-500/40 hover:bg-amber-950'}`}>Piston Blow-By</button>
+                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${af==='BLOW_BY' ? 'bg-amber-600 text-white border-amber-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300 hover:text-amber-800'}`}>Piston Blow-By</button>
                 
               <button onClick={() => injectFault('OIL_PUMP_CAVITATION', 0.95)}
-                className={`px-2 py-1.5 rounded text-[9px] font-mono transition-all ${af==='OIL_PUMP_CAVITATION' ? 'bg-red-500 text-black font-bold border-red-500 shadow-hud-red' : 'bg-slate-900/90 text-red-300 border border-red-500/40 hover:bg-red-950'}`}>Oil Cavitation</button>
+                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${af==='OIL_PUMP_CAVITATION' ? 'bg-red-600 text-white border-red-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-red-50 hover:border-red-300 hover:text-red-700'}`}>Oil Cavitation</button>
 
               <button onClick={() => injectFault('TURBO_WASTEGATE_STUCK', 0.8)}
-                className={`px-2 py-1.5 rounded text-[9px] font-mono transition-all ${af==='TURBO_WASTEGATE_STUCK' ? 'bg-purple-500 text-black font-bold border-purple-500' : 'bg-slate-900/90 text-purple-300 border border-purple-500/40 hover:bg-purple-950'}`}>Turbo Surge</button>
+                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${af==='TURBO_WASTEGATE_STUCK' ? 'bg-purple-600 text-white border-purple-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300 hover:text-purple-800'}`}>Turbo Surge</button>
 
               <button onClick={() => injectFault('COOLING_DEGRADATION', 0.85)}
-                className={`px-2 py-1.5 rounded text-[9px] font-mono transition-all ${af==='COOLING_DEGRADATION' ? 'bg-cyan-500 text-black font-bold border-cyan-500' : 'bg-slate-900/90 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-950'}`}>Cooling Decay</button>
+                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${af==='COOLING_DEGRADATION' ? 'bg-sky-600 text-white border-sky-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-sky-50 hover:border-sky-300 hover:text-sky-800'}`}>Cooling Decay</button>
                 
               <button onClick={() => injectFault('PRGB_DEGRADATION', 0.9)}
-                className={`px-2 py-1.5 rounded text-[9px] font-mono transition-all ${af==='PRGB_DEGRADATION' ? 'bg-orange-500 text-black font-bold border-orange-500' : 'bg-orange-950/40 hover:bg-orange-900/60 border border-orange-500/40 text-orange-300'}`}>Gearbox Wear</button>
+                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${af==='PRGB_DEGRADATION' ? 'bg-orange-600 text-white border-orange-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-orange-50 hover:border-orange-300 hover:text-orange-800'}`}>Gearbox Wear</button>
                 
               <button onClick={() => injectFault('GENERATOR_FAILURE', 0.9)}
-                className={`px-2 py-1.5 rounded text-[9px] font-mono transition-all ${af==='GENERATOR_FAILURE' ? 'bg-yellow-500 text-black font-bold border-yellow-500' : 'bg-yellow-950/40 hover:bg-yellow-900/60 border border-yellow-500/40 text-yellow-300'}`}>Gen Failure</button>
+                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${af==='GENERATOR_FAILURE' ? 'bg-yellow-600 text-white border-yellow-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-yellow-50 hover:border-yellow-300 hover:text-yellow-800'}`}>Gen Failure</button>
                 
               <button onClick={() => clearFault()}
-                className={`px-2 py-1.5 rounded text-[9px] font-mono transition-all ${af==='NONE' ? 'bg-emerald-500 text-black font-bold border-emerald-500' : 'bg-slate-900/90 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-950'}`}>Clear All (Nominal)</button>
+                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${af==='NONE' ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs' : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'}`}>Clear All (Nominal)</button>
             </div>
           </>
         ) : (
-          <div className="bg-slate-900/80 p-2.5 rounded border border-slate-800 text-[9px] font-mono flex flex-col gap-1">
-            <div className="text-hud-cyan font-bold flex items-center justify-between">
+          <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-[9px] font-mono flex flex-col gap-1 shadow-2xs">
+            <div className="text-slate-800 font-bold flex items-center justify-between">
               <span>{selectedUav} SWARM TELEMETRY:</span>
-              <span className="text-slate-400 font-normal">S/N: {uavSpec?.sn || 'RTX-0915'}</span>
+              <span className="text-slate-500 font-normal">S/N: {uavSpec?.sn || 'RTX-0915'}</span>
             </div>
-            <div className="text-slate-300">ROLE: <span className="font-bold text-white">{uavSpec?.role}</span></div>
-            <div className="text-slate-300">TOTAL AIRFRAME HOURS: <span className="font-bold text-white">{uavSpec?.hours}</span></div>
-            <div className="text-slate-300">THEATER LOCATION: <span className="font-bold text-hud-cyan">{uavSpec?.location}</span></div>
-            <div className="text-slate-400 text-[8.5px] mt-0.5 pt-1 border-t border-slate-800/80">
+            <div className="text-slate-600">ROLE: <span className="font-bold text-slate-900">{uavSpec?.role}</span></div>
+            <div className="text-slate-600">TOTAL AIRFRAME HOURS: <span className="font-bold text-slate-900">{uavSpec?.hours}</span></div>
+            <div className="text-slate-600">THEATER LOCATION: <span className="font-bold text-sky-700">{uavSpec?.location}</span></div>
+            <div className="text-slate-400 text-[8.5px] mt-0.5 pt-1 border-t border-slate-200">
               * Live physics telemetry streaming from Western Air Command swarm datalink bus.
             </div>
           </div>
@@ -1248,11 +1508,11 @@ const SchematicPanel = ({ sel, onSel, tel }) => {
     (id==='UAV_GENERATOR_28V' && af==='GENERATOR_FAILURE');
 
   const ns = (id) => ({
-    fill:   sel===id ? '#00F0FF' : isFaulty(id) ? 'rgba(239,68,68,0.2)' : 'rgba(10,25,47,0.9)',
-    stroke: sel===id ? '#00F0FF' : isFaulty(id) ? '#EF4444' : '#334155',
+    fill:   sel===id ? '#E0F2FE' : isFaulty(id) ? '#FEF2F2' : '#FFFFFF',
+    stroke: sel===id ? '#0284C7' : isFaulty(id) ? '#EF4444' : '#CBD5E1',
     sw:     sel===id ? 2 : 1,
-    tc:     sel===id ? '#000'    : isFaulty(id) ? '#FCA5A5' : '#64748B',
-    fw:     sel===id ? 'bold'    : 'normal',
+    tc:     sel===id ? '#0369A1' : isFaulty(id) ? '#DC2626' : '#334155',
+    fw:     sel===id ? 'bold'    : '600',
   });
 
   const Node = ({ id, x, y, w=60, h=20, label }) => {
@@ -1268,16 +1528,16 @@ const SchematicPanel = ({ sel, onSel, tel }) => {
     );
   };
 
-  const Arr = ({ x1,y1,x2,y2,col='#1E3A5F' }) => (
+  const Arr = ({ x1,y1,x2,y2,col='#94A3B8' }) => (
     <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={col} strokeWidth={1}
-      markerEnd="url(#arr)" opacity={0.65} />
+      markerEnd="url(#arr)" opacity={0.7} />
   );
 
   return (
-    <div className="bg-black/70 border border-hud-cyan/20 rounded p-2">
-      <div className="text-[9px] font-mono text-hud-cyan mb-1.5 flex items-center gap-1">
-        <GitBranch className="w-3 h-3" /> SYSTEM SCHEMATIC
-        <span className="text-slate-600 ml-1">· click to select</span>
+    <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 shadow-2xs">
+      <div className="text-[10px] font-mono text-slate-700 font-bold mb-1.5 flex items-center gap-1">
+        <GitBranch className="w-3 h-3 text-sky-600" /> SYSTEM SCHEMATIC
+        <span className="text-slate-400 font-normal ml-1">· click to select</span>
       </div>
       <svg viewBox="0 0 280 240" width="100%">
         <defs>
@@ -1605,20 +1865,20 @@ export const UavBlueprintTab = () => {
     <div className="flex flex-col lg:flex-row gap-3 h-full w-full">
 
       {/* ═══ LEFT — 3D CANVAS ═══ */}
-      <div className="flex-1 relative starship-glass rounded-xl overflow-hidden min-w-0 border border-white/[0.08] shadow-starship-glass">
+      <div className="flex-1 relative gcs-panel rounded-lg overflow-hidden min-w-0 border border-aero-border shadow-gcs-panel">
 
         {/* Status chips + Unit Selector — top left */}
         <div className="absolute top-3 left-3 z-10 flex flex-wrap items-center gap-2">
           {/* Swarm Unit Selector Pills */}
-          <div className="flex items-center gap-1 bg-slate-950/90 p-1 rounded-xl border border-white/[0.08] backdrop-blur-xl shadow-lg text-[10px]">
+          <div className="flex items-center gap-1 bg-aero-black/90 p-1 rounded border border-aero-border backdrop-blur shadow-sm text-[10px]">
             {['Vahak-1', 'Vahak-2', 'Vahak-3', 'Vahak-4', 'Vahak-5'].map(u => (
               <button
                 key={u}
                 onClick={() => setSelectedUav(u)}
-                className={`px-2.5 py-1 rounded-lg transition-all font-mono font-bold ${
+                className={`px-2.5 py-1 rounded-md transition-all font-mono font-bold ${
                   selectedUav === u
-                    ? 'bg-cyan-400 text-black shadow-[0_0_12px_rgba(0,240,255,0.6)]'
-                    : 'text-slate-400 hover:text-white hover:bg-white/[0.05]'
+                    ? 'bg-sky-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
                 {u}
@@ -1626,23 +1886,23 @@ export const UavBlueprintTab = () => {
             ))}
           </div>
 
-          <div className="px-3 py-1 bg-slate-950/80 border border-cyan-500/30 rounded-lg text-[10px] font-mono text-cyan-300 flex items-center gap-1.5 backdrop-blur-md shadow-sm">
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_8px_rgba(0,240,255,0.9)]" />
-            <span className="font-bold">{selectedUav}</span>
-            <span className="text-slate-500">•</span>
-            <span>ROTAX 915 iS ({curSpec.sn})</span>
+          <div className="px-3 py-1 bg-white/95 border border-slate-200 rounded-lg text-[10px] font-mono text-slate-800 flex items-center gap-1.5 backdrop-blur-md shadow-xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-600" />
+            <span className="font-bold text-slate-900">{selectedUav}</span>
+            <span className="text-slate-300">•</span>
+            <span className="text-slate-600">ROTAX 915 iS ({curSpec.sn})</span>
           </div>
           
-          <div className={`px-2.5 py-1 bg-slate-950/80 border rounded-lg text-[10px] font-mono font-bold backdrop-blur-md ${
-            hStatus==='CRITICAL' ? 'border-red-500/80 bg-red-950/40 text-red-300 shadow-hud-red' : 
-            hStatus==='DEGRADED' ? 'border-amber-500/80 bg-amber-950/40 text-amber-300 shadow-hud-amber' : 
-            'border-emerald-500/50 text-emerald-300'
+          <div className={`px-2.5 py-1 border rounded-lg text-[10px] font-mono font-bold backdrop-blur-md shadow-xs ${
+            hStatus==='CRITICAL' ? 'border-red-300 bg-red-50 text-red-700' : 
+            hStatus==='DEGRADED' ? 'border-amber-300 bg-amber-50 text-amber-800' : 
+            'border-emerald-300 bg-emerald-50 text-emerald-800'
           }`}>
-            HEALTH: <span className={hCol}>{hIdx.toFixed(1)}%</span>
+            HEALTH: <span className="font-bold">{hIdx.toFixed(1)}%</span>
           </div>
 
           {af !== 'NONE' && (
-            <div className="px-2.5 py-1 bg-red-950/90 border border-red-500/80 rounded-lg text-[10px] font-mono text-red-200 animate-pulse flex items-center gap-1.5 shadow-hud-red">
+            <div className="px-2.5 py-1 bg-red-50 border border-red-300 rounded-lg text-[10px] font-mono text-red-700 flex items-center gap-1.5 shadow-xs">
               <AlertTriangle className="w-3.5 h-3.5" /> <span className="font-bold">{af}</span>
             </div>
           )}
@@ -1651,13 +1911,13 @@ export const UavBlueprintTab = () => {
         {/* View mode + camera presets — top right */}
         <div className="absolute top-3 right-3 z-10 flex flex-col items-end gap-1.5">
           {/* Camera Presets */}
-          <div className="flex items-center gap-1 bg-slate-950/90 border border-white/[0.08] p-1 rounded-xl backdrop-blur-xl shadow-lg">
+          <div className="flex items-center gap-1 bg-white/95 border border-slate-200 p-1 rounded-lg backdrop-blur-md shadow-xs">
             {Object.keys(CAM_PRESETS).map(k => (
               <button key={k} onClick={() => handlePreset(k)}
-                className={`px-2 py-1 text-[10px] font-mono rounded-lg transition-all ${
+                className={`px-2 py-1 text-[10px] font-mono rounded-md transition-all ${
                   camKey===k
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/60 shadow-sm font-bold'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
+                    ? 'bg-sky-100 text-sky-800 border border-sky-300 font-bold'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                 }`}>
                 {k}
               </button>
@@ -1665,53 +1925,60 @@ export const UavBlueprintTab = () => {
           </div>
 
           {/* View Modes (Default / Thermal / X-Ray / Pistons) + Launch Modal */}
-          <div className="flex items-center gap-1.5 bg-slate-950/90 border border-white/[0.08] p-1 rounded-xl backdrop-blur-xl shadow-lg">
+          <div className="flex items-center gap-1.5 bg-white/95 border border-slate-200 p-1 rounded-lg backdrop-blur-md shadow-xs">
             {[
               { id: 'OPERATIONAL', label: 'STD' },
               { id: 'THERMAL', label: 'THERMAL' },
               { id: 'XRAY', label: '💎 X-RAY' },
-              { id: 'PISTON_VIEW', label: '🔬 PISTONS' }
+              { id: 'PISTON_VIEW', label: '🔬 PISTONS' },
+              { id: 'CRANK_VIEW', label: '⚙️ CRANKSHAFT' }
             ].map(m => (
               <button
                 key={m.id}
-                onClick={() => setVm(m.id)}
-                className={`px-2 py-1 text-[10px] font-mono rounded-lg transition-all ${
+                onClick={() => {
+                  setVm(m.id);
+                  if (m.id === 'CRANK_VIEW') {
+                    setSel('ENGINE_BLOCK');
+                    camTargetRef.current = { camPos: [3.4, 2.2, 3.4], camLook: [0, 0, 0] };
+                  }
+                }}
+                className={`px-2 py-1 text-[10px] font-mono rounded-md transition-all ${
                   vm === m.id
-                    ? 'bg-cyan-400 text-black font-bold shadow-hud-cyan'
-                    : 'text-slate-400 hover:text-white hover:bg-white/[0.05]'
+                    ? 'bg-sky-600 text-white font-bold shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
                 {m.label}
               </button>
             ))}
 
-            <div className="h-3.5 w-px bg-slate-700 mx-0.5" />
+            <div className="h-3.5 w-px bg-slate-200 mx-0.5" />
 
             <button
               onClick={() => setShowPistonModal(true)}
-              className="px-2.5 py-1 text-[10px] font-mono rounded-lg bg-gradient-to-r from-cyan-500/20 to-blue-500/30 border border-cyan-400/60 text-cyan-300 font-bold hover:bg-cyan-500/40 flex items-center gap-1 shadow-[0_0_10px_rgba(0,240,255,0.3)] transition-all"
+              className="px-2.5 py-1 text-[10px] font-mono rounded-md bg-sky-50 border border-sky-300 text-sky-800 font-bold hover:bg-sky-100 flex items-center gap-1 shadow-xs transition-all"
             >
-              <Eye className="w-3 h-3 text-cyan-300" />
+              <Eye className="w-3 h-3 text-sky-600" />
               PISTON LAB
             </button>
           </div>
         </div>
 
         {/* Explode slider */}
-        <div className="absolute top-[88px] right-3 z-10 flex items-center gap-2 bg-slate-950/90 border border-white/[0.08] rounded-xl px-3 py-1.5 backdrop-blur-xl shadow-lg">
-          <Layers className="w-3.5 h-3.5 text-cyan-400" />
-          <span className="text-[10px] font-mono text-cyan-300 font-bold">EXPLODE</span>
+        <div className="absolute top-[88px] right-3 z-10 flex items-center gap-2 bg-white/95 border border-slate-200 rounded-lg px-3 py-1.5 backdrop-blur-md shadow-xs">
+          <Layers className="w-3.5 h-3.5 text-sky-600" />
+          <span className="text-[10px] font-mono text-slate-700 font-bold">EXPLODE</span>
           <input type="range" min={0} max={100} step={1}
             value={Math.round(ef*100)}
             onChange={e => setEf(parseInt(e.target.value)/100)}
-            className="w-24 h-1.5 accent-cyan-400 cursor-pointer bg-slate-800 rounded-lg" />
-          <span className="text-[10px] font-mono text-cyan-300 font-bold w-8 text-right">{Math.round(ef*100)}%</span>
+            className="w-24 h-1.5 accent-sky-600 cursor-pointer bg-slate-200 rounded-lg" />
+          <span className="text-[10px] font-mono text-sky-700 font-bold w-8 text-right">{Math.round(ef*100)}%</span>
         </div>
 
         {/* 3D Canvas */}
         <div className="absolute inset-0 cursor-grab active:cursor-grabbing">
           <Canvas camera={{ position:[6,4,8], fov:42 }} gl={{ antialias:true, alpha:true }}>
-            <color attach="background" args={['#02040A']} />
+            <color attach="background" args={['#F1F5F9']} />
             <EngineDigitalTwin
               sel={sel} onSel={handleSel} ef={ef} vm={vm}
               camTargetRef={camTargetRef} ctrlRef={ctrlRef} tel={activeTel}
@@ -1722,27 +1989,27 @@ export const UavBlueprintTab = () => {
         </div>
 
         {/* Bottom subsystem selector */}
-        <div className="absolute bottom-3 left-3 right-3 z-10 flex flex-wrap items-center justify-center gap-1.5 bg-slate-950/90 border border-white/[0.08] px-3 py-2 rounded-xl backdrop-blur-xl shadow-2xl">
-          <span className="text-[10px] font-mono text-cyan-400 font-bold flex items-center gap-1 mr-1">
+        <div className="absolute bottom-3 left-3 right-3 z-10 flex flex-wrap items-center justify-center gap-1.5 bg-white/95 border border-slate-200 px-3 py-2 rounded-lg backdrop-blur-md shadow-md">
+          <span className="text-[10px] font-mono text-sky-700 font-bold flex items-center gap-1 mr-1">
             <Zap className="w-3.5 h-3.5" /> SELECT:
           </span>
           {ITEMS.map(({ id, label }) => (
             <button key={id} onClick={() => handleSel(id)}
-              className={`px-2 py-1 text-[10px] font-mono rounded-lg border transition-all ${
+              className={`px-2 py-1 text-[10px] font-mono rounded-md border transition-all ${
                 sel===id
-                  ? 'bg-cyan-400 text-black font-bold border-cyan-300 shadow-hud-cyan'
+                  ? 'bg-sky-600 text-white font-bold border-sky-600 shadow-xs'
                   : itemFault(id)
-                  ? 'bg-red-950/80 text-red-200 border-red-500/80 animate-pulse font-bold'
-                  : 'bg-slate-900/80 text-slate-300 border-white/[0.06] hover:border-cyan-400/50 hover:text-cyan-200 hover:bg-white/[0.04]'
+                  ? 'bg-red-100 text-red-700 border-red-300 animate-pulse font-bold'
+                  : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200 hover:text-slate-900'
               }`}>
               {label}
             </button>
           ))}
           <button onClick={() => setShowSchem(s => !s)}
-            className={`ml-1.5 px-2.5 py-1 text-[10px] font-mono rounded-lg border flex items-center gap-1 transition-all ${
+            className={`ml-1.5 px-2.5 py-1 text-[10px] font-mono rounded-md border flex items-center gap-1 transition-all ${
               showSchem
-                ? 'bg-purple-500/20 text-purple-300 border-purple-400 shadow-sm font-bold'
-                : 'bg-slate-900/80 text-slate-400 border-white/[0.06] hover:text-purple-300 hover:border-purple-400/40'
+                ? 'bg-indigo-50 text-indigo-700 border-indigo-300 shadow-xs font-bold'
+                : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200 hover:text-slate-900'
             }`}>
             <GitBranch className="w-3.5 h-3.5" /> SCHEMATIC
           </button>
@@ -1750,7 +2017,7 @@ export const UavBlueprintTab = () => {
       </div>
 
       {/* ═══ RIGHT — INSPECTOR + SCHEMATIC ═══ */}
-      <div className="w-full lg:w-80 shrink-0 starship-glass rounded-xl border border-white/[0.08] p-3.5 flex flex-col gap-3 overflow-hidden shadow-starship-glass">
+      <div className="w-full lg:w-80 shrink-0 gcs-panel rounded-lg border border-aero-border p-3.5 flex flex-col gap-3 overflow-hidden shadow-gcs-panel">
         {showSchem && (
           <SchematicPanel sel={sel} onSel={handleSel} tel={activeTel} />
         )}
@@ -1760,6 +2027,11 @@ export const UavBlueprintTab = () => {
             hist={historyBuffer} injectFault={injectFault} clearFault={clearFault}
             selectedUav={selectedUav} uavSpec={curSpec}
             onOpenPistonLab={() => setShowPistonModal(true)}
+            onFocusCrank={() => {
+              setVm('CRANK_VIEW');
+              setSel('ENGINE_BLOCK');
+              camTargetRef.current = { camPos: [3.4, 2.2, 3.4], camLook: [0, 0, 0] };
+            }}
           />
         </div>
       </div>

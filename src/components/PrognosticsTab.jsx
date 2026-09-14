@@ -565,63 +565,63 @@ export const PrognosticsTab = () => {
   }, [data, plotW, plotH]);
 
   return (
-    <div className="h-full overflow-y-auto custom-scrollbar flex flex-col gap-4 pb-12 pr-1 text-slate-100 font-mono">
+    <div className="h-full overflow-y-auto custom-scrollbar flex flex-col gap-4 pb-12 pr-1 text-slate-900 font-mono">
       
       {/* ─────────────────────────────────────────────────────────────
           1. TOP STATUS BAR: Data Quality, Unit Switcher & Subnav
          ───────────────────────────────────────────────────────────── */}
-      <div className="starship-glass rounded-xl border border-white/[0.08] p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-starship-glass">
+      <div className="gcs-panel rounded-lg border border-slate-200 p-3 flex flex-wrap items-center justify-between gap-3 shadow-xs">
         
         {/* Left: View Title & Sub-view Switcher */}
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-purple-500/10 border border-purple-500/40 flex items-center justify-center text-purple-300 shadow-[0_0_12px_rgba(168,85,247,0.3)]">
+          <div className="w-8 h-8 rounded-md bg-sky-50 border border-sky-200 flex items-center justify-center text-sky-600 shadow-xs">
             <Brain className="w-4 h-4" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="font-display font-black text-xs tracking-widest text-cyan-300 glow-cyan">
+              <h2 className="font-mono font-bold text-xs tracking-wider text-slate-900 uppercase">
                 {activeSubView === 'PROGNOSTICS'
                   ? 'REMAINING USEFUL LIFE (RUL) & DEGRADATION PROGNOSTICS'
                   : 'EXPLAINABLE DIAGNOSTICS & CAUSAL REASONING'}
               </h2>
-              <span className="text-[9px] font-mono bg-purple-950/60 border border-purple-500/40 text-purple-300 px-2 py-0.5 rounded-full tracking-wider">
+              <span className="text-[9px] font-mono bg-slate-100 border border-slate-200 text-slate-700 px-1.5 py-0.2 rounded font-medium">
                 PHYSICS-INFORMED AI
               </span>
             </div>
-            <div className="text-[11px] font-mono text-slate-400 flex items-center gap-1.5 mt-0.5">
+            <div className="text-[11px] font-mono text-slate-500 flex items-center gap-1.5 mt-0.5">
               <span>Fatigue modeling for:</span>
-              <span className="text-white font-bold">{selectedUnit}</span>
-              <span className="text-slate-600">•</span>
+              <span className="text-slate-800 font-semibold">{selectedUnit}</span>
+              <span className="text-slate-300">•</span>
               <span>{unitInfo.callsign}</span>
-              <span className="text-slate-600">•</span>
-              <span className="text-cyan-400 font-bold">{data.rul.accumFlightHours} FLIGHT HRS</span>
+              <span className="text-slate-300">•</span>
+              <span className="text-sky-700 font-semibold tabular-nums">{data.rul.accumFlightHours} FLIGHT HRS</span>
             </div>
           </div>
         </div>
 
         {/* Center: Sub-view Navigation Buttons */}
-        <div className="flex items-center gap-1.5 bg-slate-950/80 p-1 rounded-xl border border-white/[0.08]">
+        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-md border border-slate-200">
           <button
             onClick={() => setActiveSubView('PROGNOSTICS')}
-            className={`px-3 py-1.5 text-xs font-mono font-bold rounded-lg transition-all flex items-center gap-2 ${
+            className={`px-3 py-1 text-xs font-mono font-semibold rounded-md transition-colors flex items-center gap-2 border ${
               activeSubView === 'PROGNOSTICS'
-                ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/10 text-cyan-300 border border-cyan-400/80 shadow-starship-glow'
-                : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'
+                ? 'bg-white text-slate-900 border-slate-300 shadow-xs font-bold'
+                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
             }`}
           >
-            <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
+            <BarChart3 className="w-3.5 h-3.5 text-sky-600" />
             RUL & PROGNOSTICS
           </button>
 
           <button
             onClick={() => setActiveSubView('ADVISORY')}
-            className={`px-3 py-1.5 text-xs font-mono font-bold rounded-lg transition-all flex items-center gap-2 ${
+            className={`px-3 py-1 text-xs font-mono font-semibold rounded-md transition-colors flex items-center gap-2 border ${
               activeSubView === 'ADVISORY'
-                ? 'bg-gradient-to-r from-purple-500/20 to-pink-500/10 text-purple-300 border border-purple-400/80 shadow-starship-glow'
-                : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'
+                ? 'bg-white text-slate-900 border-slate-300 shadow-xs font-bold'
+                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
             }`}
           >
-            <Wrench className="w-3.5 h-3.5 text-purple-400" />
+            <Wrench className="w-3.5 h-3.5 text-amber-600" />
             DIAGNOSTICS & ADVISORY
           </button>
         </div>
@@ -630,7 +630,7 @@ export const PrognosticsTab = () => {
         <div className="flex items-center gap-2">
           {/* Unit Pills */}
           <div className="flex items-center gap-1 text-[10px] font-mono">
-            <span className="text-slate-400 mr-1 font-bold">ASSET:</span>
+            <span className="text-slate-500 mr-1 font-semibold">ASSET:</span>
             {['Vahak-1', 'Vahak-2', 'Vahak-3', 'Vahak-4', 'Vahak-5'].map((unit) => {
               const uStats = (telemetry.fleetState || []).find(u => u.id === unit);
               const uHealth = unit === 'Vahak-1' ? data.health.index : (uStats?.health ?? (unit === 'Vahak-2' ? 96.2 : unit === 'Vahak-3' ? 99.1 : unit === 'Vahak-4' ? 84.5 : 72.0));
@@ -638,10 +638,10 @@ export const PrognosticsTab = () => {
                 <button
                   key={unit}
                   onClick={() => setSelectedUnit(unit)}
-                  className={`px-2 py-1 rounded-lg border transition-all ${
+                  className={`px-2 py-1 rounded-md border text-xs font-mono transition-colors tabular-nums ${
                     selectedUnit === unit
-                      ? 'bg-cyan-400 text-black font-bold border-cyan-300 shadow-[0_0_10px_rgba(0,240,255,0.5)]'
-                      : 'bg-slate-900/80 border-white/[0.08] text-slate-300 hover:border-cyan-500/40 hover:text-white'
+                      ? 'bg-sky-600 text-white font-bold border-sky-600 shadow-xs'
+                      : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'
                   }`}
                 >
                   {unit} ({uHealth.toFixed(0)}%)
@@ -653,9 +653,9 @@ export const PrognosticsTab = () => {
           {/* Model Audit Drawer Trigger */}
           <button
             onClick={() => setIsAuditDrawerOpen(true)}
-            className="px-3 py-1 rounded-lg bg-slate-900 border border-white/[0.08] text-cyan-300 hover:bg-slate-800 hover:border-cyan-400/50 text-xs font-mono font-bold flex items-center gap-1.5 transition-all shadow-sm"
+            className="px-2.5 py-1 rounded-md bg-white border border-slate-200 hover:border-sky-400 text-slate-700 hover:text-slate-900 text-xs font-mono font-medium flex items-center gap-1.5 transition-colors shadow-xs"
           >
-            <FileSearch className="w-3.5 h-3.5 text-cyan-400" />
+            <FileSearch className="w-3.5 h-3.5 text-sky-600" />
             EXPLAIN MODEL
           </button>
         </div>
@@ -665,22 +665,22 @@ export const PrognosticsTab = () => {
       {/* ─────────────────────────────────────────────────────────────
           2. DATA QUALITY BANNER (Master Prompt Rule 6)
          ───────────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 text-xs font-mono">
-        <div className="starship-glass-card p-2.5 rounded-xl border border-white/[0.08] flex items-center justify-between shadow-inner">
-          <span className="text-slate-400 text-[10px]">DATA QUALITY:</span>
-          <span className="text-emerald-400 font-bold glow-green">{data.dataQuality.score}% COMPLIANT</span>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs font-mono">
+        <div className="gcs-card p-2 rounded border border-slate-200 bg-white flex items-center justify-between shadow-xs">
+          <span className="text-slate-500 text-[10px] font-semibold">DATA QUALITY:</span>
+          <span className="text-emerald-600 font-bold tabular-nums">{data.dataQuality.score}% COMPLIANT</span>
         </div>
-        <div className="starship-glass-card p-2.5 rounded-xl border border-white/[0.08] flex items-center justify-between shadow-inner">
-          <span className="text-slate-400 text-[10px]">SENSOR CONFIDENCE:</span>
-          <span className="text-cyan-300 font-bold glow-cyan">{data.dataQuality.sensorConfidence}% BAYESIAN</span>
+        <div className="gcs-card p-2 rounded border border-slate-200 bg-white flex items-center justify-between shadow-xs">
+          <span className="text-slate-500 text-[10px] font-semibold">SENSOR CONFIDENCE:</span>
+          <span className="text-sky-600 font-bold tabular-nums">{data.dataQuality.sensorConfidence}% BAYESIAN</span>
         </div>
-        <div className="starship-glass-card p-2.5 rounded-xl border border-white/[0.08] flex items-center justify-between shadow-inner">
-          <span className="text-slate-400 text-[10px]">TELEMETRY FRESHNESS:</span>
-          <span className="text-purple-300 font-bold glow-purple">LIVE — {data.dataQuality.telemetryAgeMs}ms</span>
+        <div className="gcs-card p-2 rounded border border-slate-200 bg-white flex items-center justify-between shadow-xs">
+          <span className="text-slate-500 text-[10px] font-semibold">TELEMETRY FRESHNESS:</span>
+          <span className="text-slate-800 font-bold tabular-nums">LIVE — {data.dataQuality.telemetryAgeMs}ms</span>
         </div>
-        <div className="starship-glass-card p-2.5 rounded-xl border border-white/[0.08] flex items-center justify-between shadow-inner">
-          <span className="text-slate-400 text-[10px]">ACTIVE FAULT:</span>
-          <span className={`font-bold ${data.health.activeFault === 'NONE' ? 'text-slate-400' : data.health.activeFault === 'MODEL_DISAGREEMENT' ? 'text-amber-400 glow-amber' : 'text-red-400 glow-red animate-pulse'}`}>
+        <div className="gcs-card p-2 rounded border border-slate-200 bg-white flex items-center justify-between shadow-xs">
+          <span className="text-slate-500 text-[10px] font-semibold">ACTIVE FAULT:</span>
+          <span className={`font-bold ${data.health.activeFault === 'NONE' ? 'text-emerald-600' : data.health.activeFault === 'MODEL_DISAGREEMENT' ? 'text-amber-600' : 'text-red-600'}`}>
             {data.health.activeFault}
           </span>
         </div>
@@ -692,145 +692,145 @@ export const PrognosticsTab = () => {
       {activeSubView === 'PROGNOSTICS' && (
         <div className="flex flex-col gap-4">
           
-          {/* 4 Cards Row (Screenshot 2) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* 4 Cards Row */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
             
             {/* Card 1: Estimated RUL */}
-            <div className="starship-glass-card rounded-xl border border-white/[0.08] p-4 relative overflow-hidden shadow-starship-glass">
+            <div className="gcs-card rounded-lg border border-slate-200 bg-white p-3.5 relative overflow-hidden shadow-xs">
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[10px] text-slate-400 font-mono font-bold tracking-widest uppercase">1. ESTIMATED RUL</span>
-                <Clock className="w-4 h-4 text-cyan-400" />
+                <span className="text-[10px] text-slate-500 font-mono font-bold tracking-wider uppercase">1. ESTIMATED RUL</span>
+                <Clock className="w-4 h-4 text-sky-600" />
               </div>
               <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-display font-black text-white glow-cyan">
+                <span className="text-2xl font-mono font-bold text-slate-900 tabular-nums">
                   {data.rul.hours.toFixed(1)}
                 </span>
-                <span className="text-sm font-bold font-mono text-cyan-300">HOURS</span>
+                <span className="text-xs font-mono font-bold text-slate-500">HOURS</span>
               </div>
-              <div className="text-[11px] font-mono text-slate-400 mt-1">
+              <div className="text-[11px] font-mono text-slate-600 mt-1 font-medium">
                 Until MEL Overhaul Limit (50% Health)
               </div>
-              <div className="flex justify-between text-[10px] font-mono text-slate-400 mt-3 pt-2 border-t border-white/[0.06]">
+              <div className="flex justify-between text-[10px] font-mono text-slate-500 mt-2.5 pt-2 border-t border-slate-100 tabular-nums">
                 <span>Degradation: -{data.degradation.ratePerHour}%/hr</span>
-                <span className="text-cyan-400 font-bold">TBO: 2000h</span>
+                <span className="text-slate-700 font-semibold">TBO: 2000h</span>
               </div>
             </div>
 
             {/* Card 2: Health Index */}
-            <div className="starship-glass-card rounded-xl border border-white/[0.08] p-4 relative overflow-hidden shadow-starship-glass">
+            <div className="gcs-card rounded-lg border border-slate-200 bg-white p-3.5 relative overflow-hidden shadow-xs">
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[10px] text-slate-400 font-mono font-bold tracking-widest uppercase">2. HEALTH INDEX</span>
-                <Activity className="w-4 h-4 text-emerald-400" />
+                <span className="text-[10px] text-slate-500 font-mono font-bold tracking-wider uppercase">2. HEALTH INDEX</span>
+                <Activity className="w-4 h-4 text-emerald-600" />
               </div>
               <div className="flex items-baseline gap-2">
-                <span className={`text-3xl font-display font-black ${
-                  data.health.index < 40 ? 'text-red-400 glow-red' : data.health.index < 75 ? 'text-amber-400 glow-amber' : 'text-emerald-400 glow-green'
+                <span className={`text-2xl font-mono font-bold tabular-nums ${
+                  data.health.index < 40 ? 'text-red-600' : data.health.index < 75 ? 'text-amber-600' : 'text-emerald-600'
                 }`}>
                   {data.health.index.toFixed(0)}%
                 </span>
-                <span className="text-xs text-slate-400 font-mono font-bold">Composite</span>
+                <span className="text-xs text-slate-500 font-mono font-medium">Composite</span>
               </div>
               
-              {/* Progress bar */}
-              <div className="w-full bg-slate-900/90 h-2 rounded-full mt-2.5 overflow-hidden border border-white/[0.06]">
+              {/* Clean solid progress bar */}
+              <div className="w-full bg-slate-100 h-1.5 rounded mt-2.5 overflow-hidden border border-slate-200">
                 <div 
-                  className={`h-full transition-all duration-500 rounded-full ${
-                    data.health.index < 40 ? 'bg-gradient-to-r from-red-600 to-rose-500' : data.health.index < 75 ? 'bg-gradient-to-r from-amber-600 to-yellow-500' : 'bg-gradient-to-r from-emerald-600 to-teal-400'
+                  className={`h-full transition-all duration-300 rounded ${
+                    data.health.index < 40 ? 'bg-red-500' : data.health.index < 75 ? 'bg-amber-500' : 'bg-emerald-500'
                   }`}
                   style={{ width: `${data.health.index}%` }}
                 />
               </div>
 
-              <div className="flex justify-between text-[10px] font-mono text-slate-400 mt-3 pt-2 border-t border-white/[0.06]">
+              <div className="flex justify-between text-[10px] font-mono text-slate-500 mt-2.5 pt-2 border-t border-slate-100 tabular-nums">
                 <span>MEL Limit: 50%</span>
-                <span>Accum: 1249h</span>
+                <span className="text-slate-700 font-medium">Accum: 1249h</span>
               </div>
             </div>
 
             {/* Card 3: Degradation Trend */}
-            <div className="starship-glass-card rounded-xl border border-white/[0.08] p-4 relative overflow-hidden shadow-starship-glass">
+            <div className="gcs-card rounded-lg border border-slate-200 bg-white p-3.5 relative overflow-hidden shadow-xs">
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[10px] text-slate-400 font-mono font-bold tracking-widest uppercase">3. DEGRADATION TREND</span>
-                <TrendingDown className="w-4 h-4 text-amber-400" />
+                <span className="text-[10px] text-slate-500 font-mono font-bold tracking-wider uppercase">3. DEGRADATION TREND</span>
+                <TrendingDown className="w-4 h-4 text-amber-600" />
               </div>
               <div>
                 <span className={`px-2 py-0.5 rounded text-xs font-mono font-bold border inline-block ${
                   data.degradation.trend === 'RAPIDLY DEGRADING'
-                    ? 'bg-red-950/80 text-red-300 border-red-500/80 shadow-sm shadow-red-500/30'
+                    ? 'bg-red-50 text-red-700 border-red-200'
                     : data.degradation.trend === 'DEGRADING'
-                    ? 'bg-amber-950/80 text-amber-300 border-amber-500/80 shadow-sm shadow-amber-500/30'
-                    : 'bg-emerald-950/80 text-emerald-300 border-emerald-500/80'
+                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                 }`}>
                   {data.degradation.trend}
                 </span>
               </div>
-              <div className="text-[11px] font-mono text-slate-400 mt-2">
+              <div className="text-[11px] font-mono text-slate-600 mt-2 font-medium">
                 Moderate RUL reduction under thermal/mechanical stress
               </div>
-              <div className="flex justify-between text-[10px] font-mono text-slate-400 mt-3 pt-2 border-t border-white/[0.06]">
+              <div className="flex justify-between text-[10px] font-mono text-slate-500 mt-2.5 pt-2 border-t border-slate-100 tabular-nums">
                 <span>Stress Factor: {data.degradation.stressBreakdown.combinedStress}x</span>
-                <span className="text-amber-400 font-bold">Active Fatigue</span>
+                <span className="text-amber-700 font-semibold">Active Fatigue</span>
               </div>
             </div>
 
             {/* Card 4: Confidence Score */}
-            <div className="starship-glass-card rounded-xl border border-white/[0.08] p-4 relative overflow-hidden shadow-starship-glass">
+            <div className="gcs-card rounded-lg border border-slate-200 bg-white p-3.5 relative overflow-hidden shadow-xs">
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[10px] text-slate-400 font-mono font-bold tracking-widest uppercase">4. CONFIDENCE</span>
-                <ShieldAlert className="w-4 h-4 text-cyan-400" />
+                <span className="text-[10px] text-slate-500 font-mono font-bold tracking-wider uppercase">4. CONFIDENCE</span>
+                <ShieldAlert className="w-4 h-4 text-sky-600" />
               </div>
               <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-display font-black text-cyan-300 glow-cyan">
+                <span className="text-2xl font-mono font-bold text-slate-900 tabular-nums">
                   {data.rul.confidencePct}%
                 </span>
-                <span className="text-xs text-slate-400 font-mono font-bold">Bayesian 95%</span>
+                <span className="text-xs text-slate-500 font-mono font-medium">Bayesian 95%</span>
               </div>
 
               {/* Progress bar */}
-              <div className="w-full bg-slate-900/90 h-2 rounded-full mt-2.5 overflow-hidden border border-white/[0.06]">
+              <div className="w-full bg-slate-100 h-1.5 rounded mt-2.5 overflow-hidden border border-slate-200">
                 <div 
-                  className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full transition-all duration-500 shadow-[0_0_10px_rgba(0,240,255,0.4)]"
+                  className="h-full bg-sky-600 rounded transition-all duration-300"
                   style={{ width: `${data.rul.confidencePct}%` }}
                 />
               </div>
 
-              <div className="flex justify-between text-[10px] font-mono text-slate-400 mt-3 pt-2 border-t border-white/[0.06]">
+              <div className="flex justify-between text-[10px] font-mono text-slate-500 mt-2.5 pt-2 border-t border-slate-100 tabular-nums">
                 <span>Sensor Agreement: High</span>
-                <span className="text-cyan-300 font-bold">±1.8h Margin</span>
+                <span className="text-slate-700 font-semibold">±1.8h Margin</span>
               </div>
             </div>
 
           </div>
 
-          {/* Twin Charts Row (Screenshot 2) */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Twin Charts Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             
             {/* Chart 1: TIME -> HEALTH INDEX (%) */}
-            <div className="starship-glass rounded-xl border border-white/[0.08] p-4 shadow-starship-glass flex flex-col">
-              <div className="flex items-center justify-between border-b border-white/[0.08] pb-3 mb-2">
+            <div className="gcs-panel rounded-lg border border-slate-200 bg-white p-3.5 flex flex-col shadow-xs">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-2">
                 <div>
-                  <h3 className="font-display font-black text-xs text-slate-200 flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-emerald-400" />
+                  <h3 className="font-mono text-xs font-bold tracking-wider text-slate-900 uppercase flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-emerald-600" />
                     TIME → HEALTH INDEX (%)
                   </h3>
-                  <div className="text-[10px] font-mono text-slate-400">
+                  <div className="text-[10px] font-mono text-slate-500 font-medium">
                     Historical degradation log (T-50h → NOW) & 50h forecast envelope
                   </div>
                 </div>
-                <div className="px-2.5 py-1 rounded-full bg-emerald-950/80 border border-emerald-500 text-emerald-400 text-xs font-mono font-bold glow-green">
+                <div className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-800 text-xs font-mono font-bold tabular-nums">
                   NOW: {data.health.index.toFixed(0)}%
                 </div>
               </div>
 
               {/* SVG Health Plot */}
-              <div className="relative w-full h-[180px] bg-slate-950/90 rounded-xl border border-white/[0.08] overflow-hidden shadow-inner">
+              <div className="relative w-full h-[180px] bg-slate-50/80 rounded border border-slate-200 overflow-hidden">
                 <svg viewBox={`0 0 ${chartW} ${chartH}`} className="w-full h-full">
                   {/* Grid Lines */}
-                  <line x1={padL} y1={padT} x2={padL + plotW} y2={padT} stroke="#1e293b" strokeDasharray="2,2" />
-                  <line x1={padL} y1={padT + plotH * 0.25} x2={padL + plotW} y2={padT + plotH * 0.25} stroke="#1e293b" strokeDasharray="2,2" />
-                  <line x1={padL} y1={padT + plotH * 0.5} x2={padL + plotW} y2={padT + plotH * 0.5} stroke="#1e293b" strokeDasharray="2,2" />
-                  <line x1={padL} y1={padT + plotH * 0.75} x2={padL + plotW} y2={padT + plotH * 0.75} stroke="#1e293b" strokeDasharray="2,2" />
-                  <line x1={padL} y1={padT + plotH} x2={padL + plotW} y2={padT + plotH} stroke="#334155" />
+                  <line x1={padL} y1={padT} x2={padL + plotW} y2={padT} stroke="#E2E8F0" strokeDasharray="2,2" />
+                  <line x1={padL} y1={padT + plotH * 0.25} x2={padL + plotW} y2={padT + plotH * 0.25} stroke="#E2E8F0" strokeDasharray="2,2" />
+                  <line x1={padL} y1={padT + plotH * 0.5} x2={padL + plotW} y2={padT + plotH * 0.5} stroke="#E2E8F0" strokeDasharray="2,2" />
+                  <line x1={padL} y1={padT + plotH * 0.75} x2={padL + plotW} y2={padT + plotH * 0.75} stroke="#E2E8F0" strokeDasharray="2,2" />
+                  <line x1={padL} y1={padT + plotH} x2={padL + plotW} y2={padT + plotH} stroke="#CBD5E1" />
 
                   {/* Y Axis Labels */}
                   <text x={padL - 6} y={padT + 4} textAnchor="end" fill="#64748b" fontSize="8" fontFamily="monospace">100%</text>
@@ -845,7 +845,7 @@ export const PrognosticsTab = () => {
                     y1={padT} 
                     x2={healthPoints.nowCoord.x} 
                     y2={padT + plotH} 
-                    stroke="#0ea5e9" 
+                    stroke="#0284c7" 
                     strokeDasharray="3,3" 
                     strokeWidth="1.5"
                   />
@@ -853,7 +853,7 @@ export const PrognosticsTab = () => {
                     x={healthPoints.nowCoord.x} 
                     y={padT - 6} 
                     textAnchor="middle" 
-                    fill="#38bdf8" 
+                    fill="#0284c7" 
                     fontSize="9" 
                     fontWeight="bold"
                     fontFamily="monospace"
@@ -867,15 +867,15 @@ export const PrognosticsTab = () => {
                     y1={healthPoints.melY} 
                     x2={padL + plotW} 
                     y2={healthPoints.melY} 
-                    stroke="#ef4444" 
+                    stroke="#dc2626" 
                     strokeDasharray="4,4" 
-                    strokeWidth="1.5"
+                    strokeWidth="1.2"
                   />
                   <text 
                     x={padL + plotW - 10} 
                     y={healthPoints.melY - 4} 
                     textAnchor="end" 
-                    fill="#ef4444" 
+                    fill="#dc2626" 
                     fontSize="8" 
                     fontWeight="bold"
                     fontFamily="monospace"
@@ -885,7 +885,7 @@ export const PrognosticsTab = () => {
 
                   {/* 95% Bayesian Confidence Envelope */}
                   {healthPoints.polygonPath && (
-                    <path d={healthPoints.polygonPath} fill="#065f46" fillOpacity="0.35" />
+                    <path d={healthPoints.polygonPath} fill="#059669" fillOpacity="0.12" />
                   )}
 
                   {/* Historical Log Path (Past: T-50h to NOW) */}
@@ -894,7 +894,7 @@ export const PrognosticsTab = () => {
                       d={healthPoints.histPath} 
                       fill="none" 
                       stroke="#0284c7" 
-                      strokeWidth="2.5" 
+                      strokeWidth="2" 
                     />
                   )}
 
@@ -903,8 +903,8 @@ export const PrognosticsTab = () => {
                     <path 
                       d={healthPoints.forecastPath} 
                       fill="none" 
-                      stroke="#34d399" 
-                      strokeWidth="2.5" 
+                      stroke="#059669" 
+                      strokeWidth="2" 
                     />
                   )}
 
@@ -912,62 +912,62 @@ export const PrognosticsTab = () => {
                   <circle 
                     cx={healthPoints.nowCoord.x} 
                     cy={healthPoints.nowCoord.y} 
-                    r="4.5" 
-                    fill="#10b981" 
+                    r="4" 
+                    fill="#059669" 
                     stroke="#ffffff" 
-                    strokeWidth="1.5" 
+                    strokeWidth="2" 
                   />
 
                   {/* X Axis Time Labels */}
                   <text x={healthPoints.mapX(-50)} y={padT + plotH + 15} textAnchor="middle" fill="#64748b" fontSize="8" fontFamily="monospace">T-50h</text>
                   <text x={healthPoints.mapX(-25)} y={padT + plotH + 15} textAnchor="middle" fill="#64748b" fontSize="8" fontFamily="monospace">T-25h</text>
-                  <text x={healthPoints.mapX(0)} y={padT + plotH + 15} textAnchor="middle" fill="#38bdf8" fontSize="8" fontWeight="bold" fontFamily="monospace">NOW</text>
+                  <text x={healthPoints.mapX(0)} y={padT + plotH + 15} textAnchor="middle" fill="#0284c7" fontSize="8" fontWeight="bold" fontFamily="monospace">NOW</text>
                   <text x={healthPoints.mapX(25)} y={padT + plotH + 15} textAnchor="middle" fill="#64748b" fontSize="8" fontFamily="monospace">+25h</text>
                   <text x={healthPoints.mapX(50)} y={padT + plotH + 15} textAnchor="middle" fill="#64748b" fontSize="8" fontFamily="monospace">+50h</text>
                 </svg>
               </div>
 
               {/* Chart Legend */}
-              <div className="flex flex-wrap items-center justify-between text-[9px] text-slate-400 mt-2 px-1">
+              <div className="flex flex-wrap items-center justify-between text-[10px] text-slate-600 mt-2 px-1">
                 <div className="flex items-center gap-1.5">
                   <span className="w-3 h-0.5 bg-[#0284c7]"></span>
-                  <span>Historical Flight Log</span>
+                  <span className="font-medium">Historical Flight Log</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="w-3 h-0.5 bg-[#34d399]"></span>
-                  <span>Forecast Trajectory</span>
+                  <span className="w-3 h-0.5 bg-[#059669]"></span>
+                  <span className="font-medium">Forecast Trajectory</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 bg-[#065f46] rounded-sm"></span>
-                  <span>95% Bayesian Envelope</span>
+                  <span className="w-2.5 h-2.5 bg-[#059669]/20 border border-[#059669]/40 rounded-sm"></span>
+                  <span className="font-medium">95% Bayesian Envelope</span>
                 </div>
               </div>
             </div>
 
             {/* Chart 2: TIME -> ESTIMATED RUL (HOURS) */}
-            <div className="starship-glass rounded-xl border border-white/[0.08] p-4 shadow-starship-glass flex flex-col">
-              <div className="flex items-center justify-between border-b border-white/[0.08] pb-3 mb-2">
+            <div className="gcs-panel rounded-lg border border-slate-200 bg-white p-3.5 flex flex-col shadow-xs">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-2">
                 <div>
-                  <h3 className="font-display font-black text-xs text-slate-200 flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-cyan-400" />
+                  <h3 className="font-mono text-xs font-bold tracking-wider text-slate-900 uppercase flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-sky-600" />
                     TIME → ESTIMATED RUL (HOURS)
                   </h3>
-                  <div className="text-[10px] font-mono text-slate-400">
+                  <div className="text-[10px] font-mono text-slate-500 font-medium">
                     RUL progression across operational history & dynamic stress reduction
                   </div>
                 </div>
-                <div className="px-2.5 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/50 text-cyan-300 text-xs font-mono font-bold glow-cyan">
+                <div className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-800 text-xs font-mono font-bold tabular-nums">
                   NOW: {data.rul.hours.toFixed(1)}h RUL
                 </div>
               </div>
 
               {/* SVG RUL Plot */}
-              <div className="relative w-full h-[180px] bg-slate-950/90 rounded-xl border border-white/[0.08] overflow-hidden shadow-inner">
+              <div className="relative w-full h-[180px] bg-slate-50/80 rounded border border-slate-200 overflow-hidden">
                 <svg viewBox={`0 0 ${chartW} ${chartH}`} className="w-full h-full">
                   {/* Grid Lines */}
-                  <line x1={padL} y1={padT} x2={padL + plotW} y2={padT} stroke="#1e293b" strokeDasharray="2,2" />
-                  <line x1={padL} y1={padT + plotH * 0.5} x2={padL + plotW} y2={padT + plotH * 0.5} stroke="#1e293b" strokeDasharray="2,2" />
-                  <line x1={padL} y1={padT + plotH} x2={padL + plotW} y2={padT + plotH} stroke="#334155" />
+                  <line x1={padL} y1={padT} x2={padL + plotW} y2={padT} stroke="#E2E8F0" strokeDasharray="2,2" />
+                  <line x1={padL} y1={padT + plotH * 0.5} x2={padL + plotW} y2={padT + plotH * 0.5} stroke="#E2E8F0" strokeDasharray="2,2" />
+                  <line x1={padL} y1={padT + plotH} x2={padL + plotW} y2={padT + plotH} stroke="#CBD5E1" />
 
                   {/* Y Axis Labels */}
                   <text x={padL - 6} y={padT + 4} textAnchor="end" fill="#64748b" fontSize="8" fontFamily="monospace">{Math.round(rulPoints.maxRul)}h</text>
@@ -980,7 +980,7 @@ export const PrognosticsTab = () => {
                     y1={padT} 
                     x2={healthPoints.nowCoord.x} 
                     y2={padT + plotH} 
-                    stroke="#0ea5e9" 
+                    stroke="#0284c7" 
                     strokeDasharray="3,3" 
                     strokeWidth="1.5"
                   />
@@ -988,7 +988,7 @@ export const PrognosticsTab = () => {
                     x={healthPoints.nowCoord.x} 
                     y={padT - 6} 
                     textAnchor="middle" 
-                    fill="#38bdf8" 
+                    fill="#0284c7" 
                     fontSize="9" 
                     fontWeight="bold"
                     fontFamily="monospace"
@@ -1002,15 +1002,15 @@ export const PrognosticsTab = () => {
                     y1={rulPoints.minDispatchY} 
                     x2={padL + plotW} 
                     y2={rulPoints.minDispatchY} 
-                    stroke="#ef4444" 
+                    stroke="#dc2626" 
                     strokeDasharray="4,4" 
-                    strokeWidth="1.5"
+                    strokeWidth="1.2"
                   />
                   <text 
                     x={padL + plotW - 10} 
                     y={rulPoints.minDispatchY - 4} 
                     textAnchor="end" 
-                    fill="#ef4444" 
+                    fill="#dc2626" 
                     fontSize="8" 
                     fontWeight="bold"
                     fontFamily="monospace"
@@ -1024,7 +1024,7 @@ export const PrognosticsTab = () => {
                       d={rulPoints.histPath} 
                       fill="none" 
                       stroke="#0284c7" 
-                      strokeWidth="2.5" 
+                      strokeWidth="2" 
                     />
                   )}
 
@@ -1033,8 +1033,8 @@ export const PrognosticsTab = () => {
                     <path 
                       d={rulPoints.slopePath} 
                       fill="none" 
-                      stroke="#34d399" 
-                      strokeWidth="2.5" 
+                      stroke="#059669" 
+                      strokeWidth="2" 
                     />
                   )}
 
@@ -1042,32 +1042,32 @@ export const PrognosticsTab = () => {
                   <circle 
                     cx={rulPoints.nowCoord.x} 
                     cy={rulPoints.nowCoord.y} 
-                    r="4.5" 
-                    fill="#38bdf8" 
+                    r="4" 
+                    fill="#0284c7" 
                     stroke="#ffffff" 
-                    strokeWidth="1.5" 
+                    strokeWidth="2" 
                   />
 
                   {/* X Axis Time Labels */}
                   <text x={healthPoints.mapX(-50)} y={padT + plotH + 15} textAnchor="middle" fill="#64748b" fontSize="8" fontFamily="monospace">T-50h</text>
                   <text x={healthPoints.mapX(-25)} y={padT + plotH + 15} textAnchor="middle" fill="#64748b" fontSize="8" fontFamily="monospace">T-25h</text>
-                  <text x={healthPoints.mapX(0)} y={padT + plotH + 15} textAnchor="middle" fill="#38bdf8" fontSize="8" fontWeight="bold" fontFamily="monospace">NOW</text>
+                  <text x={healthPoints.mapX(0)} y={padT + plotH + 15} textAnchor="middle" fill="#0284c7" fontSize="8" fontWeight="bold" fontFamily="monospace">NOW</text>
                   <text x={healthPoints.mapX(25)} y={padT + plotH + 15} textAnchor="middle" fill="#64748b" fontSize="8" fontFamily="monospace">+25h</text>
                   <text x={healthPoints.mapX(50)} y={padT + plotH + 15} textAnchor="middle" fill="#64748b" fontSize="8" fontFamily="monospace">+50h</text>
                 </svg>
               </div>
 
               {/* Chart Legend */}
-              <div className="flex flex-wrap items-center justify-between text-[9px] text-slate-400 mt-2 px-1">
+              <div className="flex flex-wrap items-center justify-between text-[10px] text-slate-600 mt-2 px-1">
                 <div className="flex items-center gap-1.5">
                   <span className="w-3 h-0.5 bg-[#0284c7]"></span>
-                  <span>Historical RUL Curve</span>
+                  <span className="font-medium">Historical RUL Curve</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="w-3 h-0.5 bg-[#34d399]"></span>
-                  <span>Active Degradation Slope</span>
+                  <span className="w-3 h-0.5 bg-[#059669]"></span>
+                  <span className="font-medium">Active Degradation Slope</span>
                 </div>
-                <div className="text-hud-cyan font-bold">
+                <div className="text-slate-700 font-mono font-bold tabular-nums">
                   Rate: -{data.degradation.ratePerHour}%/hr
                 </div>
               </div>
@@ -1078,124 +1078,130 @@ export const PrognosticsTab = () => {
           {/* ─────────────────────────────────────────────────────────────
               4. MULTI-STRESS INFLUENCE FACTORS (Screenshot 3)
              ───────────────────────────────────────────────────────────── */}
-          <div className="starship-glass rounded-xl border border-white/[0.08] p-4 shadow-starship-glass">
-            <div className="flex items-center justify-between border-b border-white/[0.08] pb-3 mb-3">
-              <h3 className="font-display font-black text-xs text-cyan-300 flex items-center gap-2 glow-cyan">
-                <Zap className="w-4 h-4 text-cyan-400" />
+          {/* ─────────────────────────────────────────────────────────────
+              4. MULTI-STRESS INFLUENCE FACTORS
+             ───────────────────────────────────────────────────────────── */}
+          {/* ─────────────────────────────────────────────────────────────
+              4. MULTI-STRESS INFLUENCE FACTORS
+             ───────────────────────────────────────────────────────────── */}
+          <div className="gcs-panel rounded-lg border border-slate-200 bg-white p-3.5 shadow-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
+              <h3 className="font-mono text-xs font-bold tracking-wider text-slate-900 uppercase flex items-center gap-2">
+                <Zap className="w-4 h-4 text-sky-600" />
                 PHYSICS-INFORMED MULTI-STRESS INFLUENCE FACTORS
               </h3>
-              <span className="text-xs font-mono text-slate-300 font-bold">
-                Combined Fatigue Acceleration: <span className="text-cyan-300 glow-cyan">{data.degradation.stressBreakdown.combinedStress}x</span>
+              <span className="text-xs font-mono text-slate-600 font-medium">
+                Combined Fatigue Acceleration: <span className="text-sky-700 font-bold tabular-nums">{data.degradation.stressBreakdown.combinedStress}x</span>
               </span>
             </div>
 
             {/* 5 Stress Factor Tiles */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2">
               
-              <div className="starship-glass-card p-3.5 rounded-xl border border-white/[0.08] flex flex-col justify-between">
-                <span className="text-[10px] font-mono text-slate-400 uppercase font-bold tracking-wider">1. THERMAL STRESS</span>
-                <div className="text-2xl font-display font-black text-amber-400 glow-amber my-1">
+              <div className="gcs-card p-3 rounded-lg border border-slate-200 bg-white flex flex-col justify-between shadow-xs">
+                <span className="text-[10px] font-mono text-slate-500 uppercase font-bold tracking-wider">1. THERMAL STRESS</span>
+                <div className="text-xl font-mono font-bold text-amber-600 my-1 tabular-nums">
                   {data.degradation.stressBreakdown.thermalStress.toFixed(2)}x
                 </div>
-                <span className="text-[9px] font-mono text-slate-400">CHT / Oil Heat</span>
+                <span className="text-[9px] font-mono text-slate-500 font-medium">CHT / Oil Heat</span>
               </div>
 
-              <div className="starship-glass-card p-3.5 rounded-xl border border-white/[0.08] flex flex-col justify-between">
-                <span className="text-[10px] font-mono text-slate-400 uppercase font-bold tracking-wider">2. VIBRATION / MECH</span>
-                <div className="text-2xl font-display font-black text-amber-400 glow-amber my-1">
+              <div className="gcs-card p-3 rounded-lg border border-slate-200 bg-white flex flex-col justify-between shadow-xs">
+                <span className="text-[10px] font-mono text-slate-500 uppercase font-bold tracking-wider">2. VIBRATION / MECH</span>
+                <div className="text-xl font-mono font-bold text-amber-600 my-1 tabular-nums">
                   {data.degradation.stressBreakdown.mechanicalStress.toFixed(2)}x
                 </div>
-                <span className="text-[9px] font-mono text-slate-400">IPS / 2X Harmonics</span>
+                <span className="text-[9px] font-mono text-slate-500 font-medium">IPS / 2X Harmonics</span>
               </div>
 
-              <div className="starship-glass-card p-3.5 rounded-xl border border-white/[0.08] flex flex-col justify-between">
-                <span className="text-[10px] font-mono text-slate-400 uppercase font-bold tracking-wider">3. LUBRICATION</span>
-                <div className={`text-2xl font-display font-black my-1 ${
-                  data.degradation.stressBreakdown.lubricationStress > 1.2 ? 'text-red-400 glow-red' : 'text-emerald-400 glow-green'
+              <div className="gcs-card p-3 rounded-lg border border-slate-200 bg-white flex flex-col justify-between shadow-xs">
+                <span className="text-[10px] font-mono text-slate-500 uppercase font-bold tracking-wider">3. LUBRICATION</span>
+                <div className={`text-xl font-mono font-bold my-1 tabular-nums ${
+                  data.degradation.stressBreakdown.lubricationStress > 1.2 ? 'text-red-600' : 'text-emerald-600'
                 }`}>
                   {data.degradation.stressBreakdown.lubricationStress.toFixed(2)}x
                 </div>
-                <span className="text-[9px] font-mono text-slate-400">Film / Oil PSI</span>
+                <span className="text-[9px] font-mono text-slate-500 font-medium">Film / Oil PSI</span>
               </div>
 
-              <div className="starship-glass-card p-3.5 rounded-xl border border-white/[0.08] flex flex-col justify-between">
-                <span className="text-[10px] font-mono text-slate-400 uppercase font-bold tracking-wider">4. COMBUSTION</span>
-                <div className={`text-2xl font-display font-black my-1 ${
-                  data.degradation.stressBreakdown.combustionStress > 1.2 ? 'text-red-400 glow-red' : 'text-emerald-400 glow-green'
+              <div className="gcs-card p-3 rounded-lg border border-slate-200 bg-white flex flex-col justify-between shadow-xs">
+                <span className="text-[10px] font-mono text-slate-500 uppercase font-bold tracking-wider">4. COMBUSTION</span>
+                <div className={`text-xl font-mono font-bold my-1 tabular-nums ${
+                  data.degradation.stressBreakdown.combustionStress > 1.2 ? 'text-red-600' : 'text-emerald-600'
                 }`}>
                   {data.degradation.stressBreakdown.combustionStress.toFixed(2)}x
                 </div>
-                <span className="text-[9px] font-mono text-slate-400">Rail / Knock RMS</span>
+                <span className="text-[9px] font-mono text-slate-500 font-medium">Rail / Knock RMS</span>
               </div>
 
-              <div className="starship-glass-card p-3.5 rounded-xl border border-white/[0.08] flex flex-col justify-between">
-                <span className="text-[10px] font-mono text-slate-400 uppercase font-bold tracking-wider">5. OPERATING LOAD</span>
-                <div className="text-2xl font-display font-black text-emerald-400 glow-green my-1">
+              <div className="gcs-card p-3 rounded-lg border border-slate-200 bg-white flex flex-col justify-between shadow-xs">
+                <span className="text-[10px] font-mono text-slate-500 uppercase font-bold tracking-wider">5. OPERATING LOAD</span>
+                <div className="text-xl font-mono font-bold text-slate-900 my-1 tabular-nums">
                   {data.degradation.stressBreakdown.operatingStress.toFixed(2)}x
                 </div>
-                <span className="text-[9px] font-mono text-slate-400">RPM / MAP Boost</span>
+                <span className="text-[9px] font-mono text-slate-500 font-medium">RPM / MAP Boost</span>
               </div>
 
             </div>
 
             {/* Scenario Response Logic Legend */}
-            <div className="mt-3 p-2.5 starship-glass-card rounded-xl border border-white/[0.06] flex flex-wrap items-center justify-between text-[10px] font-mono text-slate-400">
-              <span className="text-slate-200 font-bold">SCENARIO RESPONSE LOGIC:</span>
-              <span className="text-emerald-400 glow-green">✓ Normal Operation → Slow Degradation (~0.045%/hr)</span>
-              <span className="text-amber-400 glow-amber">⚠️ Mild Fault → Moderate RUL Reduction (~1.4x-1.8x)</span>
-              <span className="text-red-400 glow-red">🚨 Severe Fault → Faster RUL Reduction (~3.8x-7.5x)</span>
+            <div className="mt-3 p-2.5 gcs-card rounded border border-slate-200 bg-slate-50/80 flex flex-wrap items-center justify-between text-[10px] font-mono text-slate-600">
+              <span className="text-slate-900 font-bold">RESPONSE CRITERIA:</span>
+              <span className="text-emerald-700 font-medium">Normal Operation → Degradation Rate ~0.045%/hr</span>
+              <span className="text-amber-700 font-medium">Mild Fault Mode → RUL Acceleration ~1.4x - 1.8x</span>
+              <span className="text-red-700 font-medium">Severe Fault Mode → RUL Acceleration ~3.8x - 7.5x</span>
             </div>
           </div>
 
-          {/* Prototype Notice Callout (Screenshot 3) */}
-          <div className="p-3 rounded bg-slate-900/60 border border-slate-800 text-[10px] leading-relaxed text-slate-400 flex items-start gap-2.5">
-            <Info className="w-4 h-4 text-hud-cyan mt-0.5 shrink-0" />
+          {/* Prototype Notice Callout */}
+          <div className="p-3 rounded-lg bg-sky-50 border border-sky-200 text-[11px] leading-relaxed text-slate-700 flex items-start gap-2.5 shadow-xs">
+            <Info className="w-4 h-4 text-sky-600 mt-0.5 shrink-0" />
             <div>
-              <span className="font-bold text-slate-200">PROTOTYPE PHYSICS-INFORMED ESTIMATION NOTICE: </span>
-              This Remaining Useful Life (RUL) calculation is a <span className="text-hud-cyan font-bold">physics-informed prototype estimation</span> generated by real-time multi-stress Weibull fatigue models and sensor residual attribution. It is <span className="text-amber-400 font-bold">not a certified aircraft-life prediction</span> and must not be interpreted as a guaranteed failure timestamp. Maintenance decisions and flight dispatch authority must strictly follow the official Rotax 915-iS Aircraft Maintenance Manual (AMM) and Time Between Overhaul (TBO: 2000 hours) statutory procedures.
+              <span className="font-bold text-slate-900">RESEARCH BENCHMARK & ESTIMATION NOTICE: </span>
+              This Remaining Useful Life (RUL) computation is a <span className="text-sky-700 font-semibold">physics-informed fatigue estimation</span> generated by multi-stress Weibull damage accumulation models and sensor residual attribution. In-flight authority and dispatch decisions remain strictly subject to the official Rotax 915-iS Aircraft Maintenance Manual (AMM) and statutory Time Between Overhaul (TBO: 2000 hours) compliance.
             </div>
           </div>
 
           {/* ─────────────────────────────────────────────────────────────
-              5. EXPLAINABLE AI (XAI) ANOMALY ATTRIBUTION (Screenshot 3)
+              5. EXPLAINABLE AI (XAI) ANOMALY ATTRIBUTION
              ───────────────────────────────────────────────────────────── */}
-          <div className="starship-glass rounded-xl border border-white/[0.08] p-4 shadow-starship-glass">
-            <div className="flex items-center justify-between border-b border-white/[0.08] pb-3 mb-3">
+          <div className="gcs-panel rounded-lg border border-slate-200 bg-white p-3.5 shadow-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
               <div>
-                <h3 className="font-display font-black text-xs text-cyan-300 flex items-center gap-2 glow-cyan">
-                  <Cpu className="w-4 h-4 text-cyan-400" />
+                <h3 className="font-mono text-xs font-bold tracking-wider text-slate-900 uppercase flex items-center gap-2">
+                  <Cpu className="w-4 h-4 text-sky-600" />
                   EXPLAINABLE AI (XAI) ANOMALY ATTRIBUTION
                 </h3>
-                <div className="text-[10px] font-mono text-slate-400">
+                <div className="text-[10px] font-mono text-slate-500 font-medium">
                   SHAP-style neural weight contribution to current deviation score
                 </div>
               </div>
-              <span className="px-2.5 py-1 rounded-full bg-slate-900 border border-white/[0.08] text-cyan-300 text-[10px] font-mono font-bold">
+              <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 text-[10px] font-mono font-semibold">
                 PINN AUTOENCODER
               </span>
             </div>
 
             {/* 6 XAI Cards Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
               {(data.xaiAttributions || []).map((attr, idx) => (
-                <div key={idx} className="starship-glass-card p-3.5 rounded-xl border border-white/[0.08] flex flex-col justify-between">
+                <div key={idx} className="gcs-card p-3 rounded-lg border border-slate-200 bg-white flex flex-col justify-between shadow-xs">
                   <div className="flex items-start justify-between gap-2">
-                    <span className="text-xs font-bold text-slate-200 leading-snug">
+                    <span className="text-xs font-bold text-slate-900 leading-snug">
                       {attr.name}
                     </span>
-                    <span className={`text-xs font-bold font-display shrink-0 ${
-                      attr.status === 'CRITICAL' ? 'text-red-400 glow-red' : attr.status === 'ELEVATED' ? 'text-amber-400 glow-amber' : 'text-emerald-400 glow-green'
+                    <span className={`text-xs font-mono font-bold shrink-0 tabular-nums ${
+                      attr.status === 'CRITICAL' ? 'text-red-600' : attr.status === 'ELEVATED' ? 'text-amber-600' : 'text-emerald-600'
                     }`}>
                       {attr.weight}
                     </span>
                   </div>
-                  <div className="text-[10px] font-mono text-slate-400 mt-1.5 leading-relaxed">
+                  <div className="text-[10px] font-mono text-slate-600 mt-1 leading-relaxed">
                     {attr.description}
                   </div>
-                  <div className="w-full bg-slate-900/90 h-1.5 rounded-full mt-3 overflow-hidden border border-white/[0.06]">
+                  <div className="w-full bg-slate-100 h-1.5 rounded mt-2.5 overflow-hidden border border-slate-200">
                     <div 
-                      className={`h-full transition-all duration-500 ${
-                        attr.status === 'CRITICAL' ? 'bg-gradient-to-r from-red-600 to-rose-500' : attr.status === 'ELEVATED' ? 'bg-gradient-to-r from-amber-500 to-yellow-400' : 'bg-gradient-to-r from-emerald-500 to-teal-400'
+                      className={`h-full transition-all duration-300 ${
+                        attr.status === 'CRITICAL' ? 'bg-red-500' : attr.status === 'ELEVATED' ? 'bg-amber-500' : 'bg-emerald-500'
                       }`}
                       style={{ width: `${Math.min(100, Math.abs(parseInt(attr.weight) || 20) * 1.5)}%` }}
                     />
@@ -1205,42 +1211,42 @@ export const PrognosticsTab = () => {
             </div>
           </div>
 
-          {/* Multi-Horizon Failure Risk (Rule 19) */}
-          <div className="starship-glass rounded-xl border border-white/[0.08] p-4 shadow-starship-glass">
-            <div className="flex items-center justify-between border-b border-white/[0.08] pb-3 mb-3">
-              <h3 className="font-display font-black text-xs text-slate-200 flex items-center gap-2">
-                <ShieldAlert className="w-4 h-4 text-purple-400" />
+          {/* Multi-Horizon Failure Risk */}
+          <div className="gcs-panel rounded-lg border border-slate-200 bg-white p-3.5 shadow-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
+              <h3 className="font-mono text-xs font-bold tracking-wider text-slate-900 uppercase flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 text-sky-600" />
                 MULTI-HORIZON PROBABILISTIC FAILURE RISK
               </h3>
-              <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold border ${
-                data.risk.level === 'CRITICAL' ? 'bg-red-950/80 text-red-300 border-red-500/80 glow-red' :
-                data.risk.level === 'HIGH' ? 'bg-orange-950/80 text-orange-300 border-orange-500/80' :
-                data.risk.level === 'MEDIUM' ? 'bg-amber-950/80 text-amber-300 border-amber-500/80 glow-amber' :
-                'bg-emerald-950/80 text-emerald-300 border-emerald-500/80 glow-green'
+              <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border uppercase ${
+                data.risk.level === 'CRITICAL' ? 'bg-red-50 text-red-700 border-red-200' :
+                data.risk.level === 'HIGH' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                data.risk.level === 'MEDIUM' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                'bg-emerald-50 text-emerald-700 border-emerald-200'
               }`}>
                 RISK LEVEL: {data.risk.level}
               </span>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="starship-glass-card p-3 rounded-xl border border-white/[0.08] text-center">
-                <div className="text-[10px] font-mono text-slate-400 uppercase font-bold">NEXT 1 HOUR</div>
-                <div className="text-xl font-bold font-display text-emerald-400 glow-green mt-0.5">{data.risk.multiHorizon.h1}%</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+              <div className="gcs-card p-2.5 rounded-lg border border-slate-200 bg-white text-center shadow-xs">
+                <div className="text-[10px] font-mono text-slate-500 uppercase font-bold">NEXT 1 HOUR</div>
+                <div className="text-lg font-bold font-mono text-emerald-600 mt-0.5 tabular-nums">{data.risk.multiHorizon.h1}%</div>
                 <div className="text-[9px] font-mono text-slate-500">Cumulative hazard</div>
               </div>
-              <div className="starship-glass-card p-3 rounded-xl border border-white/[0.08] text-center">
-                <div className="text-[10px] font-mono text-slate-400 uppercase font-bold">NEXT 4 HOURS</div>
-                <div className="text-xl font-bold font-display text-emerald-400 glow-green mt-0.5">{data.risk.multiHorizon.h4}%</div>
-                <div className="text-[9px] font-mono text-slate-500">Standard sortie window</div>
+              <div className="gcs-card p-2.5 rounded-lg border border-slate-200 bg-white text-center shadow-xs">
+                <div className="text-[10px] font-mono text-slate-500 uppercase font-bold">NEXT 4 HOURS</div>
+                <div className="text-lg font-bold font-mono text-emerald-600 mt-0.5 tabular-nums">{data.risk.multiHorizon.h4}%</div>
+                <div className="text-[9px] font-mono text-slate-500">Sortie window</div>
               </div>
-              <div className="starship-glass-card p-3 rounded-xl border border-white/[0.08] text-center">
-                <div className="text-[10px] font-mono text-slate-400 uppercase font-bold">NEXT 8 HOURS</div>
-                <div className="text-xl font-bold font-display text-amber-400 glow-amber mt-0.5">{data.risk.multiHorizon.h8}%</div>
-                <div className="text-[9px] font-mono text-slate-500">Extended loiter envelope</div>
+              <div className="gcs-card p-2.5 rounded-lg border border-slate-200 bg-white text-center shadow-xs">
+                <div className="text-[10px] font-mono text-slate-500 uppercase font-bold">NEXT 8 HOURS</div>
+                <div className="text-lg font-bold font-mono text-amber-600 mt-0.5 tabular-nums">{data.risk.multiHorizon.h8}%</div>
+                <div className="text-[9px] font-mono text-slate-500">Loiter envelope</div>
               </div>
-              <div className="starship-glass-card p-3 rounded-xl border border-white/[0.08] text-center">
-                <div className="text-[10px] font-mono text-slate-400 uppercase font-bold">NEXT 24 HOURS</div>
-                <div className="text-xl font-bold font-display text-purple-300 glow-purple mt-0.5">{data.risk.multiHorizon.h24}%</div>
+              <div className="gcs-card p-2.5 rounded-lg border border-slate-200 bg-white text-center shadow-xs">
+                <div className="text-[10px] font-mono text-slate-500 uppercase font-bold">NEXT 24 HOURS</div>
+                <div className="text-lg font-bold font-mono text-slate-900 mt-0.5 tabular-nums">{data.risk.multiHorizon.h24}%</div>
                 <div className="text-[9px] font-mono text-slate-500">Endurance horizon</div>
               </div>
             </div>
@@ -1253,162 +1259,162 @@ export const PrognosticsTab = () => {
           4. SUB-VIEW B: CAUSAL DIAGNOSTICS & ADVISORY (Screenshot 1)
          ───────────────────────────────────────────────────────────── */}
       {activeSubView === 'ADVISORY' && (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3">
           
-          {/* Top 4 Cards Row (Screenshot 1) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* Top 4 Cards Row */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
             
             {/* Card 1: Overall Anomaly Score */}
-            <div className="starship-glass-card rounded-xl border border-white/[0.08] p-4 shadow-starship-glass">
+            <div className="gcs-card rounded-lg border border-slate-200 bg-white p-3.5 relative overflow-hidden shadow-xs">
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[10px] font-mono text-slate-400 font-bold tracking-wider uppercase">1. OVERALL ANOMALY SCORE</span>
-                <Activity className="w-4 h-4 text-cyan-400" />
+                <span className="text-[10px] font-mono text-slate-500 font-bold tracking-wider uppercase">1. OVERALL ANOMALY SCORE</span>
+                <Activity className="w-4 h-4 text-sky-600" />
               </div>
               <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-display font-black text-emerald-400 glow-green">
+                <span className="text-2xl font-mono font-bold text-emerald-600 tabular-nums">
                   {data.health.overallAnomalyScore.toFixed(2)}
                 </span>
-                <span className="text-xs font-mono text-slate-400 font-bold">σ Residual</span>
+                <span className="text-xs font-mono text-slate-500 font-medium">σ Residual</span>
               </div>
-              <div className="w-full bg-slate-900/90 h-1.5 rounded-full mt-2.5 overflow-hidden border border-white/[0.06]">
+              <div className="w-full bg-slate-100 h-1.5 rounded mt-2.5 overflow-hidden border border-slate-200">
                 <div 
-                  className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500"
+                  className="h-full bg-emerald-500 transition-all duration-300"
                   style={{ width: `${Math.min(100, data.health.overallAnomalyScore * 70)}%` }}
                 />
               </div>
-              <div className="text-[9px] font-mono text-slate-400 mt-2">
+              <div className="text-[10px] font-mono text-slate-500 mt-2 font-medium">
                 Within Nominal (≤0.15 σ)
               </div>
             </div>
 
             {/* Card 2: Health Index */}
-            <div className="starship-glass-card rounded-xl border border-white/[0.08] p-4 shadow-starship-glass">
+            <div className="gcs-card rounded-lg border border-slate-200 bg-white p-3.5 relative overflow-hidden shadow-xs">
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[10px] font-mono text-slate-400 font-bold tracking-wider uppercase">2. HEALTH INDEX</span>
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <span className="text-[10px] font-mono text-slate-500 font-bold tracking-wider uppercase">2. HEALTH INDEX</span>
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
               </div>
               <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-display font-black text-emerald-400 glow-green">
+                <span className="text-2xl font-mono font-bold text-emerald-600 tabular-nums">
                   {data.health.index.toFixed(0)}
                 </span>
-                <span className="text-xs font-mono text-slate-400 font-bold">/ 100</span>
+                <span className="text-xs font-mono text-slate-500 font-medium">/ 100</span>
               </div>
-              <div className="w-full bg-slate-900/90 h-1.5 rounded-full mt-2.5 overflow-hidden border border-white/[0.06]">
+              <div className="w-full bg-slate-100 h-1.5 rounded mt-2.5 overflow-hidden border border-slate-200">
                 <div 
-                  className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500"
+                  className="h-full bg-emerald-500 transition-all duration-300"
                   style={{ width: `${data.health.index}%` }}
                 />
               </div>
-              <div className="text-[9px] font-mono text-slate-400 mt-2">
+              <div className="text-[10px] font-mono text-slate-500 mt-2 tabular-nums font-medium">
                 RUL Projection: {data.rul.hours.toFixed(1)} Flight Hours
               </div>
             </div>
 
             {/* Card 3: Probable Fault */}
-            <div className="starship-glass-card rounded-xl border border-white/[0.08] p-4 shadow-starship-glass">
+            <div className="gcs-card rounded-lg border border-slate-200 bg-white p-3.5 relative overflow-hidden shadow-xs">
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[10px] font-mono text-slate-400 font-bold tracking-wider uppercase">3. PROBABLE FAULT</span>
-                <AlertTriangle className="w-4 h-4 text-amber-400" />
+                <span className="text-[10px] font-mono text-slate-500 font-bold tracking-wider uppercase">3. PROBABLE FAULT</span>
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
               </div>
-              <div className={`text-base font-bold font-mono tracking-wide ${
-                data.health.activeFault === 'NONE' ? 'text-emerald-400 glow-green' : 'text-red-400 glow-red'
+              <div className={`text-sm font-bold font-mono tracking-wide ${
+                data.health.activeFault === 'NONE' ? 'text-emerald-700' : 'text-red-700'
               }`}>
                 {data.health.probableFault}
               </div>
-              <div className="text-[10px] font-mono text-slate-400 mt-1">
-                Subsystem: <span className="text-slate-200 font-bold">{data.advisory.affectedSubsystems[0] || 'Nominal'}</span>
+              <div className="text-[10px] font-mono text-slate-600 mt-1">
+                Subsystem: <span className="text-slate-900 font-bold">{data.advisory.affectedSubsystems[0] || 'Nominal'}</span>
               </div>
-              <div className="text-[9px] font-mono text-slate-400 mt-2 pt-2 border-t border-white/[0.06]">
+              <div className="text-[10px] font-mono text-slate-500 mt-2 pt-2 border-t border-slate-100">
                 Signature: {data.health.activeFault === 'NONE' ? 'NOMINAL' : 'ANOMALY DETECTED'}
               </div>
             </div>
 
             {/* Card 4: Fault Confidence */}
-            <div className="starship-glass-card rounded-xl border border-white/[0.08] p-4 shadow-starship-glass">
+            <div className="gcs-card rounded-lg border border-slate-200 bg-white p-3.5 relative overflow-hidden shadow-xs">
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[10px] font-mono text-slate-400 font-bold tracking-wider uppercase">4. FAULT CONFIDENCE</span>
-                <BarChart3 className="w-4 h-4 text-cyan-400" />
+                <span className="text-[10px] font-mono text-slate-500 font-bold tracking-wider uppercase">4. FAULT CONFIDENCE</span>
+                <BarChart3 className="w-4 h-4 text-sky-600" />
               </div>
               <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-display font-black text-cyan-300 glow-cyan">
+                <span className="text-2xl font-mono font-bold text-slate-900 tabular-nums">
                   {data.health.faultConfidence}%
                 </span>
-                <span className="text-xs font-mono text-slate-400 font-bold">Posterior</span>
+                <span className="text-xs font-mono text-slate-500 font-medium">Posterior</span>
               </div>
-              <div className="w-full bg-slate-900/90 h-1.5 rounded-full mt-2.5 overflow-hidden border border-white/[0.06]">
+              <div className="w-full bg-slate-100 h-1.5 rounded mt-2.5 overflow-hidden border border-slate-200">
                 <div 
-                  className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-500"
+                  className="h-full bg-sky-600 transition-all duration-300"
                   style={{ width: `${data.health.faultConfidence}%` }}
                 />
               </div>
-              <div className="text-[9px] font-mono text-slate-400 mt-2">
+              <div className="text-[10px] font-mono text-slate-500 mt-2 font-medium">
                 Physics Correlation: 100%
               </div>
             </div>
 
           </div>
 
-          {/* Parameter Evidence Table (Screenshot 1) */}
-          <div className="starship-glass rounded-xl border border-white/[0.08] p-4 shadow-starship-glass">
-            <div className="flex items-center justify-between border-b border-white/[0.08] pb-3 mb-3">
-              <h3 className="font-display font-black text-xs text-cyan-300 flex items-center gap-2 glow-cyan">
-                <FileSearch className="w-4 h-4 text-cyan-400" />
+          {/* Parameter Evidence Table */}
+          <div className="gcs-panel rounded-lg border border-slate-200 bg-white p-3.5 shadow-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
+              <h3 className="font-mono text-xs font-bold tracking-wider text-slate-900 uppercase flex items-center gap-2">
+                <FileSearch className="w-4 h-4 text-sky-600" />
                 PARAMETER EVIDENCE (GOLDEN TWIN VS. LIVE TELEMETRY DEVIATION)
               </h3>
-              <span className="text-[10px] font-mono text-slate-400">
-                Top contributing residual channels ranked by Mahalanobis influence
+              <span className="text-[10px] font-mono text-slate-500 font-medium">
+                Ranked by Mahalanobis influence metric
               </span>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left font-mono text-xs border-collapse">
                 <thead>
-                  <tr className="border-b border-white/[0.08] text-[10px] text-slate-400 uppercase tracking-wider">
-                    <th className="py-2.5 px-3">PARAMETER</th>
-                    <th className="py-2.5 px-3">GOLDEN MODEL</th>
-                    <th className="py-2.5 px-3">LIVE TELEMETRY</th>
-                    <th className="py-2.5 px-3">DEVIATION / RESIDUAL</th>
-                    <th className="py-2.5 px-3">DIAGNOSTIC WEIGHT</th>
+                  <tr className="border-b border-slate-200 bg-slate-50/80 text-[10px] text-slate-600 uppercase tracking-wider">
+                    <th className="py-2.5 px-3 font-bold">PARAMETER</th>
+                    <th className="py-2.5 px-3 font-bold">GOLDEN MODEL</th>
+                    <th className="py-2.5 px-3 font-bold">LIVE TELEMETRY</th>
+                    <th className="py-2.5 px-3 font-bold">DEVIATION / RESIDUAL</th>
+                    <th className="py-2.5 px-3 font-bold">DIAGNOSTIC WEIGHT</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/[0.04]">
+                <tbody className="divide-y divide-slate-100">
                   {(!data.advisory.parameterEvidence || data.advisory.parameterEvidence.length === 0) ? (
                     <tr>
-                      <td colSpan={5} className="py-6 px-3 text-center text-slate-400 italic">
+                      <td colSpan={5} className="py-6 px-3 text-center text-slate-500 italic">
                         All thermodynamic, mechanical, and combustion sensor channels tracking within nominal ±1.5σ baseline.
                       </td>
                     </tr>
                   ) : (
                     data.advisory.parameterEvidence.map((row, idx) => (
-                      <tr key={idx} className="hover:bg-white/[0.03] transition-colors">
-                        <td className="py-3 px-3 flex items-center gap-2">
+                      <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-2.5 px-3 flex items-center gap-2">
                           <span className={`w-2 h-2 rounded-full ${
-                            row.status === 'CRITICAL' ? 'bg-red-400 glow-red' : row.status === 'WARNING' ? 'bg-amber-400 glow-amber' : 'bg-emerald-400 glow-green'
+                            row.status === 'CRITICAL' ? 'bg-red-500' : row.status === 'WARNING' ? 'bg-amber-500' : 'bg-emerald-500'
                           }`} />
-                          <span className="text-slate-100 font-bold">{row.parameter}</span>
+                          <span className="text-slate-900 font-bold">{row.parameter}</span>
                         </td>
-                        <td className="py-3 px-3 text-slate-400">{row.goldenModel}</td>
-                        <td className="py-3 px-3 text-white font-bold">{row.liveTelemetry}</td>
-                        <td className="py-3 px-3">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                        <td className="py-2.5 px-3 text-slate-600 tabular-nums">{row.goldenModel}</td>
+                        <td className="py-2.5 px-3 text-slate-900 font-bold tabular-nums">{row.liveTelemetry}</td>
+                        <td className="py-2.5 px-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold border tabular-nums ${
                             row.status === 'CRITICAL'
-                              ? 'bg-red-950/80 text-red-300 border-red-500/80 glow-red'
+                              ? 'bg-red-50 text-red-700 border-red-200'
                               : row.status === 'WARNING'
-                              ? 'bg-amber-950/80 text-amber-300 border-amber-500/80 glow-amber'
-                              : 'bg-slate-900 border-white/[0.08] text-slate-400'
+                              ? 'bg-amber-50 text-amber-700 border-amber-200'
+                              : 'bg-slate-100 border-slate-200 text-slate-700'
                           }`}>
                             {row.residual}
                           </span>
                         </td>
-                        <td className="py-3 px-3">
+                        <td className="py-2.5 px-3">
                           <div className="flex items-center gap-2">
-                            <div className="w-24 bg-slate-900/90 h-1.5 rounded-full overflow-hidden border border-white/[0.06]">
+                            <div className="w-24 bg-slate-100 h-1.5 rounded overflow-hidden border border-slate-200">
                               <div 
-                                className="h-full bg-gradient-to-r from-cyan-500 to-blue-500"
+                                className="h-full bg-sky-600 rounded"
                                 style={{ width: row.diagnosticWeight }}
                               />
                             </div>
-                            <span className="text-cyan-300 text-[11px] font-bold">{row.diagnosticWeight}</span>
+                            <span className="text-slate-800 text-[11px] font-bold tabular-nums">{row.diagnosticWeight}</span>
                           </div>
                         </td>
                       </tr>
@@ -1419,83 +1425,83 @@ export const PrognosticsTab = () => {
             </div>
           </div>
 
-          {/* Bottom 2 Panels: WHY IT MATTERS & RECOMMENDED ACTION (Screenshot 1) */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Bottom 2 Panels: WHY IT MATTERS & RECOMMENDED ACTION */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             
             {/* Left: WHY THIS MATTERS (PHYSICAL CAUSAL REASONING) */}
-            <div className="starship-glass rounded-xl border border-white/[0.08] p-4 shadow-starship-glass flex flex-col justify-between">
+            <div className="gcs-panel rounded-lg border border-slate-200 bg-white p-3.5 flex flex-col justify-between shadow-xs">
               <div>
-                <h3 className="font-display font-black text-xs text-cyan-300 flex items-center gap-2 border-b border-white/[0.08] pb-3 mb-3 glow-cyan">
-                  <Brain className="w-4 h-4 text-cyan-400" />
-                  WHY THIS MATTERS (PHYSICAL CAUSAL REASONING)
+                <h3 className="font-mono text-xs font-bold tracking-wider text-slate-900 uppercase flex items-center gap-2 border-b border-slate-100 pb-2.5 mb-3">
+                  <Brain className="w-4 h-4 text-sky-600" />
+                  PHYSICAL CAUSAL REASONING
                 </h3>
-                <p className="text-xs font-mono text-slate-300 leading-relaxed">
+                <p className="text-xs font-mono text-slate-700 leading-relaxed font-medium">
                   {data.advisory.whyReasoning}
                 </p>
               </div>
 
-              <div className="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between text-[10px] font-mono text-slate-400">
+              <div className="mt-4 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[10px] font-mono text-slate-500">
                 <span>Inference: Physics-Informed Neural Autoencoder (PINN)</span>
-                <span className="text-cyan-300 font-bold">Validated vs. Rotax 915-iS Dataset</span>
+                <span className="text-slate-700 font-semibold">Validated vs. Rotax 915-iS Dataset</span>
               </div>
             </div>
 
             {/* Right: RECOMMENDED MAINTENANCE ACTION & FADEC INTERVENTION */}
-            <div className="starship-glass rounded-xl border border-white/[0.08] p-4 shadow-starship-glass flex flex-col justify-between">
+            <div className="gcs-panel rounded-lg border border-slate-200 bg-white p-3.5 flex flex-col justify-between shadow-xs">
               <div>
-                <div className="flex items-center justify-between border-b border-white/[0.08] pb-3 mb-3">
-                  <h3 className="font-display font-black text-xs text-emerald-400 flex items-center gap-2 glow-green">
-                    <Wrench className="w-4 h-4" />
-                    RECOMMENDED MAINTENANCE ACTION & FADEC INTERVENTION
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
+                  <h3 className="font-mono text-xs font-bold tracking-wider text-slate-900 uppercase flex items-center gap-2">
+                    <Wrench className="w-4 h-4 text-amber-600" />
+                    RECOMMENDED ADVISORY & FADEC INTERVENTION
                   </h3>
-                  <span className={`px-2.5 py-1 rounded-full text-[9px] font-mono font-bold border uppercase ${
-                    data.advisory.priority === 'CRITICAL' ? 'bg-red-950 text-red-300 border-red-500/80 glow-red animate-pulse' :
-                    data.advisory.priority === 'HIGH' ? 'bg-amber-950 text-amber-300 border-amber-500/80 glow-amber' :
-                    'bg-emerald-950 text-emerald-300 border-emerald-500/80 glow-green'
+                  <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold border uppercase ${
+                    data.advisory.priority === 'CRITICAL' ? 'bg-red-50 text-red-700 border-red-200' :
+                    data.advisory.priority === 'HIGH' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                    'bg-emerald-50 text-emerald-700 border-emerald-200'
                   }`}>
                     URGENCY: {data.advisory.urgencyLabel}
                   </span>
                 </div>
 
-                <div className="text-xs font-mono text-slate-200 leading-relaxed">
+                <div className="text-xs font-mono text-slate-800 leading-relaxed font-medium">
                   {data.advisory.recommendationText}
                 </div>
 
-                <div className="mt-3 text-[11px] font-mono text-slate-400">
-                  <span className="text-slate-400 font-bold">Operational Window: </span>
-                  <span className="text-white font-bold">{data.advisory.operationalWindow}</span>
+                <div className="mt-3 text-[11px] font-mono text-slate-600">
+                  <span className="text-slate-500 font-semibold">Operational Window: </span>
+                  <span className="text-slate-900 font-bold">{data.advisory.operationalWindow}</span>
                 </div>
               </div>
 
-              <div className="mt-4 pt-3 border-t border-white/[0.06] text-[10px] font-mono text-slate-400 font-bold">
-                <span className="text-emerald-400 glow-green">{data.advisory.fadecStatus}</span>
+              <div className="mt-4 pt-2.5 border-t border-slate-100 text-[10px] font-mono font-medium">
+                <span className="text-emerald-700 font-semibold">{data.advisory.fadecStatus}</span>
               </div>
             </div>
 
           </div>
 
-          {/* Mission Demand Interactive Scrubber & Mission Margin (Rule 28-29) */}
-          <div className="starship-glass rounded-xl border border-white/[0.08] p-4 shadow-starship-glass">
-            <div className="flex items-center justify-between border-b border-white/[0.08] pb-3 mb-3">
-              <h3 className="font-display font-black text-xs text-cyan-300 flex items-center gap-2 glow-cyan">
-                <Sliders className="w-4 h-4 text-cyan-400" />
-                MISSION-AWARE MAINTENANCE & RUL MARGIN EVALUATOR
+          {/* Mission Demand Interactive Scrubber & Mission Margin */}
+          <div className="gcs-panel rounded-lg border border-slate-200 bg-white p-3.5 shadow-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
+              <h3 className="font-mono text-xs font-bold tracking-wider text-slate-900 uppercase flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-sky-600" />
+                MISSION-AWARE RUL DISPATCH MARGIN EVALUATOR
               </h3>
-              <span className={`text-xs font-mono font-bold px-2.5 py-1 rounded-full border ${
+              <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded border uppercase ${
                 data.advisory.isMissionFeasible 
-                  ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/80 glow-green'
-                  : 'bg-red-950/80 text-red-300 border-red-500/80 glow-red'
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : 'bg-red-50 text-red-700 border-red-200'
               }`}>
                 {data.advisory.isMissionFeasible ? '✓ SORTIE AUTHORIZED' : '⚠️ MISSION RISK REVIEW REQUIRED'}
               </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
               {/* Slider Input */}
               <div className="flex flex-col gap-2">
                 <div className="flex justify-between text-xs font-mono">
-                  <span className="text-slate-400">PLANNED MISSION DURATION:</span>
-                  <span className="text-white font-bold">{missionDemandHours.toFixed(1)} HOURS</span>
+                  <span className="text-slate-500 font-medium">PLANNED MISSION DURATION:</span>
+                  <span className="text-slate-900 font-bold tabular-nums">{missionDemandHours.toFixed(1)} HOURS</span>
                 </div>
                 <input
                   type="range"
@@ -1504,9 +1510,9 @@ export const PrognosticsTab = () => {
                   step="0.5"
                   value={missionDemandHours}
                   onChange={(e) => setMissionDemandHours(parseFloat(e.target.value))}
-                  className="w-full accent-cyan-400 cursor-pointer h-2 bg-slate-900 rounded-lg border border-white/[0.08]"
+                  className="w-full accent-sky-600 cursor-pointer h-2 bg-slate-200 rounded border border-slate-300"
                 />
-                <div className="flex justify-between text-[9px] font-mono text-slate-400">
+                <div className="flex justify-between text-[9px] font-mono text-slate-500 tabular-nums">
                   <span>1.0h (Recon)</span>
                   <span>6.0h (Cruise)</span>
                   <span>14.0h (Max Endurance)</span>
@@ -1514,53 +1520,53 @@ export const PrognosticsTab = () => {
               </div>
 
               {/* RUL vs Mission Comparison */}
-              <div className="starship-glass-card p-3.5 rounded-xl border border-white/[0.08] flex justify-around items-center text-center font-mono">
+              <div className="gcs-card p-3 rounded-lg border border-slate-200 bg-white flex justify-around items-center text-center font-mono shadow-xs">
                 <div>
-                  <div className="text-[10px] text-slate-400 font-bold">ESTIMATED RUL</div>
-                  <div className="text-lg font-black font-display text-cyan-300 glow-cyan">{data.rul.hours.toFixed(1)}h</div>
+                  <div className="text-[10px] text-slate-500 font-bold uppercase">ESTIMATED RUL</div>
+                  <div className="text-lg font-bold font-mono text-slate-900 tabular-nums">{data.rul.hours.toFixed(1)}h</div>
                 </div>
-                <div className="text-slate-600 font-bold">VS</div>
+                <div className="text-slate-400 font-bold text-xs">VS</div>
                 <div>
-                  <div className="text-[10px] text-slate-400 font-bold">SORTIE DEMAND</div>
-                  <div className="text-lg font-black font-display text-purple-300 glow-purple">{missionDemandHours.toFixed(1)}h</div>
+                  <div className="text-[10px] text-slate-500 font-bold uppercase">SORTIE DEMAND</div>
+                  <div className="text-lg font-bold font-mono text-sky-600 tabular-nums">{missionDemandHours.toFixed(1)}h</div>
                 </div>
               </div>
 
               {/* Margin Result Tile */}
-              <div className={`p-3.5 rounded-xl border text-center font-mono ${
+              <div className={`p-3 rounded-lg border text-center font-mono shadow-xs ${
                 data.advisory.isMissionFeasible 
-                  ? 'bg-emerald-950/40 border-emerald-500/60 text-emerald-300 shadow-hud-green' 
-                  : 'bg-red-950/40 border-red-500/60 text-red-300 shadow-hud-red'
+                  ? 'bg-emerald-50/80 border-emerald-200 text-emerald-800' 
+                  : 'bg-red-50/80 border-red-200 text-red-800'
               }`}>
                 <div className="text-[10px] uppercase font-bold">RUL DISPATCH MARGIN</div>
-                <div className="text-2xl font-black font-display my-0.5">
+                <div className="text-2xl font-bold font-mono my-0.5 tabular-nums">
                   {data.advisory.missionMarginHours > 0 ? `+${data.advisory.missionMarginHours.toFixed(1)}` : data.advisory.missionMarginHours.toFixed(1)}h
                 </div>
-                <div className="text-[10px] text-slate-300">
+                <div className="text-[10px] text-slate-600 font-medium">
                   {data.advisory.isMissionFeasible ? 'Exceeds standard 20% flight safety reserve' : 'RUL lower than mission flight plan!'}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Subsystems Matrix (Rule 11) */}
-          <div className="starship-glass rounded-xl border border-white/[0.08] p-4 shadow-starship-glass">
-            <h3 className="font-display font-black text-xs text-slate-200 flex items-center gap-2 border-b border-white/[0.08] pb-3 mb-3">
-              <Layers className="w-4 h-4 text-cyan-400" />
+          {/* Subsystems Matrix */}
+          <div className="gcs-panel rounded-lg border border-slate-200 bg-white p-3.5 shadow-xs">
+            <h3 className="font-mono text-xs font-bold tracking-wider text-slate-900 uppercase flex items-center gap-2 border-b border-slate-100 pb-2.5 mb-3">
+              <Layers className="w-4 h-4 text-sky-600" />
               DIGITAL TWIN SUBSYSTEM DEGRADATION INDEX (0 - 100)
             </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
               {Object.entries(data.degradation.subsystems || {}).map(([name, val]) => (
-                <div key={name} className="starship-glass-card p-3 rounded-xl border border-white/[0.08] flex flex-col justify-between">
-                  <span className="text-[10px] font-mono text-slate-400 uppercase font-bold">{name}</span>
-                  <div className={`text-xl font-black font-display my-1 ${
-                    val > 50 ? 'text-red-400 glow-red' : val > 20 ? 'text-amber-400 glow-amber' : 'text-emerald-400 glow-green'
+                <div key={name} className="gcs-card p-2.5 rounded-lg border border-slate-200 bg-white flex flex-col justify-between shadow-xs">
+                  <span className="text-[10px] font-mono text-slate-500 uppercase font-bold">{name}</span>
+                  <div className={`text-lg font-mono font-bold my-1 tabular-nums ${
+                    val > 50 ? 'text-red-600' : val > 20 ? 'text-amber-600' : 'text-emerald-600'
                   }`}>
                     {val}%
                   </div>
-                  <div className="w-full bg-slate-900/90 h-1.5 rounded-full overflow-hidden border border-white/[0.06]">
+                  <div className="w-full bg-slate-100 h-1.5 rounded overflow-hidden border border-slate-200">
                     <div 
-                      className={`h-full transition-all duration-500 ${val > 50 ? 'bg-red-500' : val > 20 ? 'bg-amber-500' : 'bg-emerald-400'}`}
+                      className={`h-full transition-all duration-300 ${val > 50 ? 'bg-red-500' : val > 20 ? 'bg-amber-500' : 'bg-emerald-500'}`}
                       style={{ width: `${val}%` }}
                     />
                   </div>

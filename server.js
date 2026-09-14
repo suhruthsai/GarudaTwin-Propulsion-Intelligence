@@ -8,6 +8,179 @@ import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
+import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
+import path from 'path';
+import fs from 'fs';
+
+// FCS modules (ESM)
+import { FlightDynamics6DOF, atmosphere, rad2deg } from './src/flight_controller/FlightDynamics6DOF.js';
+import { CascadedAutopilot, FLIGHT_MODE }           from './src/flight_controller/CascadedAutopilot.js';
+import { FadecFlightInterlock }                      from './src/flight_controller/FadecFlightInterlock.js';
+import { TotalEnergyControlSystem }                  from './src/flight_controller/TotalEnergyControlSystem.js';
+
+// SQLite (CommonJS via createRequire)
+const _require = createRequire(import.meta.url);
+const Database  = _require('better-sqlite3');
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
+
+// ── Database initialisation ───────────────────────────────────
+const DB_DIR = path.join(__dirname, 'data');
+if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
+const db = new Database(path.join(DB_DIR, 'garudatwin.db'));
+db.pragma('journal_mode = WAL');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS sorties (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    uav_id       TEXT    NOT NULL DEFAULT 'Vahak-1',
+    start_time   INTEGER NOT NULL,
+    end_time     INTEGER,
+    initial_alt  REAL,
+    final_alt    REAL,
+    distance_km  REAL    DEFAULT 0,
+    notes        TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS fcs_telemetry (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    sortie_id    INTEGER REFERENCES sorties(id),
+    ts           INTEGER NOT NULL,
+    roll_deg     REAL, pitch_deg REAL, heading_deg REAL,
+    ias_kts      REAL,  tas_kts   REAL,
+    alt_ft       REAL,  vsi_fpm   REAL,
+    alpha_deg    REAL,  beta_deg  REAL,
+    north_m      REAL,  east_m    REAL,
+    nz           REAL,  mach      REAL,
+    ap_mode      TEXT,  throttle_pct REAL
+  );
+
+  CREATE TABLE IF NOT EXISTS control_surfaces (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    sortie_id    INTEGER REFERENCES sorties(id),
+    ts           INTEGER NOT NULL,
+    elevator_deg REAL, aileron_deg REAL,
+    rudder_deg   REAL, flap_deg    REAL,
+    throttle_pct REAL, speed_brake INTEGER,
+    thrust_n     REAL
+  );
+
+  CREATE TABLE IF NOT EXISTS autopilot_guidance (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    sortie_id    INTEGER REFERENCES sorties(id),
+    ts           INTEGER NOT NULL,
+    mode         TEXT,  armed INTEGER,
+    alt_sp       REAL,  ias_sp REAL, heading_sp REAL,
+    tecs_iE      REAL,  tecs_iB REAL,
+    glide_range  REAL
+  );
+
+  CREATE TABLE IF NOT EXISTS emergency_events (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    sortie_id    INTEGER REFERENCES sorties(id),
+    ts           INTEGER NOT NULL,
+    event_type   TEXT,
+    health_pct   REAL, ias_kts REAL, alt_ft REAL,
+    north_m      REAL, east_m  REAL,
+    annunciators TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_fcs_ts       ON fcs_telemetry(ts);
+  CREATE INDEX IF NOT EXISTS idx_surfaces_ts  ON control_surfaces(ts);
+  CREATE INDEX IF NOT EXISTS idx_autopilot_ts ON autopilot_guidance(ts);
+  CREATE INDEX IF NOT EXISTS idx_emergency_ts ON emergency_events(ts);
+`);
+
+// Create opening sortie record
+const _stmtOpenSortie = db.prepare(`INSERT INTO sorties (uav_id, start_time, initial_alt) VALUES (?,?,?)`);
+const activeSortieId  = _stmtOpenSortie.run('Vahak-1', Date.now(), 4419.6).lastInsertRowid;
+
+// Prepared insert statements
+const _insFcs = db.prepare(`
+  INSERT INTO fcs_telemetry
+  (sortie_id,ts,roll_deg,pitch_deg,heading_deg,ias_kts,tas_kts,alt_ft,vsi_fpm,alpha_deg,beta_deg,north_m,east_m,nz,mach,ap_mode,throttle_pct)
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+`);
+const _insSurf = db.prepare(`
+  INSERT INTO control_surfaces
+  (sortie_id,ts,elevator_deg,aileron_deg,rudder_deg,flap_deg,throttle_pct,speed_brake,thrust_n)
+  VALUES (?,?,?,?,?,?,?,?,?)
+`);
+const _insGuide = db.prepare(`
+  INSERT INTO autopilot_guidance
+  (sortie_id,ts,mode,armed,alt_sp,ias_sp,heading_sp,tecs_iE,tecs_iB,glide_range)
+  VALUES (?,?,?,?,?,?,?,?,?,?)
+`);
+const _insEvent = db.prepare(`
+  INSERT INTO emergency_events (sortie_id,ts,event_type,health_pct,ias_kts,alt_ft,north_m,east_m,annunciators)
+  VALUES (?,?,?,?,?,?,?,?,?)
+`);
+
+const _batchWrite = db.transaction((rows) => {
+  for (const r of rows) {
+    _insFcs.run(...r.fcs);
+    _insSurf.run(...r.surf);
+    _insGuide.run(...r.guide);
+    if (r.event) _insEvent.run(...r.event);
+  }
+});
+
+let _dbBuf = [];
+function _bufferRow(fd, ctrl, apd, ilk, ts) {
+  _dbBuf.push({
+    fcs: [
+      activeSortieId, ts,
+      fd.roll_deg, fd.pitch_deg, fd.heading_deg,
+      fd.ias_kts,  fd.tas_kts,
+      fd.alt_ft,   fd.vsi_fpm,
+      fd.alpha_deg, fd.beta_deg,
+      fd.north_m, fd.east_m,
+      fd.Nz, fd.mach, ctrl.mode || 'ALT_HOLD', fd.throttle_pct,
+    ],
+    surf: [
+      activeSortieId, ts,
+      fd.elevator_deg, fd.aileron_deg,
+      fd.rudder_deg,   fd.flap_deg,
+      fd.throttle_pct, fd.speed_brake ? 1 : 0,
+      fd.thrust_N,
+    ],
+    guide: [
+      activeSortieId, ts,
+      apd.mode, apd.armed ? 1 : 0,
+      apd.sp?.alt_m ?? 4419.6,
+      apd.sp?.ias_ms ?? 56.6,
+      apd.sp?.heading_rad ?? 0,
+      apd.tecs?.int_total ?? 0,
+      apd.tecs?.int_balance ?? 0,
+      ilk?.glideRange ?? 0,
+    ],
+    event: null,
+  });
+}
+function _flushDb() {
+  if (!_dbBuf.length) return;
+  try { _batchWrite(_dbBuf); } catch (_) { /* ignore */ }
+  _dbBuf = [];
+}
+
+// ── FCS Instances ─────────────────────────────────────────────
+const fcs6dof   = new FlightDynamics6DOF();
+const autopilot = new CascadedAutopilot();
+const fadec     = new FadecFlightInterlock(autopilot);
+
+autopilot.arm();
+autopilot.setMode(FLIGHT_MODE.ALT_HOLD);
+autopilot.setAltitude(4419.6);    // 14500 ft in metres
+autopilot.setAirspeed(56.6);      // 110 kts in m/s
+
+// Shared FCS state (written by FCS tick, read by broadcast)
+let fcsState    = {};
+let fcsControls = { throttle:0.38, de:-0.045, da:0, dr:0, df:0, sb:false, mode:'ALT_HOLD' };
+let interlockOut = {};
+let _fcsTick    = 0;
+let _dbFlushTick = 0;
 
 const app = express();
 app.use(cors({
@@ -299,9 +472,72 @@ function updatePhysicsStep(dt = 0.01) {
   engineState.coolantTempC = parseFloat((88.5 + coolantOffset + generateGaussianNoise(0, 0.2)).toFixed(1));
 }
 
-// 100 Hz simulation loop (10ms)
+// 100 Hz engine physics loop (10 ms)
+// Every 2nd tick also runs the FCS at 50 Hz
 setInterval(() => {
   updatePhysicsStep(0.01);
+
+  _fcsTick++;
+  if (_fcsTick % 2 === 0) {
+    // ── FADEC interlock: compute derate from current engine health ──
+    const engineTelemetry = {
+      health:        (typeof fcsState.health_from_engine === 'number') ? fcsState.health_from_engine : 98,
+      rpm:           engineState.rpm,
+      egt_c:         engineState.egt[0],
+      fuelFlow_kgh:  engineState.fuelFlowLph * 0.72,  // lph → kg/h (avgas density ~0.72)
+      fuel_kg:       200 - missionState.missionTime * 0.0072,  // approximate fuel burn
+      combustionEff: engineState.lambda > 0 ? Math.min(1, engineState.lambda) : 0.95,
+      thrustN:       engineState.throttlePct * 18.0,  // approximate
+    };
+    const fcsDerived = Object.keys(fcsState).length ? fcsState : {
+      ias_kts: missionState.airspeedKts,
+      tas_ms:  missionState.airspeedKts / 1.94384,
+      alt_m:   missionState.altitudeFt * 0.3048,
+      Nz: 1.0, phi_rad: 0, rho: 1.225, north_m: 0, east_m: 0,
+    };
+
+    interlockOut = fadec.update(engineTelemetry, fcsDerived);
+
+    // Apply interlock overrides to autopilot
+    if (interlockOut.V_cmd_override) autopilot.setAirspeed(interlockOut.V_cmd_override);
+
+    // Compute autopilot control commands
+    const fcsInput = {
+      phi_rad:   (fcsState.roll_deg    ?? 0) * Math.PI / 180,
+      theta_rad: (fcsState.pitch_deg   ?? 2.87) * Math.PI / 180,
+      psi_rad:   (fcsState.heading_deg ?? 0) * Math.PI / 180,
+      p_rads:    (fcsState.p_dps       ?? 0) * Math.PI / 180,
+      q_rads:    (fcsState.q_dps       ?? 0) * Math.PI / 180,
+      r_rads:    (fcsState.r_dps       ?? 0) * Math.PI / 180,
+      tas_ms:    fcsState.tas_ms       ?? 56.6,
+      ias_ms:    fcsState.ias_ms       ?? 56.6,
+      alt_m:     fcsState.alt_m        ?? 4419.6,
+      vsi_ms:    fcsState.vsi_ms       ?? 0,
+      alpha_rad: (fcsState.alpha_deg   ?? 2.87) * Math.PI / 180,
+      beta_rad:  (fcsState.beta_deg    ?? 0) * Math.PI / 180,
+      north_m:   fcsState.north_m      ?? 0,
+      east_m:    fcsState.east_m       ?? 0,
+    };
+
+    const ctrlCmd = autopilot.update(fcsInput, engineTelemetry.health);
+    fcsControls = ctrlCmd;
+
+    // Run 6-DOF dynamics step with new control commands
+    const derived = fcs6dof.step(ctrlCmd, engineTelemetry.health);
+    fcsState = { ...derived };
+    fcsState.health_from_engine = engineTelemetry.health;
+
+    // Buffer to DB every 10 FCS ticks (~5 Hz)
+    _dbFlushTick++;
+    if (_dbFlushTick % 10 === 0) {
+      const apDiag = autopilot.getDiagnostics();
+      const glideRange = derived.alt_m > 0
+        ? autopilot.getGlideRange(derived.alt_m, derived.rho)
+        : 0;
+      _bufferRow(derived, ctrlCmd, apDiag, { ...interlockOut, glideRange }, Date.now());
+    }
+    if (_dbFlushTick % 50 === 0) _flushDb();  // flush every ~1 s
+  }
 }, 10);
 
 // Broadcast full telemetry packet to connected clients at 20 Hz (50ms) for high-framerate rendering
@@ -350,6 +586,25 @@ setInterval(() => {
     }
   }
 
+  // Feed current engine health to FCS health tracker
+  if (faultState.activeFault !== 'NONE') {
+    fcsState.health_from_engine = parseFloat(healthIndex.toFixed(1));
+  } else {
+    fcsState.health_from_engine = 98.0;
+  }
+
+  // Synchronize missionState with 6-DOF dynamic kinematics
+  if (fcsState.alt_ft !== undefined) {
+    missionState.altitudeFt = Math.round(fcsState.alt_ft);
+    missionState.airspeedKts = parseFloat((fcsState.ias_kts ?? 110).toFixed(1));
+    missionState.headingDeg = parseFloat((fcsState.heading_deg ?? 0).toFixed(1));
+    missionState.missionPhase = fcsControls.mode ?? missionState.missionPhase;
+    missionState.lat = 26.4500 + (fcsState.north_m ?? 0) / 111320;
+    missionState.lon = 70.5200 + (fcsState.east_m ?? 0) / (111320 * Math.cos(26.45 * Math.PI / 180));
+    missionState.north_m = fcsState.north_m ?? 0;
+    missionState.east_m = fcsState.east_m ?? 0;
+  }
+
   const payload = {
     timestamp: Date.now(),
     mission: missionState,
@@ -363,10 +618,74 @@ setInterval(() => {
       severity: faultState.severity
     },
     fleetState: fleetState,
-    canBusFrames: binaryCanFrames
+    canBusFrames: binaryCanFrames,
+    // ── FCS data appended to every telemetry frame ──────────
+    fcs: {
+      // Attitude & kinematics
+      roll_deg:     fcsState.roll_deg    ?? 0,
+      pitch_deg:    fcsState.pitch_deg   ?? 2.87,
+      heading_deg:  fcsState.heading_deg ?? 0,
+      ias_kts:      fcsState.ias_kts     ?? 110,
+      tas_kts:      fcsState.tas_kts     ?? 110,
+      alt_ft:       fcsState.alt_ft      ?? 14500,
+      vsi_fpm:      fcsState.vsi_fpm     ?? 0,
+      mach:         fcsState.mach        ?? 0.167,
+      alpha_deg:    fcsState.alpha_deg   ?? 2.87,
+      beta_deg:     fcsState.beta_deg    ?? 0,
+      Nz:           fcsState.Nz          ?? 1.0,
+      north_m:      fcsState.north_m     ?? 0,
+      east_m:       fcsState.east_m      ?? 0,
+      // Angular rates
+      p_dps:        fcsState.p_dps       ?? 0,
+      q_dps:        fcsState.q_dps       ?? 0,
+      r_dps:        fcsState.r_dps       ?? 0,
+      // Aero
+      CL:           fcsState.CL          ?? 0.28,
+      CD:           fcsState.CD          ?? 0.02,
+      LD:           fcsState.LD          ?? 14.0,
+      // Control surfaces
+      elevator_deg: fcsState.elevator_deg ?? -2.58,
+      aileron_deg:  fcsState.aileron_deg  ?? 0,
+      rudder_deg:   fcsState.rudder_deg   ?? 0,
+      flap_deg:     fcsState.flap_deg     ?? 0,
+      throttle_pct: fcsState.throttle_pct ?? 38,
+      speed_brake:  fcsState.speed_brake  ?? false,
+      thrust_N:     fcsState.thrust_N     ?? 684,
+      // Autopilot
+      ap_mode:          fcsControls.mode      ?? 'ALT_HOLD',
+      ap_armed:         autopilot.armed,
+      alt_sp_ft:        Math.round(autopilot.sp.alt_m * 3.28084),
+      ias_sp_kts:       Math.round(autopilot.sp.ias_ms * 1.94384),
+      heading_sp_deg:   Math.round(((autopilot.sp.heading_rad * 180 / Math.PI) % 360 + 360) % 360),
+      thrust_factor:    interlockOut.thrustFactor ?? 1.0,
+      authority_factor: interlockOut.authorityFactor ?? 1.0,
+      // FADEC interlock
+      engine_derate:    interlockOut.deRateLabel     ?? 'NOMINAL',
+      stall_warn:       interlockOut.annunciators?.STALL_WARN     ?? false,
+      overspeed_warn:   interlockOut.annunciators?.OVERSPEED      ?? false,
+      engine_out:       interlockOut.annunciators?.ENGINE_OUT     ?? false,
+      g_limit_active:   interlockOut.annunciators?.G_LIMIT        ?? false,
+      fuel_bingo:       interlockOut.annunciators?.FUEL_BINGO     ?? false,
+      // TECS diagnostics
+      tecs_E:           0,
+      tecs_E_sp:        0,
+      // Glide range
+      glide_range_m: (fcsState.alt_m && fcsState.alt_m > 0)
+        ? autopilot.getGlideRange(fcsState.alt_m, fcsState.rho ?? 1.225)
+        : 0,
+      // Waypoint tracking
+      wp_idx:       autopilot.sp?.wp_idx ?? 0,
+      total_wps:    autopilot.sp?.waypoints?.length ?? 0,
+      target_wp:    autopilot.sp?.waypoints?.[autopilot.sp?.wp_idx] ?? null,
+      waypoints:    autopilot.sp?.waypoints ?? [],
+      // FCS time
+      fcs_time_s:   fcsState.time_s ?? 0,
+    },
   };
 
   io.emit('telemetry_frame', payload);
+  // Dedicated FCS channel for lightweight subscribers (PFD, etc.)
+  io.emit('fcs_frame', payload.fcs);
 }, 50);
 
 // Socket.io Event Handling
@@ -408,6 +727,73 @@ io.on('connection', (socket) => {
     if (data.airspeedKts !== undefined) missionState.airspeedKts = data.airspeedKts;
     if (data.targetRpm !== undefined) engineState.rpm = data.targetRpm;
     if (data.throttlePct !== undefined) engineState.throttlePct = data.throttlePct;
+  });
+
+  // ── FCS / Autopilot control events ──────────────────────────
+  socket.on('fcs_set_mode', (data) => {
+    const { mode } = data;
+    if (mode) { autopilot.setMode(mode); console.log(`[FCS] Mode set to: ${mode}`); }
+    io.emit('fcs_mode_changed', { mode: autopilot.mode, armed: autopilot.armed });
+  });
+
+  socket.on('fcs_arm', () => {
+    autopilot.arm();
+    io.emit('fcs_mode_changed', { mode: autopilot.mode, armed: true });
+  });
+
+  socket.on('fcs_disarm', () => {
+    autopilot.disarm();
+    io.emit('fcs_mode_changed', { mode: 'MANUAL_FBW', armed: false });
+  });
+
+  socket.on('fcs_set_altitude', (data) => {
+    if (data.alt_ft !== undefined) autopilot.setAltitude(data.alt_ft * 0.3048);
+    else if (data.alt_m !== undefined) autopilot.setAltitude(data.alt_m);
+    autopilot.arm();
+    if (autopilot.mode === 'MANUAL_FBW') autopilot.setMode('ALT_HOLD');
+  });
+
+  socket.on('fcs_set_airspeed', (data) => {
+    if (data.ias_kts !== undefined) autopilot.setAirspeed(data.ias_kts / 1.94384);
+    else if (data.ias_ms !== undefined) autopilot.setAirspeed(data.ias_ms);
+    autopilot.arm();
+  });
+
+  socket.on('fcs_set_heading', (data) => {
+    if (data.heading_deg !== undefined) autopilot.setHeading(data.heading_deg * Math.PI / 180);
+    else if (data.heading_rad !== undefined) autopilot.setHeading(data.heading_rad);
+    autopilot.arm();
+    if (autopilot.mode === 'AUTO_MISSION' || autopilot.mode === 'MANUAL_FBW') {
+      autopilot.setMode('ALT_HOLD');
+      io.emit('fcs_mode_changed', { mode: 'ALT_HOLD', armed: true });
+    }
+  });
+
+  socket.on('fcs_load_waypoints', (data) => {
+    if (Array.isArray(data.waypoints)) {
+      autopilot.loadWaypoints(data.waypoints);
+      autopilot.arm();
+      autopilot.setMode('AUTO_MISSION');
+      console.log(`[FCS] Loaded ${data.waypoints.length} waypoints and activated AUTO_MISSION`);
+      io.emit('fcs_mode_changed', { mode: 'AUTO_MISSION', armed: true });
+    }
+  });
+
+  socket.on('fcs_set_loiter', (data) => {
+    autopilot.setLoiter(data.north ?? 0, data.east ?? 0, data.radius_m ?? 2000, data.cw ?? true);
+  });
+
+  socket.on('fcs_fbw_input', (data) => {
+    autopilot.setFBW(data.roll ?? 0, data.pitch ?? 0, data.yaw ?? 0, data.throttle ?? 0.38);
+  });
+
+  socket.on('fcs_reset', () => {
+    fcs6dof.reset();
+    fadec.resetFlameout();
+    autopilot.arm();
+    autopilot.setMode(FLIGHT_MODE.ALT_HOLD);
+    fcsState = {};
+    console.log('[FCS] Full reset performed');
   });
 
   socket.on('disconnect', () => {
@@ -496,6 +882,7 @@ app.post('/api/rl-replan', async (req, res) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req.body || {})
     });
+    if (!aiRes.ok) throw new Error(`Python AI returned HTTP ${aiRes.status}`);
     const data = await aiRes.json();
     return res.json(data);
   } catch (error) {
@@ -505,11 +892,16 @@ app.post('/api/rl-replan', async (req, res) => {
       current_lng = 70.5200,
       altitude_ft = 14500.0,
       engine_health_index = 98.5,
-      rul_hours = 842.0
+      rul_hours = 842.0,
+      target_field_id = null,
+      mode = "AUTO"
     } = req.body || {};
 
-    const home_base = { name: "AFS Uttarlai (Barmer)", lat: 25.8117, lng: 71.4883, alt_ft: 500 };
-    const emergency_strip = { name: "AFS Jaisalmer Forward Base", lat: 26.8897, lng: 70.8653, alt_ft: 825 };
+    const airfields = [
+      { id: "AFS_UTTARLAI", name: "AFS Uttarlai (Barmer)", short_name: "AFS Uttarlai", lat: 25.8117, lng: 71.4883, alt_ft: 500, type: "PRIMARY" },
+      { id: "AFS_JAISALMER", name: "AFS Jaisalmer Forward Base", short_name: "AFS Jaisalmer", lat: 26.8897, lng: 70.8653, alt_ft: 825, type: "DIVERT" },
+      { id: "POKHRAN_ALG", name: "Pokhran Advanced Landing Ground (Emergency Strip 09)", short_name: "Pokhran ALG", lat: 26.9200, lng: 71.7500, alt_ft: 720, type: "EMERGENCY_GLIDE" }
+    ];
 
     const toRad = deg => (deg * Math.PI) / 180;
     const calcDistNm = (lat1, lon1, lat2, lon2) => {
@@ -520,24 +912,39 @@ app.post('/api/rl-replan', async (req, res) => {
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     };
 
-    const distHome = calcDistNm(current_lat, current_lng, home_base.lat, home_base.lng);
-    const distAux = calcDistNm(current_lat, current_lng, emergency_strip.lat, emergency_strip.lng);
+    const candidates = airfields.map(f => ({
+      ...f,
+      dist_nm: Number(calcDistNm(current_lat, current_lng, f.lat, f.lng).toFixed(1))
+    })).sort((a, b) => a.dist_nm - b.dist_nm);
 
-    const requiresDivert = rul_hours < 2.0 || engine_health_index < 40.0;
-    const targetDest = (requiresDivert && distAux < distHome) ? emergency_strip : (requiresDivert ? emergency_strip : home_base);
-    const targetDist = targetDest === emergency_strip ? distAux : distHome;
+    const isSim = mode === "FORCE_SIMULATION";
+    const isPreview = mode === "CONTINGENCY_PREVIEW";
+    const isCrit = rul_hours < 2.0 || engine_health_index < 40.0;
+    const requiresDivert = isCrit || isSim;
+    const isDegraded = !requiresDivert && (engine_health_index < 75.0 || rul_hours < 50.0 || isPreview);
+
+    let targetDest = null;
+    if (target_field_id && target_field_id !== "AUTO") {
+      targetDest = candidates.find(f => f.id === target_field_id) || candidates[0];
+    } else if (requiresDivert || isDegraded) {
+      targetDest = candidates[0];
+    } else {
+      targetDest = candidates.find(f => f.id === "AFS_UTTARLAI") || candidates[0];
+    }
+
+    const targetDist = targetDest.dist_nm;
 
     let recThrottle = 78.0;
     let recRpm = 4850;
     let recClimbFpm = 0;
     let speedKts = 115.0;
 
-    if (engine_health_index < 40.0) {
+    if (requiresDivert) {
       recThrottle = 58.0;
       recRpm = 4200;
       recClimbFpm = -350;
       speedKts = 95.0;
-    } else if (engine_health_index < 75.0) {
+    } else if (isDegraded) {
       recThrottle = 68.0;
       recRpm = 4600;
       recClimbFpm = -200;
@@ -545,35 +952,249 @@ app.post('/api/rl-replan', async (req, res) => {
     }
 
     const flightTimeMin = Math.max(0.1, (targetDist / speedKts) * 60.0);
-    const safetyMargin = Number((rul_hours / (flightTimeMin / 60.0)).toFixed(2));
+    const flightTimeHrs = flightTimeMin / 60.0;
+    const safetyMargin = Number((Math.max(0, rul_hours) / Math.max(0.01, flightTimeHrs)).toFixed(2));
 
     const waypoints = [];
     const numWp = 4;
+    const wpNames = ["CURRENT_POS", "GLIDE_INTERCEPT", "DESCENT_MID", "APPROACH_GATE", "TOUCHDOWN"];
     for (let i = 0; i <= numWp; i++) {
       const frac = i / numWp;
       waypoints.push({
         wp_id: `RTB-${i + 1}`,
+        name: requiresDivert ? wpNames[i] : `WP-${i + 1}`,
         lat: Number((current_lat + frac * (targetDest.lat - current_lat)).toFixed(4)),
         lng: Number((current_lng + frac * (targetDest.lng - current_lng)).toFixed(4)),
         altitude_ft: Math.round(altitude_ft - frac * (altitude_ft - targetDest.alt_ft)),
-        commanded_airspeed_kts: speedKts
+        commanded_airspeed_kts: i === numWp ? 72.0 : speedKts,
+        dist_remaining_nm: Number((targetDist * (1.0 - frac)).toFixed(1)),
+        eta_min: Number((flightTimeMin * frac).toFixed(1))
       });
     }
 
     return res.json({
       action: requiresDivert ? "EMERGENCY_DIVERT_RTB" : "DERATE_AND_CONTINUE_MISSION",
       target_recovery_field: targetDest.name,
-      distance_to_field_nm: Number(targetDist.toFixed(1)),
+      target_field_id: targetDest.id,
+      distance_to_field_nm: targetDist,
       estimated_flight_time_minutes: Number(flightTimeMin.toFixed(1)),
       rul_safety_margin_factor: safetyMargin,
       rl_control_commands: {
         recommended_throttle_pct: recThrottle,
         recommended_rpm: recRpm,
         recommended_vertical_speed_fpm: recClimbFpm,
-        fuel_flow_target_lph: recThrottle < 65 ? 18.5 : 25.0
+        fuel_flow_target_lph: recThrottle < 65 ? 18.5 : (recThrottle < 75 ? 22.0 : 25.0),
+        commanded_airspeed_kts: speedKts
       },
-      optimized_rtb_flight_plan: waypoints
+      optimized_rtb_flight_plan: waypoints,
+      all_candidate_fields: candidates
     });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+// DATABASE REST ENDPOINTS
+// ══════════════════════════════════════════════════════════════
+
+// GET /api/database/sorties  — list all flight sorties
+app.get('/api/database/sorties', (req, res) => {
+  try {
+    const rows = db.prepare('SELECT * FROM sorties ORDER BY start_time DESC LIMIT 50').all();
+    res.json({ success: true, sorties: rows, active_sortie_id: activeSortieId });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/database/fcs/:sortie_id?limit=200  — FCS telemetry for a sortie
+app.get('/api/database/fcs/:sortie_id', (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 200, 2000);
+    const rows = db.prepare(
+      'SELECT * FROM fcs_telemetry WHERE sortie_id=? ORDER BY ts DESC LIMIT ?'
+    ).all(req.params.sortie_id, limit);
+    res.json({ success: true, count: rows.length, data: rows.reverse() });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/database/surfaces/:sortie_id  — control surfaces history
+app.get('/api/database/surfaces/:sortie_id', (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 200, 2000);
+    const rows = db.prepare(
+      'SELECT * FROM control_surfaces WHERE sortie_id=? ORDER BY ts DESC LIMIT ?'
+    ).all(req.params.sortie_id, limit);
+    res.json({ success: true, count: rows.length, data: rows.reverse() });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/database/emergency/:sortie_id  — emergency events
+app.get('/api/database/emergency/:sortie_id', (req, res) => {
+  try {
+    const rows = db.prepare(
+      'SELECT * FROM emergency_events WHERE sortie_id=? ORDER BY ts ASC'
+    ).all(req.params.sortie_id);
+    res.json({ success: true, count: rows.length, events: rows });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/database/export/csv/:sortie_id  — export FCS telemetry as CSV
+app.get('/api/database/export/csv/:sortie_id', (req, res) => {
+  try {
+    const rows = db.prepare(
+      'SELECT * FROM fcs_telemetry WHERE sortie_id=? ORDER BY ts ASC'
+    ).all(req.params.sortie_id);
+    if (!rows.length) { res.status(404).json({ error: 'No data for sortie' }); return; }
+    const headers = Object.keys(rows[0]).join(',');
+    const lines   = rows.map(r => Object.values(r).join(','));
+    const csv     = [headers, ...lines].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="sortie_${req.params.sortie_id}_fcs.csv"`);
+    res.send(csv);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/database/stats  — database statistics
+app.get('/api/database/stats', (req, res) => {
+  try {
+    const stats = {
+      sorties:    db.prepare('SELECT COUNT(*) as n FROM sorties').get().n,
+      fcs_rows:   db.prepare('SELECT COUNT(*) as n FROM fcs_telemetry').get().n,
+      surf_rows:  db.prepare('SELECT COUNT(*) as n FROM control_surfaces').get().n,
+      events:     db.prepare('SELECT COUNT(*) as n FROM emergency_events').get().n,
+      active_sortie: activeSortieId,
+      db_file: path.join(DB_DIR, 'garudatwin.db'),
+    };
+    res.json({ success: true, stats });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Autopilot REST control (for judge sandbox/external control) ──
+
+// POST /api/fcs/mode  — set autopilot mode
+app.post('/api/fcs/mode', (req, res) => {
+  const { mode } = req.body;
+  if (!mode) { res.status(400).json({ error: 'mode required' }); return; }
+  autopilot.setMode(mode);
+  res.json({ success: true, mode: autopilot.mode });
+});
+
+// POST /api/fcs/arm  — arm autopilot
+app.post('/api/fcs/arm', (req, res) => {
+  autopilot.arm();
+  io.emit('fcs_mode_changed', { mode: autopilot.mode, armed: true });
+  res.json({ success: true, armed: true, mode: autopilot.mode });
+});
+
+// POST /api/fcs/disarm  — disarm autopilot to manual FBW
+app.post('/api/fcs/disarm', (req, res) => {
+  autopilot.disarm();
+  io.emit('fcs_mode_changed', { mode: 'MANUAL_FBW', armed: false });
+  res.json({ success: true, armed: false, mode: 'MANUAL_FBW' });
+});
+
+// POST /api/fcs/altitude  — set altitude setpoint (ft or m)
+app.post('/api/fcs/altitude', (req, res) => {
+  const { alt_ft, alt_m } = req.body;
+  if (alt_ft !== undefined) autopilot.setAltitude(alt_ft * 0.3048);
+  else if (alt_m !== undefined) autopilot.setAltitude(alt_m);
+  else { res.status(400).json({ error: 'alt_ft or alt_m required' }); return; }
+  autopilot.arm();
+  if (autopilot.mode === 'MANUAL_FBW') autopilot.setMode('ALT_HOLD');
+  res.json({ success: true, alt_m: autopilot.sp.alt_m, alt_ft: autopilot.sp.alt_m * 3.28084 });
+});
+
+// POST /api/fcs/airspeed  — set airspeed setpoint (kts or m/s)
+app.post('/api/fcs/airspeed', (req, res) => {
+  const { ias_kts, ias_ms } = req.body;
+  if (ias_kts !== undefined) autopilot.setAirspeed(ias_kts / 1.94384);
+  else if (ias_ms !== undefined) autopilot.setAirspeed(ias_ms);
+  else { res.status(400).json({ error: 'ias_kts or ias_ms required' }); return; }
+  autopilot.arm();
+  res.json({ success: true, ias_ms: autopilot.sp.ias_ms, ias_kts: autopilot.sp.ias_ms * 1.94384 });
+});
+
+// POST /api/fcs/heading  — set heading setpoint (deg or rad)
+app.post('/api/fcs/heading', (req, res) => {
+  const { heading_deg, heading_rad } = req.body;
+  if (heading_deg !== undefined) autopilot.setHeading(heading_deg * Math.PI / 180);
+  else if (heading_rad !== undefined) autopilot.setHeading(heading_rad);
+  else { res.status(400).json({ error: 'heading_deg or heading_rad required' }); return; }
+  autopilot.arm();
+  if (autopilot.mode === 'AUTO_MISSION' || autopilot.mode === 'MANUAL_FBW') {
+    autopilot.setMode('ALT_HOLD');
+    io.emit('fcs_mode_changed', { mode: 'ALT_HOLD', armed: true });
+  }
+  const hdgDeg = Math.round(((autopilot.sp.heading_rad * 180 / Math.PI) % 360 + 360) % 360);
+  res.json({ success: true, heading_deg: hdgDeg, heading_rad: autopilot.sp.heading_rad });
+});
+
+// POST /api/fcs/waypoints  — load mission waypoints
+app.post('/api/fcs/waypoints', (req, res) => {
+  const { waypoints } = req.body;
+  if (!Array.isArray(waypoints)) { res.status(400).json({ error: 'waypoints array required' }); return; }
+  autopilot.loadWaypoints(waypoints);
+  autopilot.arm();
+  autopilot.setMode('AUTO_MISSION');
+  io.emit('fcs_mode_changed', { mode: 'AUTO_MISSION', armed: true });
+  res.json({ success: true, count: waypoints.length, mode: 'AUTO_MISSION' });
+});
+
+// GET /api/fcs/status  — live autopilot diagnostic snapshot
+app.get('/api/fcs/status', (req, res) => {
+  res.json({
+    success: true,
+    autopilot: autopilot.getDiagnostics(),
+    fcs_state: fcsState,
+    interlock: interlockOut,
+    controls: fcsControls,
+    sortie_id: activeSortieId,
+  });
+});
+
+// GET /api/fcs/trim  — compute trim for given conditions
+app.get('/api/fcs/trim', (req, res) => {
+  const alt_m   = parseFloat(req.query.alt_ft ?? 14500) * 0.3048;
+  const ias_kts = parseFloat(req.query.ias_kts ?? 110);
+  try {
+    const trim = FlightDynamics6DOF.computeTrim(alt_m, ias_kts);
+    res.json({ success: true, trim });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/fcs/reset  — reset FCS to trimmed level flight cruise
+app.post('/api/fcs/reset', (req, res) => {
+  try {
+    fcs6dof.reset();
+    fadec.resetFlameout();
+    autopilot.arm();
+    autopilot.setMode(FLIGHT_MODE.ALT_HOLD);
+    fcsState = {};
+    res.json({ success: true, message: 'FCS reset to nominal cruise' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/fcs/emergency-glide  — trigger emergency glide protocol
+app.post('/api/fcs/emergency-glide', (req, res) => {
+  try {
+    autopilot.triggerEmergency(fcsState.north_m ?? 0, fcsState.east_m ?? 0, fcsState.alt_m ?? 4419.6, null);
+    res.json({ success: true, mode: autopilot.mode });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -582,5 +1203,7 @@ server.listen(PORT, () => {
   console.log(`=======================================================`);
   console.log(`🚀 MALE UAV Digital Twin Telemetry Engine Running on Port ${PORT}`);
   console.log(`📡 100 Hz CAN Bus Emulator Active (IDs 0x100, 0x200, 0x210, 0x300)`);
+  console.log(`✈️  50 Hz 6-DOF Flight Controller Active (TECS + L1 + Cascaded PID)`);
+  console.log(`🗄️  SQLite Database: data/garudatwin.db (Sortie #${activeSortieId})`);
   console.log(`=======================================================`);
 });

@@ -218,14 +218,16 @@ class ShapExplanationResponse(BaseModel):
 
 
 class RlReplanRequest(BaseModel):
-    current_lat: float = Field(default=32.85)
-    current_lng: float = Field(default=-116.45)
+    current_lat: float = Field(default=26.4500)
+    current_lng: float = Field(default=70.5200)
     altitude_ft: float = Field(default=14500.0)
     fuel_remaining_liters: float = Field(default=84.0)
-    engine_health_index: float = Field(default=48.0)
-    rul_hours: float = Field(default=1.8)
+    engine_health_index: float = Field(default=98.0)
+    rul_hours: float = Field(default=850.0)
     wind_heading_deg: float = Field(default=240.0)
     wind_speed_kts: float = Field(default=18.0)
+    target_field_id: Optional[str] = Field(default=None)
+    mode: Optional[str] = Field(default="AUTO")
 
 
 # ---------------------------------------------------------
@@ -444,14 +446,18 @@ def explain_shap(telemetry: TelemetryInput):
 
 
 @app.post("/rl-replan")
+@app.post("/api/rl-replan")
 def rl_mission_replan(req: RlReplanRequest):
     """
     Closed-Loop Reinforcement Learning Policy for Autonomous Return-to-Base (RTB)
     and Engine Stress Derating Optimization.
     """
-    # Home Base Airfield (Indo-Pak Border Western Theater)
-    home_base = {"name": "AFS Uttarlai (Barmer)", "lat": 25.8117, "lng": 71.4883, "alt_ft": 500}
-    emergency_strip = {"name": "AFS Jaisalmer Forward Base", "lat": 26.8897, "lng": 70.8653, "alt_ft": 825}
+    # Candidate Recovery Airfields (Indo-Pak Border Western Theater)
+    airfields = [
+        {"id": "AFS_UTTARLAI", "name": "AFS Uttarlai (Barmer)", "short_name": "AFS Uttarlai", "lat": 25.8117, "lng": 71.4883, "alt_ft": 500, "type": "PRIMARY"},
+        {"id": "AFS_JAISALMER", "name": "AFS Jaisalmer Forward Base", "short_name": "AFS Jaisalmer", "lat": 26.8897, "lng": 70.8653, "alt_ft": 825, "type": "DIVERT"},
+        {"id": "POKHRAN_ALG", "name": "Pokhran Advanced Landing Ground (Emergency Strip 09)", "short_name": "Pokhran ALG", "lat": 26.9200, "lng": 71.7500, "alt_ft": 720, "type": "EMERGENCY_GLIDE"}
+    ]
 
     # Haversine distance
     def calc_dist_nm(lat1, lon1, lat2, lon2):
@@ -462,53 +468,84 @@ def rl_mission_replan(req: RlReplanRequest):
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
         return R * c
 
-    dist_home_nm = calc_dist_nm(req.current_lat, req.current_lng, home_base["lat"], home_base["lng"])
-    dist_aux_nm = calc_dist_nm(req.current_lat, req.current_lng, emergency_strip["lat"], emergency_strip["lng"])
-
-    # RL Policy Decision
-    requires_emergency_divert = req.rul_hours < 1.2 or req.engine_health_index < 35.0
+    candidates = []
+    for f in airfields:
+        d = calc_dist_nm(req.current_lat, req.current_lng, f["lat"], f["lng"])
+        candidates.append({**f, "dist_nm": round(d, 1)})
     
-    # Recommended throttle derate to preserve remaining engine fatigue cycles
-    if req.engine_health_index < 40.0:
-        recommended_throttle_pct = 58.0 # Minimum cruise power to maintain airspeed
-        recommended_rpm = 4200
-        recommended_climb_fpm = -350 # Gliding descent profile
-        target_destination = emergency_strip if dist_aux_nm < dist_home_nm else home_base
-    elif req.engine_health_index < 70.0:
-        recommended_throttle_pct = 68.0
-        recommended_rpm = 4600
-        recommended_climb_fpm = -200
-        target_destination = home_base
+    # Sort candidate fields by distance from current UAV position
+    by_dist = sorted(candidates, key=lambda x: x["dist_nm"])
+
+    # RL Policy Decision Trigger
+    is_sim = req.mode == "FORCE_SIMULATION"
+    is_preview = req.mode == "CONTINGENCY_PREVIEW"
+    is_crit = req.rul_hours < 2.0 or req.engine_health_index < 40.0
+    requires_emergency_divert = is_crit or is_sim
+    is_degraded = (not requires_emergency_divert) and (req.engine_health_index < 75.0 or req.rul_hours < 50.0 or is_preview)
+
+    # Airfield Selection Strategy
+    if req.target_field_id and req.target_field_id != "AUTO":
+        target_destination = next((f for f in candidates if f["id"] == req.target_field_id), by_dist[0])
+    elif requires_emergency_divert:
+        # Emergency: Divert to nearest reachable runway immediately
+        target_destination = by_dist[0]
+    elif is_degraded:
+        # Degraded: Choose nearest base with recovery and maintenance facility
+        target_destination = by_dist[0]
     else:
-        recommended_throttle_pct = 78.0
+        # Nominal: Primary operational recovery base
+        target_destination = next((f for f in candidates if f["id"] == "AFS_UTTARLAI"), by_dist[0])
+
+    target_dist_nm = target_destination["dist_nm"]
+
+    # Recommended closed-loop FADEC throttle derate & descent profiles
+    if requires_emergency_divert:
+        action = "EMERGENCY_DIVERT_RTB"
+        recommended_throttle_pct = 58.0  # Minimum cruise power to sustain level/glide speed
+        recommended_rpm = 4200
+        recommended_climb_fpm = -350      # Gliding descent slope
+        commanded_speed = 95.0
+    elif is_degraded:
+        action = "DERATE_AND_CONTINUE_MISSION"
+        recommended_throttle_pct = 68.0  # Engine stress derate (protect turbo & valves)
+        recommended_rpm = 4600
+        recommended_climb_fpm = -200      # Controlled descent
+        commanded_speed = 105.0
+    else:
+        action = "DERATE_AND_CONTINUE_MISSION"
+        recommended_throttle_pct = 78.0  # Nominal cruise power
         recommended_rpm = 4850
         recommended_climb_fpm = 0
-        target_destination = home_base
+        commanded_speed = 115.0
 
     # Compute optimal trajectory waypoints
     num_wp = 4
     waypoints = []
+    flight_time_min = max(0.1, (target_dist_nm / max(1.0, commanded_speed)) * 60.0)
     for i in range(num_wp + 1):
         frac = i / float(num_wp)
         wp_lat = req.current_lat + frac * (target_destination["lat"] - req.current_lat)
         wp_lng = req.current_lng + frac * (target_destination["lng"] - req.current_lng)
         wp_alt = req.altitude_ft - frac * (req.altitude_ft - target_destination["alt_ft"])
+        wp_names = ["CURRENT_POS", "GLIDE_INTERCEPT", "DESCENT_MID", "APPROACH_GATE", "TOUCHDOWN"]
         waypoints.append({
             "wp_id": f"RTB-{i+1}",
+            "name": wp_names[i] if requires_emergency_divert else f"WP-{i+1}",
             "lat": round(wp_lat, 4),
             "lng": round(wp_lng, 4),
             "altitude_ft": round(wp_alt, 0),
-            "commanded_airspeed_kts": 95 if req.engine_health_index < 50 else 115
+            "commanded_airspeed_kts": 72.0 if i == num_wp else commanded_speed,
+            "dist_remaining_nm": round(target_dist_nm * (1.0 - frac), 1),
+            "eta_min": round(flight_time_min * frac, 1)
         })
 
-    target_dist_nm = dist_aux_nm if target_destination == emergency_strip else dist_home_nm
-    commanded_speed = 95.0 if req.engine_health_index < 50 else 115.0
-    flight_time_min = max(0.1, (target_dist_nm / commanded_speed) * 60.0)
-    safety_margin = round(req.rul_hours / (flight_time_min / 60.0), 2)
+    flight_time_hrs = flight_time_min / 60.0
+    safety_margin = round(max(0.0, req.rul_hours) / max(0.01, flight_time_hrs), 2)
 
     return {
-        "action": "EMERGENCY_DIVERT_RTB" if requires_emergency_divert else "DERATE_AND_CONTINUE_MISSION",
+        "action": action,
         "target_recovery_field": target_destination["name"],
+        "target_field_id": target_destination["id"],
         "distance_to_field_nm": round(target_dist_nm, 1),
         "estimated_flight_time_minutes": round(flight_time_min, 1),
         "rul_safety_margin_factor": safety_margin,
@@ -516,9 +553,11 @@ def rl_mission_replan(req: RlReplanRequest):
             "recommended_throttle_pct": recommended_throttle_pct,
             "recommended_rpm": recommended_rpm,
             "recommended_vertical_speed_fpm": recommended_climb_fpm,
-            "fuel_flow_target_lph": 18.5 if recommended_throttle_pct < 65 else 25.0
+            "fuel_flow_target_lph": 18.5 if recommended_throttle_pct < 65.0 else (22.0 if recommended_throttle_pct < 75.0 else 25.0),
+            "commanded_airspeed_kts": commanded_speed
         },
-        "optimized_rtb_flight_plan": waypoints
+        "optimized_rtb_flight_plan": waypoints,
+        "all_candidate_fields": candidates
     }
 
 

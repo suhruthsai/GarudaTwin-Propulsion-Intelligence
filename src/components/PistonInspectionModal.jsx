@@ -342,29 +342,29 @@ const PvIndicatorDiagram = ({ crankAngle, isBlowBy, rpm = 4800 }) => {
   const pathD = "M 35 120 C 90 120, 180 125, 235 128 L 235 124 C 160 115, 80 85, 35 105 L 35 25 C 60 40, 140 85, 235 118 L 235 125 Z";
 
   return (
-    <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col gap-2">
+    <div className="bg-white border border-slate-200 rounded-xl p-3 flex flex-col gap-2 shadow-xs">
       <div className="flex items-center justify-between text-[11px] font-mono">
-        <span className="font-bold text-slate-300 flex items-center gap-1.5">
-          <Activity className="w-3.5 h-3.5 text-cyan-400" />
+        <span className="font-bold text-slate-800 flex items-center gap-1.5">
+          <Activity className="w-3.5 h-3.5 text-sky-600" />
           INDICATOR P-V DIAGRAM (OTTO CYCLE)
         </span>
-        <span className="px-2 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: strokeColor + '25', color: strokeColor }}>
+        <span className="px-2 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: strokeColor + '20', color: strokeColor }}>
           {strokeName}
         </span>
       </div>
 
-      <div className="relative w-full h-[150px] bg-slate-900/60 rounded-lg border border-slate-800 flex items-center justify-center overflow-hidden">
+      <div className="relative w-full h-[150px] bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-center overflow-hidden">
         <svg viewBox="0 0 280 160" className="w-full h-full">
-          <line x1="35" y1="20" x2="35" y2="145" stroke="#334155" strokeWidth="1" strokeDasharray="2,2" />
-          <line x1="35" y1="145" x2="255" y2="145" stroke="#334155" strokeWidth="1" />
-          <line x1="235" y1="20" x2="235" y2="145" stroke="#334155" strokeWidth="1" strokeDasharray="2,2" />
+          <line x1="35" y1="20" x2="35" y2="145" stroke="#CBD5E1" strokeWidth="1" strokeDasharray="2,2" />
+          <line x1="35" y1="145" x2="255" y2="145" stroke="#CBD5E1" strokeWidth="1" />
+          <line x1="235" y1="20" x2="235" y2="145" stroke="#CBD5E1" strokeWidth="1" strokeDasharray="2,2" />
 
           <text x="35" y="156" fill="#64748B" fontSize="8" fontFamily="monospace" textAnchor="middle">TDC (39cc)</text>
           <text x="235" y="156" fill="#64748B" fontSize="8" fontFamily="monospace" textAnchor="middle">BDC (393cc)</text>
           <text x="14" y="30" fill="#64748B" fontSize="8" fontFamily="monospace" textAnchor="middle">140b</text>
           <text x="14" y="145" fill="#64748B" fontSize="8" fontFamily="monospace" textAnchor="middle">0b</text>
 
-          <path d={pathD} fill="rgba(6, 182, 212, 0.12)" stroke="#06B6D4" strokeWidth="1.8" />
+          <path d={pathD} fill="rgba(2, 132, 199, 0.12)" stroke="#0284C7" strokeWidth="1.8" />
 
           {isBlowBy && (
             <path
@@ -382,17 +382,17 @@ const PvIndicatorDiagram = ({ crankAngle, isBlowBy, rpm = 4800 }) => {
       </div>
 
       <div className="grid grid-cols-3 gap-2 text-center text-[10px] font-mono">
-        <div className="bg-slate-900/90 p-1.5 rounded border border-slate-800">
-          <div className="text-slate-400 text-[9px]">CYL PRESSURE</div>
-          <div className="font-bold text-white text-xs">{pressureBar.toFixed(1)} bar</div>
+        <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-200">
+          <div className="text-slate-500 text-[9px] font-bold">CYL PRESSURE</div>
+          <div className="font-bold text-slate-900 text-xs">{pressureBar.toFixed(1)} bar</div>
         </div>
-        <div className="bg-slate-900/90 p-1.5 rounded border border-slate-800">
-          <div className="text-slate-400 text-[9px]">CHAMBER VOL</div>
-          <div className="font-bold text-cyan-300 text-xs">{volumeCc.toFixed(0)} cc</div>
+        <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-200">
+          <div className="text-slate-500 text-[9px] font-bold">CHAMBER VOL</div>
+          <div className="font-bold text-sky-700 text-xs">{volumeCc.toFixed(0)} cc</div>
         </div>
-        <div className="bg-slate-900/90 p-1.5 rounded border border-slate-800">
-          <div className="text-slate-400 text-[9px]">CRANK ANGLE</div>
-          <div className="font-bold text-amber-300 text-xs">{deg.toFixed(0)}°</div>
+        <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-200">
+          <div className="text-slate-500 text-[9px] font-bold">CRANK ANGLE</div>
+          <div className="font-bold text-amber-700 text-xs">{deg.toFixed(0)}°</div>
         </div>
       </div>
     </div>
@@ -436,30 +436,30 @@ export const PistonInspectionModal = ({ isOpen, onClose, tel }) => {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md">
-      <div className="relative w-full max-w-5xl h-[90vh] bg-slate-950 border border-cyan-500/40 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-white font-sans">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/50 backdrop-blur-xs">
+      <div className="relative w-full max-w-5xl h-[90vh] bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-800 font-sans">
         
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 bg-slate-900/80">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-400">
+            <div className="w-8 h-8 rounded-lg bg-sky-50 border border-sky-200 flex items-center justify-center text-sky-600 shadow-2xs">
               <Eye className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold tracking-wide flex items-center gap-2">
+              <h2 className="text-sm font-bold tracking-wide flex items-center gap-2 text-slate-900">
                 ROTAX 915 iS • PISTON & 4-STROKE DIAGNOSTIC LABORATORY
-                <span className="px-2 py-0.5 rounded text-[10px] bg-cyan-950 border border-cyan-500/40 text-cyan-300 font-mono">
+                <span className="px-2 py-0.5 rounded text-[10px] bg-sky-50 border border-sky-200 text-sky-700 font-mono font-bold">
                   84mm × 61mm BOXER-4
                 </span>
               </h2>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-500">
                 Interactive single-cylinder cutaway, 0°–720° crank kinematic scrubber, and real-time P-V cycle thermodynamics
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-all"
+            className="p-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-800 border border-slate-200 transition-all shadow-2xs"
           >
             <X className="w-4 h-4" />
           </button>
@@ -469,14 +469,15 @@ export const PistonInspectionModal = ({ isOpen, onClose, tel }) => {
         <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
           
           {/* Left: 3D Single Cylinder Cutaway View */}
-          <div className="flex-1 relative bg-[#02040A] flex flex-col min-h-[350px]">
+          <div className="flex-1 relative bg-[#F1F5F9] flex flex-col min-h-[350px]">
             
             <div className="flex-1 relative cursor-grab active:cursor-grabbing">
               <Canvas camera={{ position: [0, 1.2, 4.2], fov: 38 }} gl={{ antialias: true, alpha: true }}>
-                <ambientLight intensity={0.65} />
-                <directionalLight position={[5, 8, 5]} intensity={1.4} />
-                <directionalLight position={[-5, 4, -5]} intensity={0.5} color="#0284C7" />
-                <pointLight position={[0, -1, 2]} intensity={1.2} color="#00F0FF" />
+                <color attach="background" args={['#F1F5F9']} />
+                <ambientLight intensity={0.75} />
+                <directionalLight position={[5, 8, 5]} intensity={1.5} />
+                <directionalLight position={[-5, 4, -5]} intensity={0.6} color="#0284C7" />
+                <pointLight position={[0, -1, 2]} intensity={1.2} color="#0284C7" />
                 
                 <SingleCylinderCutaway
                   crankAngle={crankAngle}
@@ -489,11 +490,11 @@ export const PistonInspectionModal = ({ isOpen, onClose, tel }) => {
 
               {/* Stroke Badge */}
               <div className="absolute top-3 left-3 pointer-events-none">
-                <div className="bg-slate-950/85 border border-slate-700 backdrop-blur-md rounded-lg p-2.5 max-w-xs shadow-lg">
+                <div className="bg-white/90 border border-slate-200 backdrop-blur-md rounded-lg p-2.5 max-w-xs shadow-md">
                   <div className={`text-xs font-mono font-bold ${strokeNames[currentStroke].col}`}>
                     {strokeNames[currentStroke].name}
                   </div>
-                  <div className="text-[10px] text-slate-300 mt-0.5 leading-snug">
+                  <div className="text-[10px] text-slate-600 mt-0.5 leading-snug">
                     {strokeNames[currentStroke].desc}
                   </div>
                 </div>
@@ -501,18 +502,18 @@ export const PistonInspectionModal = ({ isOpen, onClose, tel }) => {
 
               {/* Angle Readout */}
               <div className="absolute top-3 right-3 pointer-events-none">
-                <div className="bg-slate-950/85 border border-cyan-500/40 rounded-lg px-3 py-1.5 font-mono text-center shadow-lg">
-                  <div className="text-[9px] text-slate-400 uppercase">Crank Position</div>
-                  <div className="text-sm font-bold text-cyan-300">{crankAngle.toFixed(1)}° CA</div>
+                <div className="bg-white/90 border border-slate-200 rounded-lg px-3 py-1.5 font-mono text-center shadow-md">
+                  <div className="text-[9px] text-slate-500 uppercase font-bold">Crank Position</div>
+                  <div className="text-sm font-bold text-sky-700">{crankAngle.toFixed(1)}° CA</div>
                 </div>
               </div>
             </div>
 
             {/* Bottom Controls Bar */}
-            <div className="p-3 bg-slate-950/90 border-t border-slate-800 flex flex-col gap-2">
+            <div className="p-3 bg-white/95 border-t border-slate-200 flex flex-col gap-2">
               
               <div className="flex items-center gap-3">
-                <span className="text-[10px] font-mono text-slate-400 font-bold w-12">0° TDC</span>
+                <span className="text-[10px] font-mono text-slate-500 font-bold w-12">0° TDC</span>
                 <input
                   type="range"
                   min={0}
@@ -523,19 +524,19 @@ export const PistonInspectionModal = ({ isOpen, onClose, tel }) => {
                     setIsPlaying(false);
                     setCrankAngle(parseFloat(e.target.value));
                   }}
-                  className="flex-1 h-2 bg-slate-800 rounded-lg accent-cyan-400 cursor-pointer"
+                  className="flex-1 h-2 bg-slate-200 rounded-lg accent-sky-600 cursor-pointer"
                 />
-                <span className="text-[10px] font-mono text-slate-400 font-bold w-12 text-right">720°</span>
+                <span className="text-[10px] font-mono text-slate-500 font-bold w-12 text-right">720°</span>
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => setIsPlaying(!isPlaying)}
-                    className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-bold transition-all ${
+                    className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-bold transition-all shadow-xs ${
                       isPlaying
-                        ? 'bg-amber-500 text-black shadow-md'
-                        : 'bg-cyan-500 text-black shadow-md'
+                        ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                        : 'bg-sky-600 hover:bg-sky-700 text-white'
                     }`}
                   >
                     {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
@@ -543,14 +544,14 @@ export const PistonInspectionModal = ({ isOpen, onClose, tel }) => {
                   </button>
                   <button
                     onClick={() => { setCrankAngle(360); setIsPlaying(false); }}
-                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-1 transition-all"
+                    className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 flex items-center gap-1 transition-all font-semibold"
                   >
                     <RotateCcw className="w-3.5 h-3.5" /> TDC (Power)
                   </button>
                 </div>
 
-                <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800">
-                  <span className="text-[10px] text-slate-400 px-1">SPEED:</span>
+                <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-200">
+                  <span className="text-[10px] text-slate-500 px-1 font-bold">SPEED:</span>
                   {[
                     { label: '0.05×', val: 0.05 },
                     { label: '0.25×', val: 0.25 },
@@ -562,8 +563,8 @@ export const PistonInspectionModal = ({ isOpen, onClose, tel }) => {
                       onClick={() => { setPlaybackSpeed(s.val); setIsPlaying(true); }}
                       className={`px-2 py-0.5 rounded text-[10px] transition-all ${
                         playbackSpeed === s.val
-                          ? 'bg-cyan-400 text-black font-bold'
-                          : 'text-slate-400 hover:text-white'
+                          ? 'bg-sky-600 text-white font-bold'
+                          : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
                       {s.label}
@@ -575,8 +576,8 @@ export const PistonInspectionModal = ({ isOpen, onClose, tel }) => {
                   onClick={() => setIsBlowBy(!isBlowBy)}
                   className={`px-2.5 py-1.5 rounded-lg border flex items-center gap-1.5 transition-all ${
                     isBlowBy
-                      ? 'bg-red-500/20 border-red-500 text-red-300 font-bold shadow-hud-red'
-                      : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
+                      ? 'bg-rose-50 border-rose-300 text-rose-700 font-bold shadow-2xs'
+                      : 'bg-slate-100 border-slate-200 text-slate-700 hover:text-slate-900 font-semibold'
                   }`}
                 >
                   <Flame className="w-3.5 h-3.5" />
@@ -587,7 +588,7 @@ export const PistonInspectionModal = ({ isOpen, onClose, tel }) => {
           </div>
 
           {/* Right: Technical Anatomy, Indicator Diagram & Specs */}
-          <div className="w-full lg:w-[380px] bg-slate-900/90 border-t lg:border-t-0 lg:border-l border-slate-800 p-4 flex flex-col gap-3 overflow-y-auto">
+          <div className="w-full lg:w-[380px] bg-slate-50 border-t lg:border-t-0 lg:border-l border-slate-200 p-4 flex flex-col gap-3 overflow-y-auto">
             
             <PvIndicatorDiagram
               crankAngle={crankAngle}
@@ -595,13 +596,13 @@ export const PistonInspectionModal = ({ isOpen, onClose, tel }) => {
               rpm={tel?.engine?.rpm || 4800}
             />
 
-            <div className="flex border-b border-slate-800 text-xs font-mono">
+            <div className="flex border-b border-slate-200 text-xs font-mono">
               <button
                 onClick={() => setSelectedCompTab('ANATOMY')}
                 className={`flex-1 py-1.5 text-center font-bold border-b-2 transition-all ${
                   selectedCompTab === 'ANATOMY'
-                    ? 'border-cyan-400 text-cyan-300'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                    ? 'border-sky-600 text-sky-700'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
                 }`}
               >
                 COMPONENTS
@@ -610,8 +611,8 @@ export const PistonInspectionModal = ({ isOpen, onClose, tel }) => {
                 onClick={() => setSelectedCompTab('SPECS')}
                 className={`flex-1 py-1.5 text-center font-bold border-b-2 transition-all ${
                   selectedCompTab === 'SPECS'
-                    ? 'border-cyan-400 text-cyan-300'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                    ? 'border-sky-600 text-sky-700'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
                 }`}
               >
                 KINEMATICS & SPECS
@@ -621,99 +622,99 @@ export const PistonInspectionModal = ({ isOpen, onClose, tel }) => {
             {selectedCompTab === 'ANATOMY' ? (
               <div className="flex flex-col gap-2 text-xs font-mono">
                 
-                <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800">
-                  <div className="flex justify-between items-center text-cyan-300 font-bold mb-1">
+                <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
+                  <div className="flex justify-between items-center text-sky-700 font-bold mb-1">
                     <span>1. PISTON CROWN (4032 ALLOY)</span>
                     <span className="text-[10px] text-slate-400">84.0 mm</span>
                   </div>
-                  <p className="text-[10px] text-slate-300 leading-relaxed">
+                  <p className="text-[10px] text-slate-600 leading-relaxed">
                     Forged high-silicon aluminum with thermal barrier top coating. Recessed dish combustion bowl optimized for dual-spark flame propagation.
                   </p>
                 </div>
 
                 <div className={`p-2.5 rounded-lg border transition-all ${
-                  isBlowBy ? 'bg-red-950/40 border-red-500/70' : 'bg-slate-950/70 border-slate-800'
+                  isBlowBy ? 'bg-rose-50 border-rose-300' : 'bg-white border-slate-200 shadow-2xs'
                 }`}>
                   <div className="flex justify-between items-center font-bold mb-1">
-                    <span className={isBlowBy ? 'text-red-300' : 'text-amber-300'}>2. THREE-PIECE RING PACK</span>
+                    <span className={isBlowBy ? 'text-rose-700' : 'text-amber-700'}>2. THREE-PIECE RING PACK</span>
                     <span className="text-[10px] text-slate-400">{isBlowBy ? 'LEAKING' : 'SEALED'}</span>
                   </div>
-                  <ul className="text-[10px] text-slate-300 space-y-1">
+                  <ul className="text-[10px] text-slate-600 space-y-1">
                     <li>• <strong>Top Ring:</strong> 1.2 mm Nitrided Steel (Seals 135 bar gas)</li>
                     <li>• <strong>2nd Ring:</strong> 1.2 mm Tapered Ductile Iron Scraper</li>
                     <li>• <strong>Oil Ring:</strong> 2.5 mm Chrome-plated with expander coil</li>
                   </ul>
                   {isBlowBy && (
-                    <div className="mt-1.5 p-1.5 bg-red-950/80 rounded border border-red-500/50 text-[9px] text-red-200 flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3 text-red-400 shrink-0" />
+                    <div className="mt-1.5 p-1.5 bg-rose-100 rounded border border-rose-300 text-[9px] text-rose-800 flex items-center gap-1 font-medium">
+                      <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" />
                       Combustion blow-by gas leaks into crankcase, degrading oil to 132°C.
                     </div>
                   )}
                 </div>
 
-                <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800">
-                  <div className="flex justify-between items-center text-slate-200 font-bold mb-1">
+                <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
+                  <div className="flex justify-between items-center text-slate-800 font-bold mb-1">
                     <span>3. GUDGEON / WRIST PIN</span>
                     <span className="text-[10px] text-slate-400">20 mm ∅</span>
                   </div>
-                  <p className="text-[10px] text-slate-300 leading-relaxed">
+                  <p className="text-[10px] text-slate-600 leading-relaxed">
                     Case-hardened 16MnCr5 alloy steel with Diamond-Like Carbon (DLC) coating, floating in a bronze connecting rod eye bushing.
                   </p>
                 </div>
 
-                <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800">
-                  <div className="flex justify-between items-center text-blue-300 font-bold mb-1">
+                <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
+                  <div className="flex justify-between items-center text-sky-700 font-bold mb-1">
                     <span>4. FORGED H-BEAM CON-ROD</span>
                     <span className="text-[10px] text-slate-400">110 mm C-to-C</span>
                   </div>
-                  <p className="text-[10px] text-slate-300 leading-relaxed">
+                  <p className="text-[10px] text-slate-600 leading-relaxed">
                     4340 Chrome-Molybdenum forged steel with shot-peened surface. Rated for 3,250 g reciprocating acceleration at 5,800 RPM.
                   </p>
                 </div>
               </div>
             ) : (
               <div className="flex flex-col gap-2 text-[11px] font-mono">
-                <div className="bg-slate-950/70 p-2.5 rounded-lg border border-slate-800 flex flex-col gap-1.5">
-                  <div className="text-cyan-300 font-bold border-b border-slate-800 pb-1 flex items-center justify-between">
+                <div className="bg-white p-2.5 rounded-lg border border-slate-200 flex flex-col gap-1.5 shadow-2xs">
+                  <div className="text-sky-700 font-bold border-b border-slate-200 pb-1 flex items-center justify-between">
                     <span>ENGINE SPECIFICATION</span>
                     <span>ROTAX 915 iS</span>
                   </div>
-                  <div className="flex justify-between text-slate-300">
+                  <div className="flex justify-between text-slate-600">
                     <span>Bore × Stroke:</span>
-                    <span className="font-bold text-white">84.0 mm × 61.0 mm</span>
+                    <span className="font-bold text-slate-900">84.0 mm × 61.0 mm</span>
                   </div>
-                  <div className="flex justify-between text-slate-300">
+                  <div className="flex justify-between text-slate-600">
                     <span>Displacement (Per Cyl):</span>
-                    <span className="font-bold text-white">353.5 cc</span>
+                    <span className="font-bold text-slate-900">353.5 cc</span>
                   </div>
-                  <div className="flex justify-between text-slate-300">
+                  <div className="flex justify-between text-slate-600">
                     <span>Total Engine Displacement:</span>
-                    <span className="font-bold text-white">1,414 cc (Boxer-4)</span>
+                    <span className="font-bold text-slate-900">1,414 cc (Boxer-4)</span>
                   </div>
-                  <div className="flex justify-between text-slate-300">
+                  <div className="flex justify-between text-slate-600">
                     <span>Compression Ratio:</span>
-                    <span className="font-bold text-white">9.0 : 1</span>
+                    <span className="font-bold text-slate-900">9.0 : 1</span>
                   </div>
-                  <div className="flex justify-between text-slate-300">
+                  <div className="flex justify-between text-slate-600">
                     <span>Max Continuous RPM:</span>
-                    <span className="font-bold text-white">5,500 RPM</span>
+                    <span className="font-bold text-slate-900">5,500 RPM</span>
                   </div>
-                  <div className="flex justify-between text-slate-300">
+                  <div className="flex justify-between text-slate-600">
                     <span>Max Takeoff RPM:</span>
-                    <span className="font-bold text-white">5,800 RPM (5 min limit)</span>
+                    <span className="font-bold text-slate-900">5,800 RPM (5 min limit)</span>
                   </div>
-                  <div className="flex justify-between text-slate-300">
+                  <div className="flex justify-between text-slate-600">
                     <span>Mean Piston Speed @ 5800:</span>
-                    <span className="font-bold text-cyan-300">11.8 m/s</span>
+                    <span className="font-bold text-sky-700">11.8 m/s</span>
                   </div>
-                  <div className="flex justify-between text-slate-300">
+                  <div className="flex justify-between text-slate-600">
                     <span>Peak Piston Acceleration:</span>
-                    <span className="font-bold text-amber-300">31,850 m/s² (3,246 g)</span>
+                    <span className="font-bold text-amber-700">31,850 m/s² (3,246 g)</span>
                   </div>
                 </div>
 
-                <div className="bg-slate-950/70 p-2.5 rounded-lg border border-slate-800 text-[10px] leading-relaxed text-slate-400">
-                  <span className="text-cyan-300 font-bold block mb-1">BOXER-4 VIBRATION BALANCE:</span>
+                <div className="bg-white p-2.5 rounded-lg border border-slate-200 text-[10px] leading-relaxed text-slate-600 shadow-2xs">
+                  <span className="text-sky-700 font-bold block mb-1">BOXER-4 VIBRATION BALANCE:</span>
                   The horizontally opposed boxer layout provides perfect primary mechanical balance because opposing pistons reach TDC and BDC simultaneously, cancelling out first-order inertial shaking forces.
                 </div>
               </div>

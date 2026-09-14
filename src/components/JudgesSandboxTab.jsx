@@ -85,9 +85,11 @@ export const JudgesSandboxTab = () => {
   const BENCHMARKS = [
     {
       id: 'NOMINAL_LOITER',
-      label: 'Nominal Loiter',
+      profileCode: 'PROFILE A',
+      standard: 'STANAG 4586',
+      label: 'STANAG 4586 Profile A: Nominal Loiter Baseline',
       tag: 'PRISTINE',
-      badgeClass: 'border-emerald-500/50 bg-emerald-950/60 text-emerald-300',
+      badgeClass: 'border-emerald-300 bg-emerald-50 text-emerald-700',
       summary: 'Rotax 915 iS cruise baseline: balanced combustion, nominal 3.85 bar oil pressure, minimal 0.28g vibration.',
       params: {
         altitudeFt: 14500,
@@ -107,9 +109,11 @@ export const JudgesSandboxTab = () => {
     },
     {
       id: 'CYL3_LEAN_CLOG',
-      label: 'Cylinder 3 Lean Clog',
+      profileCode: 'PROFILE B',
+      standard: 'MIL-STD-810H',
+      label: 'MIL-STD-810H Profile B: Cyl 3 Lean Clog',
       tag: 'COMBUSTION',
-      badgeClass: 'border-red-500/50 bg-red-950/60 text-red-300',
+      badgeClass: 'border-red-300 bg-red-50 text-red-700',
       summary: 'Severe lean misfire in Cyl 3: EGT3 spikes to 985°C (spread >150°C), CHT3 heat-soak to 134°C, torsional vib 1.18g.',
       params: {
         altitudeFt: 14500,
@@ -129,9 +133,11 @@ export const JudgesSandboxTab = () => {
     },
     {
       id: 'PISTON_BLOW_BY',
-      label: 'Piston Ring Blow-By',
+      profileCode: 'PROFILE C',
+      standard: 'MIL-STD-810H',
+      label: 'MIL-STD-810H Profile C: Ring Blow-By Degradation',
       tag: 'THERMAL/OIL',
-      badgeClass: 'border-amber-500/50 bg-amber-950/60 text-amber-300',
+      badgeClass: 'border-amber-300 bg-amber-50 text-amber-700',
       summary: 'Compression loss and blow-by gas leakage: oil temp climbs to 132°C, oil press decays to 2.10 bar, CHTs elevated.',
       params: {
         altitudeFt: 14500,
@@ -151,9 +157,11 @@ export const JudgesSandboxTab = () => {
     },
     {
       id: 'OIL_CAVITATION',
-      label: 'Oil Pump Cavitation',
+      profileCode: 'PROFILE D',
+      standard: 'MIL-STD-810H',
+      label: 'MIL-STD-810H Profile D: Lubrication Collapse & Cavitation',
       tag: 'LUBRICATION',
-      badgeClass: 'border-red-500/50 bg-red-950/60 text-red-300',
+      badgeClass: 'border-red-300 bg-red-50 text-red-700',
       summary: 'Loss of hydrodynamic oil wedge: oil press collapses to 1.35 bar, severe bearing vibration spikes to 1.72g.',
       params: {
         altitudeFt: 14500,
@@ -173,9 +181,11 @@ export const JudgesSandboxTab = () => {
     },
     {
       id: 'TURBO_SURGE',
-      label: 'Turbo Overboost Surge',
+      profileCode: 'PROFILE E',
+      standard: 'MIL-STD-810H',
+      label: 'MIL-STD-810H Profile E: Turbo Overboost Surge',
       tag: 'AIR/BOOST',
-      badgeClass: 'border-purple-500/50 bg-purple-950/60 text-purple-300',
+      badgeClass: 'border-purple-300 bg-purple-50 text-purple-700',
       summary: 'Wastegate stuck closed: MAP surges to 2.18 bar (overboost), cylinder pressures surge, RPM climbs to 5250.',
       params: {
         altitudeFt: 14500,
@@ -262,20 +272,35 @@ export const JudgesSandboxTab = () => {
           fuel_pressure_bar: fuelPressureBar,
           gen_voltage_v: genVoltageV
         };
-        const aiHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        const primaryHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
           ? `http://${window.location.hostname}:8001`
           : '/ai';
-        const res = await fetch(`${aiHost}/api/health-rul/predict`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        if (res.ok) {
+        const gatewayHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+          ? `http://${window.location.hostname}:5002`
+          : '';
+
+        let res = null;
+        try {
+          res = await fetch(`${primaryHost}/api/health-rul/predict`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+        } catch {
+          res = await fetch(`${gatewayHost}/api/health-rul/predict`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+        }
+        if (res && res.ok) {
           const data = await res.json();
           if (isMounted) {
             setAiResult(data);
             setAiConnected(true);
           }
+        } else {
+          if (isMounted) setAiConnected(false);
         }
       } catch (err) {
         if (isMounted) setAiConnected(false);
@@ -372,8 +397,8 @@ export const JudgesSandboxTab = () => {
 
     // Airworthiness logic
     let airworthinessStatus = 'NOMINAL';
-    let airworthinessBadge = 'border-emerald-500/60 bg-emerald-950/70 text-emerald-300';
-    let airworthinessColor = 'text-emerald-400 glow-green';
+    let airworthinessBadge = 'border-emerald-300 bg-emerald-50 text-emerald-800';
+    let airworthinessColor = 'text-emerald-700 font-bold';
     let airworthinessDesc = 'Rotax 915 iS engine operating well within certified EASA/FAA flight envelopes. Safe for sustained mission loiter.';
 
     const hi = aiResult?.engine_health_index ?? (pipelineOut?.health?.index ?? 100);
@@ -381,13 +406,13 @@ export const JudgesSandboxTab = () => {
 
     if (hi < 40 || rulH < 2.0 || oilPressBar < 1.8 || maxEgt > 960 || vibrationGrms > 1.3) {
       airworthinessStatus = 'CRITICAL ABORT';
-      airworthinessBadge = 'border-red-500/80 bg-red-950/80 text-red-200 animate-pulse';
-      airworthinessColor = 'text-red-400 glow-red';
+      airworthinessBadge = 'border-red-300 bg-red-50 text-red-800';
+      airworthinessColor = 'text-red-700 font-bold';
       airworthinessDesc = 'CRITICAL AIRWORTHINESS EXCEEDANCE! Catastrophic failure risk detected. Autonomous emergency landing mandatory.';
     } else if (hi < 75 || rulH < 10.0 || egtSpread > 55 || maxCht > 125 || oilPressBar < 2.8 || mapBar > 1.8) {
       airworthinessStatus = 'DERATED';
-      airworthinessBadge = 'border-amber-500/70 bg-amber-950/70 text-amber-200';
-      airworthinessColor = 'text-amber-400 glow-amber';
+      airworthinessBadge = 'border-amber-300 bg-amber-50 text-amber-800';
+      airworthinessColor = 'text-amber-800 font-bold';
       airworthinessDesc = 'Subsystem wear exceeds nominal baseline. Derated throttle envelope applied. Return to base advised.';
     }
 
@@ -514,46 +539,46 @@ export const JudgesSandboxTab = () => {
     <div className="h-full overflow-y-auto custom-scrollbar flex flex-col gap-4 pb-12 pr-1">
       
       {/* ── TOP HEADER & BENCHMARK BAR ── */}
-      <div className="starship-glass rounded-xl border border-white/[0.08] p-4 shadow-starship-glass flex flex-col gap-3">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-white/[0.08] pb-3">
+      <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-xs flex flex-col gap-3">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-cyan-500/10 border border-cyan-400/40 text-cyan-300">
+            <div className="p-2 rounded bg-sky-50 border border-sky-200 text-sky-600">
               <Sliders className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="font-display font-black text-sm tracking-wider text-cyan-300 glow-cyan">
-                JUDGE'S HARDWARE-IN-THE-LOOP (HIL) TESTING DECK
+              <h2 className="font-display font-bold text-sm tracking-wider text-slate-900 uppercase">
+                HIL SIMULATION &amp; ACCEPTANCE TEST BENCH (FAT/SAT)
               </h2>
-              <p className="text-[11px] font-mono text-slate-400">
-                Interactive Physics & ML Multi-Parameter Benchmarking for Rotax 915 iS Engine
+              <p className="text-[11px] font-mono text-slate-500">
+                MIL-STD-810H / STANAG 4586 Compliant Propulsion Hardware-in-the-Loop Dynamic Validation Deck
               </p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/[0.08] bg-slate-950/60 text-xs font-mono cursor-pointer select-none">
+            <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-slate-200 bg-slate-50 text-xs font-mono cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={autoSyncTwin}
                 onChange={e => setAutoSyncTwin(e.target.checked)}
-                className="accent-cyan-400 w-3.5 h-3.5 rounded cursor-pointer"
+                className="accent-sky-600 w-3.5 h-3.5 rounded cursor-pointer"
               />
-              <span className={autoSyncTwin ? 'text-cyan-300 font-bold' : 'text-slate-400'}>
+              <span className={autoSyncTwin ? 'text-sky-700 font-bold' : 'text-slate-500'}>
                 Auto-Sync to CAN Twin
               </span>
             </label>
 
             <button
               onClick={handleResetNominal}
-              className="px-3 py-1.5 rounded-lg text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/60 hover:bg-emerald-500/30 transition-all flex items-center gap-1.5 shadow-hud-green"
+              className="px-3 py-1.5 rounded text-xs font-mono font-bold bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:border-slate-300 transition-all flex items-center gap-1.5 shadow-xs"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
+              <RotateCcw className="w-3.5 h-3.5 text-emerald-600" />
               RESET NOMINAL
             </button>
 
             <button
               onClick={handleCommitToLiveTwin}
-              className="px-3 py-1.5 rounded-lg text-xs font-mono font-bold bg-gradient-to-r from-cyan-500 to-blue-600 text-black hover:from-cyan-400 hover:to-blue-500 transition-all flex items-center gap-1.5 shadow-hud-cyan"
+              className="px-3 py-1.5 rounded text-xs font-mono font-bold bg-sky-600 text-white hover:bg-sky-700 transition-all flex items-center gap-1.5 shadow-xs"
             >
               <Send className="w-3.5 h-3.5 fill-current" />
               COMMIT TO LIVE TWIN (100 HZ)
@@ -564,49 +589,53 @@ export const JudgesSandboxTab = () => {
         {/* 1-Click Benchmark Scenarios Toolbar */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-mono font-bold tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
-              <Zap className="w-3.5 h-3.5 text-cyan-400" /> 1-CLICK BENCHMARK SCENARIOS:
+            <span className="text-[10px] font-mono font-bold tracking-widest text-slate-500 uppercase flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-sky-600" /> STANAG 4586 / MIL-STD-810H ACCEPTANCE TEST PROFILES:
             </span>
             <div className="flex items-center gap-2">
               {aiConnected ? (
-                <span className="text-[9px] font-mono px-2 py-0.5 rounded border border-purple-500/60 bg-purple-950/60 text-purple-300 font-bold flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
+                <span className="text-[9px] font-mono px-2 py-0.5 rounded border border-sky-300 bg-sky-50 text-sky-700 font-bold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-600 animate-pulse" />
                   PYTORCH AI (PORT 8001) ONLINE
                 </span>
               ) : (
-                <span className="text-[9px] font-mono px-2 py-0.5 rounded border border-cyan-500/60 bg-cyan-950/60 text-cyan-300 font-bold flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                <span className="text-[9px] font-mono px-2 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-600 font-bold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
                   PHYSICS PIPELINE READY
                 </span>
               )}
-              <span className="text-[10px] font-mono text-slate-400">
-                ACTIVE: <span className="text-cyan-300 font-bold">{activeBenchmark}</span>
+              <span className="text-[10px] font-mono text-slate-500">
+                ACTIVE: <span className="text-slate-900 font-bold">{BENCHMARKS.find(b => b.id === activeBenchmark)?.label || activeBenchmark}</span>
               </span>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5">
             {BENCHMARKS.map(b => {
               const isSelected = activeBenchmark === b.id;
               return (
                 <button
                   key={b.id}
                   onClick={() => handleApplyBenchmark(b)}
-                  className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5 ${
+                  title={b.label}
+                  className={`p-3 rounded-lg border text-left transition-all flex flex-col justify-between gap-2 min-h-[110px] ${
                     isSelected
-                      ? 'bg-cyan-500/20 border-cyan-400 shadow-starship-glow'
-                      : 'starship-glass-card border-white/[0.06] hover:border-cyan-500/40 hover:bg-white/[0.04]'
+                      ? 'bg-sky-50/90 border-sky-400 text-sky-950 shadow-xs ring-1 ring-sky-300'
+                      : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                   }`}
                 >
                   <div className="flex items-center justify-between w-full">
-                    <span className={`text-[11px] font-mono font-bold truncate ${isSelected ? 'text-cyan-300 glow-cyan' : 'text-slate-200'}`}>
-                      {b.label}
+                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 tracking-wider">
+                      {b.profileCode}
                     </span>
-                    <span className={`text-[8px] font-mono px-1.5 py-0.2 rounded-full border ${b.badgeClass}`}>
+                    <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded border font-semibold ${b.badgeClass}`}>
                       {b.tag}
                     </span>
                   </div>
-                  <p className="text-[9px] font-mono text-slate-400 line-clamp-2 leading-tight">
+                  <div className={`text-[11px] font-mono font-bold leading-snug break-words ${isSelected ? 'text-sky-900' : 'text-slate-900'}`}>
+                    {b.label}
+                  </div>
+                  <p className="text-[9px] font-mono text-slate-500 line-clamp-2 leading-tight">
                     {b.summary}
                   </p>
                 </button>
@@ -617,8 +646,8 @@ export const JudgesSandboxTab = () => {
 
         {/* Live Broadcast Notice */}
         {broadcastNotice && (
-          <div className="p-2 rounded-lg bg-cyan-950/80 border border-cyan-500/80 text-cyan-200 font-mono text-xs flex items-center gap-2 animate-fadeIn shadow-hud-cyan">
-            <Radio className="w-4 h-4 text-cyan-400 animate-pulse" />
+          <div className="p-2 rounded border border-sky-200 bg-sky-50 text-sky-900 font-mono text-xs flex items-center gap-2 animate-fadeIn shadow-xs">
+            <Radio className="w-4 h-4 text-sky-600 animate-pulse" />
             <span>{broadcastNotice}</span>
           </div>
         )}
@@ -633,15 +662,15 @@ export const JudgesSandboxTab = () => {
         <div className="w-full lg:w-1/2 flex flex-col gap-4">
           
           {/* Group 1: Flight, Altitude & Airspeed (ISA Atmosphere) */}
-          <div className="starship-glass rounded-xl border border-white/[0.08] p-4 shadow-starship-glass flex flex-col gap-3.5">
-            <div className="flex items-center justify-between border-b border-white/[0.08] pb-2">
+          <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-xs flex flex-col gap-3.5">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
               <div className="flex items-center gap-2">
-                <Wind className="w-4 h-4 text-cyan-400" />
-                <h3 className="font-display font-black text-xs tracking-wider text-cyan-300">
+                <Wind className="w-4 h-4 text-sky-600" />
+                <h3 className="font-display font-bold text-xs tracking-wider text-slate-900 uppercase">
                   FLIGHT & ATMOSPHERIC CONDITIONS (ISA MODEL)
                 </h3>
               </div>
-              <span className="text-[10px] font-mono text-slate-400">
+              <span className="text-[10px] font-mono text-slate-500 tabular-nums font-medium">
                 P_AMB: {(1.01325 * Math.pow(1.0 - 0.0225577 * (altitudeFt * 0.0003048), 5.25588)).toFixed(3)} bar
               </span>
             </div>
@@ -649,8 +678,8 @@ export const JudgesSandboxTab = () => {
             {/* Altitude Slider */}
             <div className="flex flex-col gap-1">
               <div className="flex justify-between text-xs font-mono">
-                <span className="text-slate-300">Pressure Altitude:</span>
-                <span className="text-cyan-300 font-bold glow-cyan">{altitudeFt.toLocaleString()} ft</span>
+                <span className="text-slate-600">Pressure Altitude:</span>
+                <span className="text-slate-900 font-bold tabular-nums">{altitudeFt.toLocaleString()} ft</span>
               </div>
               <input
                 type="range"
@@ -659,9 +688,9 @@ export const JudgesSandboxTab = () => {
                 step="500"
                 value={altitudeFt}
                 onChange={e => { setAltitudeFt(parseInt(e.target.value)); setActiveBenchmark('CUSTOM'); }}
-                className="w-full h-1.5 rounded-lg cursor-pointer bg-slate-900 border border-white/[0.08] accent-cyan-400"
+                className="w-full h-1.5 rounded cursor-pointer bg-slate-200 border border-slate-300 accent-sky-600"
               />
-              <div className="flex justify-between text-[9px] font-mono text-slate-500">
+              <div className="flex justify-between text-[9px] font-mono text-slate-400">
                 <span>Sea Level (0 ft)</span>
                 <span>Operational Cruise (14,500 ft)</span>
                 <span>Service Ceiling (30,000 ft)</span>
@@ -671,8 +700,8 @@ export const JudgesSandboxTab = () => {
             {/* Airspeed Slider */}
             <div className="flex flex-col gap-1">
               <div className="flex justify-between text-xs font-mono">
-                <span className="text-slate-300">Calibrated Airspeed:</span>
-                <span className="text-cyan-300 font-bold">{airspeedKts} kts</span>
+                <span className="text-slate-600">Calibrated Airspeed:</span>
+                <span className="text-slate-900 font-bold tabular-nums">{airspeedKts} kts</span>
               </div>
               <input
                 type="range"
@@ -681,9 +710,9 @@ export const JudgesSandboxTab = () => {
                 step="1"
                 value={airspeedKts}
                 onChange={e => { setAirspeedKts(parseInt(e.target.value)); setActiveBenchmark('CUSTOM'); }}
-                className="w-full h-1.5 rounded-lg cursor-pointer bg-slate-900 border border-white/[0.08] accent-cyan-400"
+                className="w-full h-1.5 rounded cursor-pointer bg-slate-200 border border-slate-300 accent-sky-600"
               />
-              <div className="flex justify-between text-[9px] font-mono text-slate-500">
+              <div className="flex justify-between text-[9px] font-mono text-slate-400">
                 <span>Loiter Stall: 60 kts</span>
                 <span>Best Range: 110 kts</span>
                 <span>VNE: 160 kts</span>
@@ -692,22 +721,22 @@ export const JudgesSandboxTab = () => {
           </div>
 
           {/* Group 2: Powertrain & Turbocharger Dynamics */}
-          <div className="starship-glass rounded-xl border border-white/[0.08] p-4 shadow-starship-glass flex flex-col gap-3.5">
-            <div className="flex items-center justify-between border-b border-white/[0.08] pb-2">
+          <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-xs flex flex-col gap-3.5">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
               <div className="flex items-center gap-2">
-                <Cpu className="w-4 h-4 text-cyan-400" />
-                <h3 className="font-display font-black text-xs tracking-wider text-cyan-300">
+                <Cpu className="w-4 h-4 text-sky-600" />
+                <h3 className="font-display font-bold text-xs tracking-wider text-slate-900 uppercase">
                   POWERTRAIN & TURBOCHARGER DYNAMICS
                 </h3>
               </div>
-              <span className="text-[10px] font-mono text-slate-400">ROTAX 915 iS TURBO</span>
+              <span className="text-[10px] font-mono text-slate-500 font-medium">ROTAX 915 iS TURBO</span>
             </div>
 
             {/* RPM Slider */}
             <div className="flex flex-col gap-1">
               <div className="flex justify-between text-xs font-mono">
-                <span className="text-slate-300">Engine Crankshaft RPM:</span>
-                <span className={`font-bold ${rpm > 5500 ? 'text-red-400 glow-red' : 'text-cyan-300 glow-cyan'}`}>
+                <span className="text-slate-600">Engine Crankshaft RPM:</span>
+                <span className={`font-bold tabular-nums ${rpm > 5500 ? 'text-red-600' : 'text-slate-900'}`}>
                   {rpm} RPM
                 </span>
               </div>
@@ -718,9 +747,9 @@ export const JudgesSandboxTab = () => {
                 step="25"
                 value={rpm}
                 onChange={e => { setRpm(parseInt(e.target.value)); setActiveBenchmark('CUSTOM'); }}
-                className={`w-full h-1.5 rounded-lg cursor-pointer bg-slate-900 border border-white/[0.08] ${rpm > 5500 ? 'accent-red-400' : 'accent-cyan-400'}`}
+                className={`w-full h-1.5 rounded cursor-pointer bg-slate-200 border border-slate-300 ${rpm > 5500 ? 'accent-red-600' : 'accent-sky-600'}`}
               />
-              <div className="flex justify-between text-[9px] font-mono text-slate-500">
+              <div className="flex justify-between text-[9px] font-mono text-slate-400">
                 <span>Idle: 2000</span>
                 <span>Max Continuous: 5500</span>
                 <span>Takeoff Redline: 5800</span>
@@ -730,8 +759,8 @@ export const JudgesSandboxTab = () => {
             {/* Throttle Slider */}
             <div className="flex flex-col gap-1">
               <div className="flex justify-between text-xs font-mono">
-                <span className="text-slate-300">Throttle Position (FADEC):</span>
-                <span className="text-cyan-300 font-bold">{throttlePct}%</span>
+                <span className="text-slate-600">Throttle Position (FADEC):</span>
+                <span className="text-slate-900 font-bold tabular-nums">{throttlePct}%</span>
               </div>
               <input
                 type="range"
@@ -740,15 +769,15 @@ export const JudgesSandboxTab = () => {
                 step="1"
                 value={throttlePct}
                 onChange={e => { setThrottlePct(parseFloat(e.target.value)); setActiveBenchmark('CUSTOM'); }}
-                className="w-full h-1.5 rounded-lg cursor-pointer bg-slate-900 border border-white/[0.08] accent-cyan-400"
+                className="w-full h-1.5 rounded cursor-pointer bg-slate-200 border border-slate-300 accent-sky-600"
               />
             </div>
 
             {/* MAP Slider */}
             <div className="flex flex-col gap-1">
               <div className="flex justify-between text-xs font-mono">
-                <span className="text-slate-300">Manifold Absolute Pressure (MAP):</span>
-                <span className={`font-bold ${mapBar > 1.85 ? 'text-red-400 glow-red' : 'text-cyan-300 glow-cyan'}`}>
+                <span className="text-slate-600">Manifold Absolute Pressure (MAP):</span>
+                <span className={`font-bold tabular-nums ${mapBar > 1.85 ? 'text-red-600' : 'text-slate-900'}`}>
                   {mapBar.toFixed(2)} bar ({((mapBar - 1.0) * 14.5038).toFixed(1)} psi boost)
                 </span>
               </div>
@@ -759,9 +788,9 @@ export const JudgesSandboxTab = () => {
                 step="0.02"
                 value={mapBar}
                 onChange={e => { setMapBar(parseFloat(e.target.value)); setActiveBenchmark('CUSTOM'); }}
-                className={`w-full h-1.5 rounded-lg cursor-pointer bg-slate-900 border border-white/[0.08] ${mapBar > 1.85 ? 'accent-red-400' : 'accent-cyan-400'}`}
+                className={`w-full h-1.5 rounded cursor-pointer bg-slate-200 border border-slate-300 ${mapBar > 1.85 ? 'accent-red-600' : 'accent-sky-600'}`}
               />
-              <div className="flex justify-between text-[9px] font-mono text-slate-500">
+              <div className="flex justify-between text-[9px] font-mono text-slate-400">
                 <span>Idle: 0.80 bar</span>
                 <span>Nominal Cruise: 1.42 bar</span>
                 <span>Overboost Surge: &gt;1.85 bar</span>
@@ -770,16 +799,16 @@ export const JudgesSandboxTab = () => {
           </div>
 
           {/* Group 3: Combustion & Exhaust Gas Temperatures (EGT 1-4) */}
-          <div className="starship-glass rounded-xl border border-white/[0.08] p-4 shadow-starship-glass flex flex-col gap-3.5">
-            <div className="flex items-center justify-between border-b border-white/[0.08] pb-2">
+          <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-xs flex flex-col gap-3.5">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
               <div className="flex items-center gap-2">
-                <Flame className="w-4 h-4 text-amber-400" />
-                <h3 className="font-display font-black text-xs tracking-wider text-amber-300">
+                <Flame className="w-4 h-4 text-amber-600" />
+                <h3 className="font-display font-bold text-xs tracking-wider text-slate-900 uppercase">
                   COMBUSTION: EXHAUST GAS TEMPERATURES (EGT 1–4)
                 </h3>
               </div>
-              <span className={`text-[10px] font-mono px-2 py-0.5 rounded border font-bold ${
-                evalResult.metrics.egtSpread > 40 ? 'border-red-500 bg-red-950/60 text-red-300' : 'border-white/[0.08] text-slate-400'
+              <span className={`text-[10px] font-mono px-2 py-0.5 rounded border font-bold tabular-nums ${
+                evalResult.metrics.egtSpread > 40 ? 'border-red-300 bg-red-50 text-red-700' : 'border-slate-200 bg-slate-50 text-slate-600'
               }`}>
                 SPREAD: {evalResult.metrics.egtSpread.toFixed(1)}°C
               </span>
@@ -791,10 +820,10 @@ export const JudgesSandboxTab = () => {
                 const isCrit = val > 920;
                 const isWarn = val > 880;
                 return (
-                  <div key={idx} className="flex flex-col gap-1 p-2.5 rounded-lg bg-slate-950/60 border border-white/[0.06]">
+                  <div key={idx} className="flex flex-col gap-1 p-2.5 rounded border border-slate-200 bg-slate-50">
                     <div className="flex justify-between text-xs font-mono">
-                      <span className="text-slate-300 font-bold">Cylinder {idx + 1}:</span>
-                      <span className={`font-black ${isCrit ? 'text-red-400 glow-red' : isWarn ? 'text-amber-400' : 'text-cyan-300'}`}>
+                      <span className="text-slate-600">Cylinder {idx + 1}:</span>
+                      <span className={`font-bold tabular-nums ${isCrit ? 'text-red-600' : isWarn ? 'text-amber-600' : 'text-slate-900'}`}>
                         {val.toFixed(0)}°C
                       </span>
                     </div>
@@ -805,7 +834,7 @@ export const JudgesSandboxTab = () => {
                       step="5"
                       value={val}
                       onChange={e => handleEgtChange(idx, e.target.value)}
-                      className={`w-full h-1.5 rounded-lg cursor-pointer bg-slate-900 border border-white/[0.08] ${isCrit ? 'accent-red-400' : isWarn ? 'accent-amber-400' : 'accent-cyan-400'}`}
+                      className={`w-full h-1.5 rounded cursor-pointer bg-slate-200 border border-slate-300 ${isCrit ? 'accent-red-600' : isWarn ? 'accent-amber-500' : 'accent-sky-600'}`}
                     />
                   </div>
                 );
@@ -814,16 +843,16 @@ export const JudgesSandboxTab = () => {
           </div>
 
           {/* Group 4: Thermal & Cylinder Head Temperatures (CHT 1-4) */}
-          <div className="starship-glass rounded-xl border border-white/[0.08] p-4 shadow-starship-glass flex flex-col gap-3.5">
-            <div className="flex items-center justify-between border-b border-white/[0.08] pb-2">
+          <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-xs flex flex-col gap-3.5">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
               <div className="flex items-center gap-2">
-                <Thermometer className="w-4 h-4 text-purple-400" />
-                <h3 className="font-display font-black text-xs tracking-wider text-purple-300">
+                <Thermometer className="w-4 h-4 text-sky-600" />
+                <h3 className="font-display font-bold text-xs tracking-wider text-slate-900 uppercase">
                   THERMAL: CYLINDER HEAD TEMPERATURES (CHT 1–4)
                 </h3>
               </div>
-              <span className={`text-[10px] font-mono px-2 py-0.5 rounded border font-bold ${
-                evalResult.metrics.chtSpread > 15 ? 'border-red-500 bg-red-950/60 text-red-300' : 'border-white/[0.08] text-slate-400'
+              <span className={`text-[10px] font-mono px-2 py-0.5 rounded border font-bold tabular-nums ${
+                evalResult.metrics.chtSpread > 15 ? 'border-red-300 bg-red-50 text-red-700' : 'border-slate-200 bg-slate-50 text-slate-600'
               }`}>
                 MAX: {evalResult.metrics.maxCht.toFixed(1)}°C
               </span>
@@ -835,10 +864,10 @@ export const JudgesSandboxTab = () => {
                 const isCrit = val > 130;
                 const isWarn = val > 118;
                 return (
-                  <div key={idx} className="flex flex-col gap-1 p-2.5 rounded-lg bg-slate-950/60 border border-white/[0.06]">
+                  <div key={idx} className="flex flex-col gap-1 p-2.5 rounded border border-slate-200 bg-slate-50">
                     <div className="flex justify-between text-xs font-mono">
-                      <span className="text-slate-300 font-bold">Cylinder {idx + 1}:</span>
-                      <span className={`font-black ${isCrit ? 'text-red-400 glow-red' : isWarn ? 'text-amber-400' : 'text-purple-300'}`}>
+                      <span className="text-slate-600">Cylinder {idx + 1}:</span>
+                      <span className={`font-bold tabular-nums ${isCrit ? 'text-red-600' : isWarn ? 'text-amber-600' : 'text-slate-900'}`}>
                         {val.toFixed(1)}°C
                       </span>
                     </div>
@@ -849,7 +878,7 @@ export const JudgesSandboxTab = () => {
                       step="1"
                       value={val}
                       onChange={e => handleChtChange(idx, e.target.value)}
-                      className={`w-full h-1.5 rounded-lg cursor-pointer bg-slate-900 border border-white/[0.08] ${isCrit ? 'accent-red-400' : isWarn ? 'accent-amber-400' : 'accent-purple-400'}`}
+                      className={`w-full h-1.5 rounded cursor-pointer bg-slate-200 border border-slate-300 ${isCrit ? 'accent-red-600' : isWarn ? 'accent-amber-500' : 'accent-sky-600'}`}
                     />
                   </div>
                 );
@@ -858,22 +887,22 @@ export const JudgesSandboxTab = () => {
           </div>
 
           {/* Group 5: Lubrication & Structural Dynamics */}
-          <div className="starship-glass rounded-xl border border-white/[0.08] p-4 shadow-starship-glass flex flex-col gap-3.5">
-            <div className="flex items-center justify-between border-b border-white/[0.08] pb-2">
+          <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-xs flex flex-col gap-3.5">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
               <div className="flex items-center gap-2">
-                <Droplets className="w-4 h-4 text-blue-400" />
-                <h3 className="font-display font-black text-xs tracking-wider text-blue-300">
+                <Droplets className="w-4 h-4 text-sky-600" />
+                <h3 className="font-display font-bold text-xs tracking-wider text-slate-900 uppercase">
                   LUBRICATION, FLUIDS & VIBRATION
                 </h3>
               </div>
-              <span className="text-[10px] font-mono text-slate-400">HYDRODYNAMICS</span>
+              <span className="text-[10px] font-mono text-slate-500 font-medium">HYDRODYNAMICS</span>
             </div>
 
             {/* Oil Pressure */}
             <div className="flex flex-col gap-1">
               <div className="flex justify-between text-xs font-mono">
-                <span className="text-slate-300">Main Oil Gallery Pressure:</span>
-                <span className={`font-bold ${oilPressBar < 2.0 ? 'text-red-400 glow-red' : oilPressBar < 2.8 ? 'text-amber-400' : 'text-cyan-300'}`}>
+                <span className="text-slate-600">Main Oil Gallery Pressure:</span>
+                <span className={`font-bold tabular-nums ${oilPressBar < 2.0 ? 'text-red-600' : oilPressBar < 2.8 ? 'text-amber-600' : 'text-slate-900'}`}>
                   {oilPressBar.toFixed(2)} bar
                 </span>
               </div>
@@ -884,9 +913,9 @@ export const JudgesSandboxTab = () => {
                 step="0.05"
                 value={oilPressBar}
                 onChange={e => { setOilPressBar(parseFloat(e.target.value)); setActiveBenchmark('CUSTOM'); }}
-                className={`w-full h-1.5 rounded-lg cursor-pointer bg-slate-900 border border-white/[0.08] ${oilPressBar < 2.0 ? 'accent-red-400' : 'accent-cyan-400'}`}
+                className={`w-full h-1.5 rounded cursor-pointer bg-slate-200 border border-slate-300 ${oilPressBar < 2.0 ? 'accent-red-600' : 'accent-sky-600'}`}
               />
-              <div className="flex justify-between text-[9px] font-mono text-slate-500">
+              <div className="flex justify-between text-[9px] font-mono text-slate-400">
                 <span>Critical: &lt;1.8 bar</span>
                 <span>Nominal: 3.5 - 4.5 bar</span>
                 <span>Relief Max: 6.0 bar</span>
@@ -896,8 +925,8 @@ export const JudgesSandboxTab = () => {
             {/* Oil Temp */}
             <div className="flex flex-col gap-1">
               <div className="flex justify-between text-xs font-mono">
-                <span className="text-slate-300">Oil Sump Temperature:</span>
-                <span className={`font-bold ${oilTempC > 120 ? 'text-red-400 glow-red' : oilTempC > 110 ? 'text-amber-400' : 'text-cyan-300'}`}>
+                <span className="text-slate-600">Oil Sump Temperature:</span>
+                <span className={`font-bold tabular-nums ${oilTempC > 120 ? 'text-red-600' : oilTempC > 110 ? 'text-amber-600' : 'text-slate-900'}`}>
                   {oilTempC.toFixed(1)}°C
                 </span>
               </div>
@@ -908,15 +937,15 @@ export const JudgesSandboxTab = () => {
                 step="1"
                 value={oilTempC}
                 onChange={e => { setOilTempC(parseFloat(e.target.value)); setActiveBenchmark('CUSTOM'); }}
-                className={`w-full h-1.5 rounded-lg cursor-pointer bg-slate-900 border border-white/[0.08] ${oilTempC > 120 ? 'accent-red-400' : 'accent-cyan-400'}`}
+                className={`w-full h-1.5 rounded cursor-pointer bg-slate-200 border border-slate-300 ${oilTempC > 120 ? 'accent-red-600' : 'accent-sky-600'}`}
               />
             </div>
 
             {/* Vibration */}
             <div className="flex flex-col gap-1">
               <div className="flex justify-between text-xs font-mono">
-                <span className="text-slate-300">Crankcase Broadband Vibration:</span>
-                <span className={`font-bold ${vibrationGrms > 1.0 ? 'text-red-400 glow-red' : vibrationGrms > 0.4 ? 'text-amber-400' : 'text-cyan-300'}`}>
+                <span className="text-slate-600">Crankcase Broadband Vibration:</span>
+                <span className={`font-bold tabular-nums ${vibrationGrms > 1.0 ? 'text-red-600' : vibrationGrms > 0.4 ? 'text-amber-600' : 'text-slate-900'}`}>
                   {vibrationGrms.toFixed(2)} g-RMS
                 </span>
               </div>
@@ -927,9 +956,9 @@ export const JudgesSandboxTab = () => {
                 step="0.02"
                 value={vibrationGrms}
                 onChange={e => { setVibrationGrms(parseFloat(e.target.value)); setActiveBenchmark('CUSTOM'); }}
-                className={`w-full h-1.5 rounded-lg cursor-pointer bg-slate-900 border border-white/[0.08] ${vibrationGrms > 1.0 ? 'accent-red-400' : 'accent-cyan-400'}`}
+                className={`w-full h-1.5 rounded cursor-pointer bg-slate-200 border border-slate-300 ${vibrationGrms > 1.0 ? 'accent-red-600' : 'accent-sky-600'}`}
               />
-              <div className="flex justify-between text-[9px] font-mono text-slate-500">
+              <div className="flex justify-between text-[9px] font-mono text-slate-400">
                 <span>Baseline: 0.28g</span>
                 <span>Warning: &gt;0.45g</span>
                 <span>Distress: &gt;1.20g</span>
@@ -938,22 +967,22 @@ export const JudgesSandboxTab = () => {
           </div>
 
           {/* Group 6: Fuel Delivery & 28V Electrical Generation */}
-          <div className="starship-glass rounded-xl border border-white/[0.08] p-4 shadow-starship-glass flex flex-col gap-3.5">
-            <div className="flex items-center justify-between border-b border-white/[0.08] pb-2">
+          <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-xs flex flex-col gap-3.5">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
               <div className="flex items-center gap-2">
-                <Zap className="w-4 h-4 text-emerald-400" />
-                <h3 className="font-display font-black text-xs tracking-wider text-emerald-300">
+                <Zap className="w-4 h-4 text-sky-600" />
+                <h3 className="font-display font-bold text-xs tracking-wider text-slate-900 uppercase">
                   FUEL DELIVERY & 28V ELECTRICAL SYSTEM
                 </h3>
               </div>
-              <span className="text-[10px] font-mono text-slate-400">AVIONICS & INJECTION</span>
+              <span className="text-[10px] font-mono text-slate-500 font-medium">AVIONICS & INJECTION</span>
             </div>
 
             {/* Fuel Pressure */}
             <div className="flex flex-col gap-1">
               <div className="flex justify-between text-xs font-mono">
-                <span className="text-slate-300">Fuel Rail Injection Pressure:</span>
-                <span className={`font-bold ${fuelPressureBar < 2.7 ? 'text-red-400 glow-red' : fuelPressureBar > 3.8 ? 'text-amber-400' : 'text-emerald-300'}`}>
+                <span className="text-slate-600">Fuel Rail Injection Pressure:</span>
+                <span className={`font-bold tabular-nums ${fuelPressureBar < 2.7 ? 'text-red-600' : fuelPressureBar > 3.8 ? 'text-amber-600' : 'text-emerald-700'}`}>
                   {fuelPressureBar.toFixed(2)} bar
                 </span>
               </div>
@@ -964,9 +993,9 @@ export const JudgesSandboxTab = () => {
                 step="0.05"
                 value={fuelPressureBar}
                 onChange={e => { setFuelPressureBar(parseFloat(e.target.value)); setActiveBenchmark('CUSTOM'); }}
-                className={`w-full h-1.5 rounded-lg cursor-pointer bg-slate-900 border border-white/[0.08] ${fuelPressureBar < 2.7 ? 'accent-red-400' : 'accent-emerald-400'}`}
+                className={`w-full h-1.5 rounded cursor-pointer bg-slate-200 border border-slate-300 ${fuelPressureBar < 2.7 ? 'accent-red-600' : 'accent-emerald-600'}`}
               />
-              <div className="flex justify-between text-[9px] font-mono text-slate-500">
+              <div className="flex justify-between text-[9px] font-mono text-slate-400">
                 <span>Vapor Lock: &lt;2.2 bar</span>
                 <span>Nominal: 3.12 bar</span>
                 <span>Max Regulator: 4.20 bar</span>
@@ -976,8 +1005,8 @@ export const JudgesSandboxTab = () => {
             {/* Generator Voltage */}
             <div className="flex flex-col gap-1">
               <div className="flex justify-between text-xs font-mono">
-                <span className="text-slate-300">28V UAV Generator Bus Voltage:</span>
-                <span className={`font-bold ${genVoltageV < 27.0 ? 'text-red-400 glow-red' : genVoltageV > 29.5 ? 'text-amber-400' : 'text-cyan-300'}`}>
+                <span className="text-slate-600">28V UAV Generator Bus Voltage:</span>
+                <span className={`font-bold tabular-nums ${genVoltageV < 27.0 ? 'text-red-600' : genVoltageV > 29.5 ? 'text-amber-600' : 'text-slate-900'}`}>
                   {genVoltageV.toFixed(1)} V
                 </span>
               </div>
@@ -988,9 +1017,9 @@ export const JudgesSandboxTab = () => {
                 step="0.2"
                 value={genVoltageV}
                 onChange={e => { setGenVoltageV(parseFloat(e.target.value)); setActiveBenchmark('CUSTOM'); }}
-                className={`w-full h-1.5 rounded-lg cursor-pointer bg-slate-900 border border-white/[0.08] ${genVoltageV < 27.0 ? 'accent-red-400' : 'accent-cyan-400'}`}
+                className={`w-full h-1.5 rounded cursor-pointer bg-slate-200 border border-slate-300 ${genVoltageV < 27.0 ? 'accent-red-600' : 'accent-sky-600'}`}
               />
-              <div className="flex justify-between text-[9px] font-mono text-slate-500">
+              <div className="flex justify-between text-[9px] font-mono text-slate-400">
                 <span>Brownout: &lt;26.0V</span>
                 <span>Regulated Float: 28.4V</span>
                 <span>Over-Voltage: &gt;30.0V</span>
@@ -1006,46 +1035,46 @@ export const JudgesSandboxTab = () => {
         <div className="w-full lg:w-1/2 flex flex-col gap-4">
 
           {/* VIEWPORT MODE SELECTOR TOOLBAR */}
-          <div className="starship-glass rounded-xl border border-white/[0.08] p-2 flex items-center justify-between">
+          <div className="bg-white rounded-lg border border-slate-200 p-1.5 flex items-center justify-between shadow-xs">
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setViewportMode('3D_AND_EVAL')}
-                className={`px-3 py-1 rounded-lg text-xs font-mono font-bold transition-all flex items-center gap-1.5 ${
+                className={`px-2.5 py-1 rounded text-xs font-mono font-bold transition-all flex items-center gap-1.5 ${
                   viewportMode === '3D_AND_EVAL'
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400 shadow-hud-cyan'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-sky-50 text-sky-700 border border-sky-300 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 border border-transparent'
                 }`}
               >
-                <Layers className="w-3.5 h-3.5" />
+                <Layers className="w-3.5 h-3.5 text-sky-600" />
                 SPLIT: 3D TWIN + PROGNOSTICS
               </button>
 
               <button
                 onClick={() => setViewportMode('3D_ONLY')}
-                className={`px-3 py-1 rounded-lg text-xs font-mono font-bold transition-all flex items-center gap-1.5 ${
+                className={`px-2.5 py-1 rounded text-xs font-mono font-bold transition-all flex items-center gap-1.5 ${
                   viewportMode === '3D_ONLY'
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400 shadow-hud-cyan'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-sky-50 text-sky-700 border border-sky-300 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 border border-transparent'
                 }`}
               >
-                <Eye className="w-3.5 h-3.5" />
+                <Eye className="w-3.5 h-3.5 text-sky-600" />
                 3D CAD MODEL ONLY
               </button>
 
               <button
                 onClick={() => setViewportMode('EVAL_ONLY')}
-                className={`px-3 py-1 rounded-lg text-xs font-mono font-bold transition-all flex items-center gap-1.5 ${
+                className={`px-2.5 py-1 rounded text-xs font-mono font-bold transition-all flex items-center gap-1.5 ${
                   viewportMode === 'EVAL_ONLY'
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400 shadow-hud-cyan'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-sky-50 text-sky-700 border border-sky-300 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 border border-transparent'
                 }`}
               >
-                <Activity className="w-3.5 h-3.5" />
+                <Activity className="w-3.5 h-3.5 text-sky-600" />
                 EVALUATION METRICS ONLY
               </button>
             </div>
 
-            <span className="text-[10px] font-mono text-slate-400 hidden sm:inline">
+            <span className="text-[10px] font-mono text-slate-400 hidden sm:inline uppercase font-medium">
               LIVE PROPULSION MODEL
             </span>
           </div>
@@ -1054,16 +1083,16 @@ export const JudgesSandboxTab = () => {
           {/* 3D DIGITAL TWIN WEBGL VIEWPORT */}
           {/* ═══════════════════════════════════════════════════════════════════ */}
           {(viewportMode === '3D_AND_EVAL' || viewportMode === '3D_ONLY') && (
-            <div className={`starship-glass rounded-xl border border-white/[0.08] shadow-starship-glass flex flex-col overflow-hidden relative ${
+            <div className={`bg-white rounded-lg border border-slate-200 shadow-xs flex flex-col overflow-hidden relative ${
               viewportMode === '3D_ONLY' ? 'h-[620px]' : 'h-[360px]'
             }`}>
               {/* 3D Viewport Controls Overlay */}
               <div className="absolute top-2 left-2 right-2 z-10 flex items-center justify-between pointer-events-none">
                 <div className="flex items-center gap-1.5 pointer-events-auto">
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-black/80 border border-cyan-500/40 text-cyan-300 font-bold backdrop-blur">
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/95 border border-slate-200 text-sky-700 font-bold shadow-xs">
                     ROTAX 915 iS 3D TWIN
                   </span>
-                  <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-black/60 border border-white/[0.08] text-slate-300 backdrop-blur">
+                  <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-white/90 border border-slate-200 text-slate-700 shadow-xs tabular-nums">
                     {rpm} RPM
                   </span>
                 </div>
@@ -1071,25 +1100,25 @@ export const JudgesSandboxTab = () => {
                 <div className="flex items-center gap-1 pointer-events-auto">
                   <button
                     onClick={() => setCameraPreset('ENGINE_BLOCK')}
-                    className="text-[9px] font-mono px-2 py-0.5 rounded bg-slate-900/80 border border-white/[0.08] hover:border-cyan-400 text-slate-300 backdrop-blur"
+                    className="text-[9px] font-mono px-2 py-0.5 rounded bg-white/90 border border-slate-200 hover:border-slate-400 text-slate-700 shadow-xs"
                   >
                     ISO
                   </button>
                   <button
                     onClick={() => setCameraPreset('CYL_03')}
-                    className="text-[9px] font-mono px-2 py-0.5 rounded bg-slate-900/80 border border-white/[0.08] hover:border-cyan-400 text-slate-300 backdrop-blur"
+                    className="text-[9px] font-mono px-2 py-0.5 rounded bg-white/90 border border-slate-200 hover:border-slate-400 text-slate-700 shadow-xs"
                   >
                     CYL 3
                   </button>
                   <button
                     onClick={() => setCameraPreset('TURBO_01')}
-                    className="text-[9px] font-mono px-2 py-0.5 rounded bg-slate-900/80 border border-white/[0.08] hover:border-cyan-400 text-slate-300 backdrop-blur"
+                    className="text-[9px] font-mono px-2 py-0.5 rounded bg-white/90 border border-slate-200 hover:border-slate-400 text-slate-700 shadow-xs"
                   >
                     TURBO
                   </button>
                   <button
                     onClick={() => setCameraPreset('OIL_SYSTEM')}
-                    className="text-[9px] font-mono px-2 py-0.5 rounded bg-slate-900/80 border border-white/[0.08] hover:border-cyan-400 text-slate-300 backdrop-blur"
+                    className="text-[9px] font-mono px-2 py-0.5 rounded bg-white/90 border border-slate-200 hover:border-slate-400 text-slate-700 shadow-xs"
                   >
                     OIL
                   </button>
@@ -1097,8 +1126,8 @@ export const JudgesSandboxTab = () => {
               </div>
 
               {/* Explode View Slider Overlay */}
-              <div className="absolute bottom-2 left-2 z-10 flex items-center gap-2 px-2.5 py-1 rounded-lg bg-black/75 border border-white/[0.08] backdrop-blur text-[10px] font-mono text-slate-300">
-                <span>EXPLODE:</span>
+              <div className="absolute bottom-2 left-2 z-10 flex items-center gap-2 px-2.5 py-1 rounded bg-white/95 border border-slate-200 text-[10px] font-mono text-slate-700 shadow-xs">
+                <span className="font-semibold">EXPLODE:</span>
                 <input
                   type="range"
                   min="0"
@@ -1106,9 +1135,9 @@ export const JudgesSandboxTab = () => {
                   step="0.05"
                   value={explodeFactor}
                   onChange={e => setExplodeFactor(parseFloat(e.target.value))}
-                  className="w-20 h-1 accent-cyan-400 cursor-pointer"
+                  className="w-20 h-1 accent-sky-600 cursor-pointer"
                 />
-                <span>{(explodeFactor * 100).toFixed(0)}%</span>
+                <span className="tabular-nums font-mono font-bold text-slate-900">{(explodeFactor * 100).toFixed(0)}%</span>
               </div>
 
               {/* WebGL Canvas */}
@@ -1118,6 +1147,10 @@ export const JudgesSandboxTab = () => {
                   gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
                   dpr={[1, 2]}
                 >
+                  <color attach="background" args={['#F1F5F9']} />
+                  <ambientLight intensity={0.9} />
+                  <directionalLight position={[10, 20, 15]} intensity={1.4} />
+                  <directionalLight position={[-10, 10, -10]} intensity={0.6} />
                   <OrbitControls
                     ref={controlsRef}
                     enableDamping
@@ -1145,125 +1178,125 @@ export const JudgesSandboxTab = () => {
           {(viewportMode === '3D_AND_EVAL' || viewportMode === 'EVAL_ONLY') && (
             <>
               {/* Card 1: Airworthiness Status Badge */}
-              <div className={`starship-glass rounded-xl border p-4 shadow-starship-glass flex flex-col gap-2.5 ${evalResult.airworthiness.badge}`}>
+              <div className={`rounded-lg border p-4 shadow-xs flex flex-col gap-2.5 ${evalResult.airworthiness.badge}`}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     {evalResult.airworthiness.status === 'CRITICAL ABORT' ? (
-                      <ShieldAlert className="w-6 h-6 text-red-400 animate-pulse" />
+                      <ShieldAlert className="w-6 h-6 text-red-600 animate-pulse" />
                     ) : evalResult.airworthiness.status === 'DERATED' ? (
-                      <AlertTriangle className="w-6 h-6 text-amber-400" />
+                      <AlertTriangle className="w-6 h-6 text-amber-600" />
                     ) : (
-                      <ShieldCheck className="w-6 h-6 text-emerald-400" />
+                      <ShieldCheck className="w-6 h-6 text-emerald-600" />
                     )}
                     <div>
-                      <div className="text-[10px] font-mono uppercase tracking-widest text-slate-300 font-bold">
+                      <div className="text-[10px] font-mono uppercase tracking-widest text-slate-500 font-bold">
                         AIRWORTHINESS DISPATCH STATUS
                       </div>
-                      <div className={`font-display font-black text-lg ${evalResult.airworthiness.color}`}>
+                      <div className={`font-display font-bold text-lg ${evalResult.airworthiness.color}`}>
                         {evalResult.airworthiness.label}
                       </div>
                     </div>
                   </div>
 
                   <div className="text-right font-mono">
-                    <div className="text-[9px] text-slate-400 uppercase">EVALUATION CONFIDENCE</div>
-                    <div className="text-sm font-bold text-white">{evalResult.metrics.confidencePct}% (BAYESIAN)</div>
+                    <div className="text-[9px] text-slate-500 uppercase font-medium">EVALUATION CONFIDENCE</div>
+                    <div className="text-sm font-bold text-slate-900 tabular-nums">{evalResult.metrics.confidencePct}% (BAYESIAN)</div>
                   </div>
                 </div>
 
-                <p className="text-xs font-mono text-slate-200 leading-relaxed border-t border-white/[0.08] pt-2">
+                <p className="text-xs font-mono text-slate-700 leading-relaxed border-t border-slate-200/80 pt-2 font-medium">
                   {evalResult.airworthiness.desc}
                 </p>
               </div>
 
               {/* Card 2: Health Index & Degradation Score */}
-              <div className="starship-glass rounded-xl border border-white/[0.08] p-4 shadow-starship-glass flex flex-col gap-3">
-                <div className="flex items-center justify-between border-b border-white/[0.08] pb-2">
+              <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-xs flex flex-col gap-3">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                   <div className="flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-cyan-400" />
-                    <h3 className="font-display font-black text-xs tracking-wider text-slate-200">
+                    <Activity className="w-4 h-4 text-sky-600" />
+                    <h3 className="font-display font-bold text-xs tracking-wider text-slate-900 uppercase">
                       HEALTH INDEX & MULTI-STRESS DEGRADATION (PINN / ML)
                     </h3>
                   </div>
-                  <span className="text-[10px] font-mono text-cyan-300">
-                    TREND: <span className="font-bold">{evalResult.metrics.trend}</span>
+                  <span className="text-[10px] font-mono text-slate-500">
+                    TREND: <span className="font-bold text-slate-800">{evalResult.metrics.trend}</span>
                   </span>
                 </div>
 
                 <div className="grid grid-cols-3 gap-3 text-center font-mono">
-                  <div className="starship-glass-card p-3 rounded-xl border border-white/[0.06] flex flex-col justify-center">
-                    <span className="text-[9px] text-slate-400 uppercase">HEALTH INDEX</span>
-                    <span className={`text-2xl font-black font-display my-0.5 ${
-                      evalResult.metrics.healthIndex < 40 ? 'text-red-400 glow-red' :
-                      evalResult.metrics.healthIndex < 75 ? 'text-amber-400 glow-amber' :
-                      'text-emerald-400 glow-green'
+                  <div className="p-3 rounded border border-slate-200 bg-slate-50 flex flex-col justify-center">
+                    <span className="text-[9px] text-slate-500 uppercase font-medium">HEALTH INDEX</span>
+                    <span className={`text-2xl font-black font-display my-0.5 tabular-nums ${
+                      evalResult.metrics.healthIndex < 40 ? 'text-red-600' :
+                      evalResult.metrics.healthIndex < 75 ? 'text-amber-600' :
+                      'text-emerald-700'
                     }`}>
                       {evalResult.metrics.healthIndex.toFixed(1)}%
                     </span>
-                    <span className="text-[8px] text-slate-500">MEL Limit: 50.0%</span>
+                    <span className="text-[8px] text-slate-400">MEL Limit: 50.0%</span>
                   </div>
 
-                  <div className="starship-glass-card p-3 rounded-xl border border-white/[0.06] flex flex-col justify-center">
-                    <span className="text-[9px] text-slate-400 uppercase">DEGRADATION RATE</span>
-                    <span className={`text-2xl font-black font-display my-0.5 ${
-                      evalResult.metrics.ratePerHour > 0.2 ? 'text-red-400' :
-                      evalResult.metrics.ratePerHour > 0.08 ? 'text-amber-400' :
-                      'text-cyan-300'
+                  <div className="p-3 rounded border border-slate-200 bg-slate-50 flex flex-col justify-center">
+                    <span className="text-[9px] text-slate-500 uppercase font-medium">DEGRADATION RATE</span>
+                    <span className={`text-2xl font-black font-display my-0.5 tabular-nums ${
+                      evalResult.metrics.ratePerHour > 0.2 ? 'text-red-600' :
+                      evalResult.metrics.ratePerHour > 0.08 ? 'text-amber-600' :
+                      'text-slate-900'
                     }`}>
                       {evalResult.metrics.ratePerHour.toFixed(3)}
                     </span>
-                    <span className="text-[8px] text-slate-500">% health / flight hr</span>
+                    <span className="text-[8px] text-slate-400">% health / flight hr</span>
                   </div>
 
-                  <div className="starship-glass-card p-3 rounded-xl border border-white/[0.06] flex flex-col justify-center">
-                    <span className="text-[9px] text-slate-400 uppercase">FATIGUE STRESS</span>
-                    <span className={`text-2xl font-black font-display my-0.5 ${
-                      evalResult.metrics.stress.combinedStress > 3.0 ? 'text-red-400' :
-                      evalResult.metrics.stress.combinedStress > 1.5 ? 'text-amber-400' :
-                      'text-purple-300'
+                  <div className="p-3 rounded border border-slate-200 bg-slate-50 flex flex-col justify-center">
+                    <span className="text-[9px] text-slate-500 uppercase font-medium">FATIGUE STRESS</span>
+                    <span className={`text-2xl font-black font-display my-0.5 tabular-nums ${
+                      evalResult.metrics.stress.combinedStress > 3.0 ? 'text-red-600' :
+                      evalResult.metrics.stress.combinedStress > 1.5 ? 'text-amber-600' :
+                      'text-slate-900'
                     }`}>
                       {evalResult.metrics.stress.combinedStress.toFixed(1)}x
                     </span>
-                    <span className="text-[8px] text-slate-500">vs nominal baseline</span>
+                    <span className="text-[8px] text-slate-400">vs nominal baseline</span>
                   </div>
                 </div>
               </div>
 
               {/* Card 3: Predicted Remaining Useful Life (RUL) */}
-              <div className="starship-glass rounded-xl border border-white/[0.08] p-4 shadow-starship-glass flex flex-col gap-3">
-                <div className="flex items-center justify-between border-b border-white/[0.08] pb-2">
+              <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-xs flex flex-col gap-3">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                   <div className="flex items-center gap-2">
-                    <Gauge className="w-4 h-4 text-cyan-400" />
-                    <h3 className="font-display font-black text-xs tracking-wider text-slate-200">
+                    <Gauge className="w-4 h-4 text-sky-600" />
+                    <h3 className="font-display font-bold text-xs tracking-wider text-slate-900 uppercase">
                       PREDICTED REMAINING USEFUL LIFE (RUL FORECAST)
                     </h3>
                   </div>
-                  <span className="text-[10px] font-mono text-cyan-300">WEIBULL HAZARD MODEL</span>
+                  <span className="text-[10px] font-mono text-slate-500">WEIBULL HAZARD MODEL</span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 font-mono">
-                  <div className="starship-glass-card p-3 rounded-xl border border-white/[0.06] flex flex-col justify-center">
-                    <span className="text-[9px] text-slate-400 uppercase">EXPECTED RUL</span>
-                    <span className={`text-2xl font-black font-display my-0.5 ${
-                      evalResult.metrics.rulHours < 2.0 ? 'text-red-400 glow-red' :
-                      evalResult.metrics.rulHours < 10.0 ? 'text-amber-400' :
-                      'text-cyan-300 glow-cyan'
+                  <div className="p-3 rounded border border-slate-200 bg-slate-50 flex flex-col justify-center">
+                    <span className="text-[9px] text-slate-500 uppercase font-medium">EXPECTED RUL</span>
+                    <span className={`text-2xl font-black font-display my-0.5 tabular-nums ${
+                      evalResult.metrics.rulHours < 2.0 ? 'text-red-600' :
+                      evalResult.metrics.rulHours < 10.0 ? 'text-amber-600' :
+                      'text-sky-700'
                     }`}>
                       {evalResult.metrics.rulHours.toFixed(1)} HRS
                     </span>
-                    <span className="text-[8px] text-slate-500">
+                    <span className="text-[8px] text-slate-400 tabular-nums">
                       95% CI: [{evalResult.metrics.rulLower95}h – {evalResult.metrics.rulUpper95}h]
                     </span>
                   </div>
 
-                  <div className="starship-glass-card p-3 rounded-xl border border-white/[0.06] flex flex-col justify-center">
-                    <span className="text-[9px] text-slate-400 uppercase">6-HR MISSION MARGIN</span>
-                    <span className={`text-2xl font-black font-display my-0.5 ${
-                      evalResult.metrics.rulHours - 6.0 < 0 ? 'text-red-400 glow-red' : 'text-emerald-400 glow-green'
+                  <div className="p-3 rounded border border-slate-200 bg-slate-50 flex flex-col justify-center">
+                    <span className="text-[9px] text-slate-500 uppercase font-medium">6-HR MISSION MARGIN</span>
+                    <span className={`text-2xl font-black font-display my-0.5 tabular-nums ${
+                      evalResult.metrics.rulHours - 6.0 < 0 ? 'text-red-600' : 'text-emerald-700'
                     }`}>
                       {(evalResult.metrics.rulHours - 6.0) >= 0 ? `+${(evalResult.metrics.rulHours - 6.0).toFixed(1)}h` : `${(evalResult.metrics.rulHours - 6.0).toFixed(1)}h`}
                     </span>
-                    <span className="text-[8px] text-slate-500">
+                    <span className="text-[8px] text-slate-400 font-medium">
                       {evalResult.metrics.rulHours >= 6.0 ? 'Sufficient mission reserve' : 'CRITICAL DEFICIT'}
                     </span>
                   </div>
@@ -1271,15 +1304,15 @@ export const JudgesSandboxTab = () => {
               </div>
 
               {/* Card 4: Diagnostic Subsystem Degradation Matrix */}
-              <div className="starship-glass rounded-xl border border-white/[0.08] p-4 shadow-starship-glass flex flex-col gap-3">
-                <div className="flex items-center justify-between border-b border-white/[0.08] pb-2">
+              <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-xs flex flex-col gap-3">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                   <div className="flex items-center gap-2">
-                    <Layers className="w-4 h-4 text-purple-400" />
-                    <h3 className="font-display font-black text-xs tracking-wider text-purple-300">
+                    <Layers className="w-4 h-4 text-sky-600" />
+                    <h3 className="font-display font-bold text-xs tracking-wider text-slate-900 uppercase">
                       DIAGNOSTIC SUBSYSTEM DEGRADATION MATRIX
                     </h3>
                   </div>
-                  <span className="text-[10px] font-mono text-slate-400">PHYSICAL DOMAIN ISOLATION</span>
+                  <span className="text-[10px] font-mono text-slate-500">PHYSICAL DOMAIN ISOLATION</span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2.5 font-mono text-xs">
@@ -1288,19 +1321,19 @@ export const JudgesSandboxTab = () => {
                     const isCrit = s > 60;
                     const isWarn = s > 30;
                     return (
-                      <div key={subsystem} className="p-2.5 rounded-lg bg-slate-950/60 border border-white/[0.06] flex flex-col gap-1.5">
+                      <div key={subsystem} className="p-2.5 rounded border border-slate-200 bg-slate-50 flex flex-col gap-1.5">
                         <div className="flex justify-between text-[10px]">
-                          <span className="text-slate-300 uppercase font-bold">{subsystem}</span>
-                          <span className={`font-bold ${isCrit ? 'text-red-400' : isWarn ? 'text-amber-400' : 'text-emerald-400'}`}>
+                          <span className="text-slate-700 uppercase font-bold">{subsystem}</span>
+                          <span className={`font-bold tabular-nums ${isCrit ? 'text-red-600' : isWarn ? 'text-amber-600' : 'text-emerald-700'}`}>
                             {s.toFixed(1)}%
                           </span>
                         </div>
-                        <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden border border-white/[0.04]">
+                        <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden border border-slate-200">
                           <div
                             className={`h-full rounded-full transition-all duration-300 ${
-                              isCrit ? 'bg-gradient-to-r from-red-600 to-rose-500' :
-                              isWarn ? 'bg-gradient-to-r from-amber-600 to-yellow-400' :
-                              'bg-gradient-to-r from-emerald-600 to-teal-400'
+                              isCrit ? 'bg-red-500' :
+                              isWarn ? 'bg-amber-500' :
+                              'bg-emerald-500'
                             }`}
                             style={{ width: `${Math.min(100, Math.max(2, s))}%` }}
                           />
@@ -1312,56 +1345,56 @@ export const JudgesSandboxTab = () => {
               </div>
 
               {/* Card 5: Autonomous RL Replanner Recommendation */}
-              <div className="starship-glass rounded-xl border border-white/[0.08] p-4 shadow-starship-glass flex flex-col gap-3">
-                <div className="flex items-center justify-between border-b border-white/[0.08] pb-2">
+              <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-xs flex flex-col gap-3">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                   <div className="flex items-center gap-2">
-                    <Compass className="w-4 h-4 text-cyan-400" />
-                    <h3 className="font-display font-black text-xs tracking-wider text-cyan-300">
+                    <Compass className="w-4 h-4 text-sky-600" />
+                    <h3 className="font-display font-bold text-xs tracking-wider text-slate-900 uppercase">
                       AUTONOMOUS RL FLIGHT PLANNER & CONTINGENCY ACTION
                     </h3>
                   </div>
                   <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold border ${
                     evalResult.rlRecommendation.action === 'EMERGENCY_DIVERT_RTB'
-                      ? 'border-red-500 bg-red-950/80 text-red-300 animate-pulse'
+                      ? 'border-red-300 bg-red-50 text-red-700 animate-pulse'
                       : evalResult.rlRecommendation.action === 'DERATE_AND_CONTINUE_MISSION'
-                      ? 'border-amber-500 bg-amber-950/80 text-amber-300'
-                      : 'border-emerald-500 bg-emerald-950/80 text-emerald-300'
+                      ? 'border-amber-300 bg-amber-50 text-amber-700'
+                      : 'border-emerald-300 bg-emerald-50 text-emerald-700'
                   }`}>
                     {evalResult.rlRecommendation.action}
                   </span>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center font-mono">
-                  <div className="p-2 rounded-lg bg-slate-950/60 border border-white/[0.06]">
-                    <div className="text-[8px] text-slate-400 uppercase">RECOVERY FIELD</div>
-                    <div className="text-xs font-bold text-white truncate mt-0.5">
+                  <div className="p-2 rounded border border-slate-200 bg-slate-50">
+                    <div className="text-[8px] text-slate-500 uppercase font-semibold">RECOVERY FIELD</div>
+                    <div className="text-xs font-bold text-slate-900 truncate mt-0.5">
                       {evalResult.rlRecommendation.targetField}
                     </div>
-                    <div className="text-[8px] text-cyan-400 font-bold">{evalResult.rlRecommendation.distNm} NM</div>
+                    <div className="text-[8px] text-sky-600 font-bold tabular-nums">{evalResult.rlRecommendation.distNm} NM</div>
                   </div>
 
-                  <div className="p-2 rounded-lg bg-slate-950/60 border border-white/[0.06]">
-                    <div className="text-[8px] text-slate-400 uppercase">FLIGHT TIME</div>
-                    <div className="text-xs font-bold text-white mt-0.5">
+                  <div className="p-2 rounded border border-slate-200 bg-slate-50">
+                    <div className="text-[8px] text-slate-500 uppercase font-semibold">FLIGHT TIME</div>
+                    <div className="text-xs font-bold text-slate-900 mt-0.5 tabular-nums">
                       {evalResult.rlRecommendation.flightTimeMin} min
                     </div>
-                    <div className="text-[8px] text-slate-400">at {evalResult.rlRecommendation.recSpeed} kts</div>
+                    <div className="text-[8px] text-slate-400 tabular-nums">at {evalResult.rlRecommendation.recSpeed} kts</div>
                   </div>
 
-                  <div className="p-2 rounded-lg bg-slate-950/60 border border-white/[0.06]">
-                    <div className="text-[8px] text-slate-400 uppercase">CMD THROTTLE</div>
-                    <div className="text-xs font-bold text-cyan-300 mt-0.5">
+                  <div className="p-2 rounded border border-slate-200 bg-slate-50">
+                    <div className="text-[8px] text-slate-500 uppercase font-semibold">CMD THROTTLE</div>
+                    <div className="text-xs font-bold text-slate-900 mt-0.5 tabular-nums">
                       {evalResult.rlRecommendation.recThrottle}%
                     </div>
-                    <div className="text-[8px] text-slate-400">{evalResult.rlRecommendation.recRpm} RPM</div>
+                    <div className="text-[8px] text-slate-400 tabular-nums">{evalResult.rlRecommendation.recRpm} RPM</div>
                   </div>
 
-                  <div className="p-2 rounded-lg bg-slate-950/60 border border-white/[0.06]">
-                    <div className="text-[8px] text-slate-400 uppercase">VERT SPEED</div>
-                    <div className={`text-xs font-bold mt-0.5 ${evalResult.rlRecommendation.recClimbFpm < 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  <div className="p-2 rounded border border-slate-200 bg-slate-50">
+                    <div className="text-[8px] text-slate-500 uppercase font-semibold">VERT SPEED</div>
+                    <div className={`text-xs font-bold mt-0.5 tabular-nums ${evalResult.rlRecommendation.recClimbFpm < 0 ? 'text-amber-600' : 'text-emerald-700'}`}>
                       {evalResult.rlRecommendation.recClimbFpm} fpm
                     </div>
-                    <div className="text-[8px] text-slate-400">Margin: {evalResult.rlRecommendation.safetyMargin}x</div>
+                    <div className="text-[8px] text-slate-400 tabular-nums">Margin: {evalResult.rlRecommendation.safetyMargin}x</div>
                   </div>
                 </div>
               </div>

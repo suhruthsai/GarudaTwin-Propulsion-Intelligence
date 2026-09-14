@@ -187,15 +187,15 @@ export const CopilotTab = () => {
   return (
     <div className="flex flex-col lg:flex-row gap-4 h-[calc(100vh-140px)] w-full">
       {/* Left Column: Natural Language Diagnostic Copilot */}
-      <div className="flex-1 starship-glass rounded-xl border border-white/[0.08] p-4 flex flex-col justify-between overflow-hidden shadow-starship-glass">
+      <div className="flex-1 gcs-panel rounded-lg border border-aero-border p-4 flex flex-col justify-between overflow-hidden shadow-gcs-panel">
         {/* Copilot Header */}
-        <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+        <div className="flex items-center justify-between border-b border-aero-border pb-3">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-cyan-500/10 border border-cyan-400/40 text-cyan-300 shadow-sm">
-              <Bot className="w-5 h-5 text-cyan-400 animate-pulse" />
+            <div className="p-2 rounded bg-aero-blue/10 border border-aero-blue/30 text-aero-blue shadow-sm">
+              <Bot className="w-5 h-5 text-aero-blue animate-pulse" />
             </div>
             <div>
-              <h3 className="font-display font-black text-sm tracking-widest text-cyan-300 glow-cyan">
+              <h3 className="font-display font-bold text-sm tracking-wider text-slate-100 uppercase">
                 GARUDATWIN GCS COPILOT
               </h3>
               <span className="text-[10px] font-mono text-slate-400">
@@ -203,7 +203,7 @@ export const CopilotTab = () => {
               </span>
             </div>
           </div>
-          <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-cyan-950/60 border border-cyan-500/40 text-cyan-300">
+          <span className="px-2.5 py-1 rounded text-[10px] font-mono font-bold bg-aero-surface border border-aero-border text-slate-300">
             ONLINE (LLM / RAG REASONER)
           </span>
         </div>
@@ -220,15 +220,15 @@ export const CopilotTab = () => {
                 }`}
               >
                 <div className="flex items-center gap-1.5 mb-1 text-[10px] font-mono text-slate-400">
-                  {isAi ? <Bot className="w-3.5 h-3.5 text-cyan-400" /> : <Terminal className="w-3.5 h-3.5 text-slate-300" />}
+                  {isAi ? <Bot className="w-3.5 h-3.5 text-aero-blue" /> : <Terminal className="w-3.5 h-3.5 text-slate-300" />}
                   <span className="font-bold">{isAi ? 'GARUDATWIN COPILOT' : 'FLIGHT CONTROLLER'}</span>
-                  <span className="text-[9px] text-slate-500">[{msg.timestamp}]</span>
+                  <span className="text-[9px] text-slate-500 tabular-nums">[{msg.timestamp}]</span>
                 </div>
                 <div
-                  className={`p-3.5 rounded-2xl text-xs leading-relaxed font-mono whitespace-pre-wrap ${
+                  className={`p-3 rounded-lg text-xs leading-relaxed font-mono whitespace-pre-wrap ${
                     isAi
-                      ? 'starship-glass-card border border-white/[0.08] rounded-tl-none text-slate-100 shadow-md'
-                      : 'bg-gradient-to-r from-cyan-600/30 to-blue-600/20 border border-cyan-400/60 rounded-tr-none text-white shadow-hud-cyan'
+                      ? 'gcs-card border border-aero-border rounded-tl-none text-slate-200 shadow-sm'
+                      : 'bg-aero-blue/20 border border-aero-blue/40 rounded-tr-none text-slate-100 shadow-sm'
                   }`}
                 >
                   {msg.text}
@@ -244,7 +244,7 @@ export const CopilotTab = () => {
             <button
               key={idx}
               onClick={() => handleSendMessage(chip)}
-              className="px-3 py-1 bg-slate-950/80 hover:bg-cyan-500/20 border border-white/[0.08] hover:border-cyan-400/60 rounded-full text-[11px] font-mono text-slate-300 hover:text-cyan-200 transition-all shadow-sm"
+              className="px-3 py-1 bg-aero-surface hover:bg-aero-surface-hover border border-aero-border hover:border-slate-500 rounded text-[11px] font-mono text-slate-300 hover:text-slate-100 transition-all shadow-sm"
             >
               + {chip}
             </button>
@@ -252,7 +252,7 @@ export const CopilotTab = () => {
         </div>
 
         {/* Input Bar */}
-        <div className="flex items-center gap-2 bg-slate-950/90 p-2 rounded-xl border border-white/[0.08] shadow-inner">
+        <div className="flex items-center gap-2 bg-aero-black p-2 rounded border border-aero-border">
           <input
             type="text"
             value={inputQuery}
@@ -263,7 +263,7 @@ export const CopilotTab = () => {
           />
           <button
             onClick={() => handleSendMessage()}
-            className="px-4 py-2 bg-cyan-400 hover:bg-cyan-300 text-black font-mono font-bold text-xs rounded-lg transition-all flex items-center gap-1.5 shadow-hud-cyan"
+            className="px-3.5 py-2 bg-aero-blue hover:bg-sky-400 text-slate-950 font-mono font-bold text-xs rounded transition-all flex items-center gap-1.5 shadow-sm"
           >
             <Send className="w-3.5 h-3.5" /> SEND
           </button>
@@ -271,15 +271,15 @@ export const CopilotTab = () => {
       </div>
 
       {/* Right Column: 1-Click PDF Report Generator Panel */}
-      <div className="w-full lg:w-96 starship-glass rounded-xl border border-white/[0.08] p-4 flex flex-col gap-4 justify-between shadow-starship-glass">
+      <div className="w-full lg:w-96 gcs-panel rounded-lg border border-aero-border p-4 flex flex-col gap-4 justify-between shadow-gcs-panel">
         <div>
-          <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+          <div className="flex items-center justify-between border-b border-aero-border pb-3">
             <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-lg bg-cyan-500/10 border border-cyan-400/40 text-cyan-300 shadow-sm">
-                <FileText className="w-5 h-5 text-cyan-400" />
+              <div className="p-2 rounded bg-aero-blue/10 border border-aero-blue/30 text-aero-blue shadow-sm">
+                <FileText className="w-5 h-5 text-aero-blue" />
               </div>
               <div>
-                <h3 className="font-display font-black text-sm tracking-wider text-cyan-300 glow-cyan">
+                <h3 className="font-display font-bold text-sm tracking-wider text-slate-100 uppercase">
                   AIRWORTHINESS EXPORTER
                 </h3>
                 <span className="text-[10px] font-mono text-slate-400">PDF MAINTENANCE DOSSIER</span>
@@ -287,25 +287,25 @@ export const CopilotTab = () => {
             </div>
           </div>
 
-          <div className="starship-glass-card p-4 rounded-xl border border-white/[0.08] mt-4 flex flex-col gap-2.5">
+          <div className="gcs-card p-4 rounded border border-aero-border mt-4 flex flex-col gap-2.5">
             <div className="text-[10px] font-mono text-slate-400 font-bold uppercase tracking-wider">REPORT SPECIFICATIONS:</div>
             <div className="text-xs font-mono text-slate-300 flex flex-col gap-2">
-              <div className="flex items-center justify-between border-b border-white/[0.04] pb-1.5">
+              <div className="flex items-center justify-between border-b border-aero-border/50 pb-1.5">
                 <span className="text-slate-400">ASSET ID:</span> <span className="text-white font-bold">{telemetry.mission.uavId}</span>
               </div>
-              <div className="flex items-center justify-between border-b border-white/[0.04] pb-1.5">
-                <span className="text-slate-400">ENGINE:</span> <span className="text-cyan-300 font-bold glow-cyan">Rotax 915 iS Boxer</span>
+              <div className="flex items-center justify-between border-b border-aero-border/50 pb-1.5">
+                <span className="text-slate-400">ENGINE:</span> <span className="text-slate-100 font-bold">Rotax 915 iS Boxer</span>
               </div>
-              <div className="flex items-center justify-between border-b border-white/[0.04] pb-1.5">
-                <span className="text-slate-400">TELEMETRY SNAPSHOT:</span> <span className="text-emerald-400 font-bold glow-green">100 Hz Sync</span>
+              <div className="flex items-center justify-between border-b border-aero-border/50 pb-1.5">
+                <span className="text-slate-400">TELEMETRY SNAPSHOT:</span> <span className="text-aero-green font-bold tabular-nums">100 Hz Sync</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-slate-400">STANDARD:</span> <span className="text-purple-300 font-bold glow-purple">DO-178C / STANAG 4671</span>
+                <span className="text-slate-400">STANDARD:</span> <span className="text-slate-100 font-bold">DO-178C / STANAG 4671</span>
               </div>
             </div>
           </div>
 
-          <div className="starship-glass-card p-3.5 rounded-xl border border-white/[0.08] mt-3 text-xs font-mono text-slate-300 leading-relaxed">
+          <div className="gcs-card p-3.5 rounded border border-aero-border mt-3 text-xs font-mono text-slate-300 leading-relaxed">
             Generates an official maintenance dossier including full telemetry residual tables, PyTorch LSTM confidence intervals, autoencoder anomaly scores, and signed digital clearance.
           </div>
         </div>
@@ -314,7 +314,7 @@ export const CopilotTab = () => {
         <button
           onClick={exportPdfReport}
           disabled={isGeneratingPdf}
-          className="w-full py-3.5 bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-black font-display font-black text-xs tracking-widest rounded-xl shadow-hud-cyan transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+          className="w-full py-3 bg-aero-blue hover:bg-sky-400 text-slate-950 font-mono font-bold text-xs tracking-wider rounded shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50 uppercase"
         >
           <FileDown className="w-4 h-4" />
           {isGeneratingPdf ? 'COMPILING PDF DOSSIER...' : 'EXPORT AIRWORTHINESS REPORT (PDF)'}

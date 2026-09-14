@@ -55,7 +55,7 @@ export const UnifiedDebriefTab = () => {
   const [messages, setMessages] = useState([
     {
       sender: 'ai',
-      text: 'Greetings Flight Officer. I am the GarudaTwin Autonomous Digital Twin Copilot. I am fully synchronized with the 8-Phase Tactical ISR Mission Replay and live aerothermal physics twin. Select any phase, anomaly, or scenario to interrogate causal factors or compile an official DO-178C airworthiness report.',
+      text: 'TELEMETRY REASONING KERNEL ONLINE // SENSORS SYNCED TO BLACK-BOX REPLAY. Ready to interrogate causal factors, calculate aerothermal margins, evaluate autoencoder anomaly scores, or compile an official DO-178C Level B airworthiness certification dossier.',
       timestamp: '12:00:01'
     }
   ]);
@@ -330,27 +330,27 @@ export const UnifiedDebriefTab = () => {
   return (
     <div className="flex flex-col gap-3.5 h-[calc(100vh-125px)] w-full overflow-y-auto custom-scrollbar pb-8 font-hud">
       {/* 1. Header Banner & Scenario Selector */}
-      <div className="bg-[#0A101D] border border-cyan-500/25 rounded-xl p-3.5 shrink-0 flex flex-wrap items-center justify-between gap-3 shadow-xl">
+      <div className="bg-white border border-slate-200 rounded-xl p-3.5 shrink-0 flex flex-wrap items-center justify-between gap-3 shadow-xs">
         {/* Left: Branding & Status */}
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-lg bg-cyan-500/15 border border-cyan-400/50 text-cyan-300 shadow-sm">
-            <Radio className="w-5 h-5 text-cyan-400 animate-pulse" />
+          <div className="p-2.5 rounded-lg bg-sky-50 border border-sky-200 text-sky-600 shadow-xs">
+            <Radio className="w-5 h-5 text-sky-600 animate-pulse" />
           </div>
           <div>
             <div className="flex items-center gap-2.5">
-              <h2 className="text-base font-bold text-white uppercase tracking-wider">
+              <h2 className="text-base font-bold text-slate-900 uppercase tracking-wider">
                 TACTICAL MISSION REPLAY & AIRWORTHINESS DEBRIEF STATION
               </h2>
-              <span className="text-xs bg-cyan-950 text-cyan-300 border border-cyan-400/60 px-2.5 py-0.5 rounded-full font-bold font-mono">
+              <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-300 px-2.5 py-0.5 rounded-full font-bold font-mono">
                 FADEC SYNC: 100% PASS
               </span>
             </div>
-            <div className="text-xs text-slate-300 flex items-center gap-2 mt-0.5 font-medium">
-              <span className="text-slate-400">CAN 2.0B BLACK-BOX RECORDER</span>
-              <span className="text-slate-600">•</span>
-              <span className="text-cyan-300 font-mono">LAT/LONG: 34.6644°N 118.0847°W</span>
-              <span className="text-slate-600">•</span>
-              <span className="text-amber-400 font-bold font-mono">{sortie.missionId}</span>
+            <div className="text-xs text-slate-500 flex items-center gap-2 mt-0.5 font-medium">
+              <span className="text-slate-600">CAN 2.0B BLACK-BOX RECORDER</span>
+              <span className="text-slate-300">•</span>
+              <span className="text-sky-700 font-mono font-semibold">LAT/LONG: 34.6644°N 118.0847°W</span>
+              <span className="text-slate-300">•</span>
+              <span className="text-amber-800 font-bold font-mono">{sortie.missionId}</span>
             </div>
           </div>
         </div>
@@ -358,11 +358,11 @@ export const UnifiedDebriefTab = () => {
         {/* Right: View Mode Toggle & Scenarios */}
         <div className="flex flex-wrap items-center gap-2">
           {/* View Mode Controls */}
-          <div className="flex items-center bg-slate-900/90 border border-slate-700/80 rounded-lg p-0.5 mr-1">
+          <div className="flex items-center bg-slate-100 border border-slate-200 rounded-lg p-0.5 mr-1">
             <button
               onClick={() => setViewMode('split')}
               className={`px-2.5 py-1 rounded text-xs font-bold transition-all flex items-center gap-1.5 ${
-                viewMode === 'split' ? 'bg-cyan-500 text-black shadow-sm' : 'text-slate-300 hover:text-white'
+                viewMode === 'split' ? 'bg-white text-sky-700 border border-slate-200 shadow-xs' : 'text-slate-600 hover:text-slate-900'
               }`}
               title="Split View (Replay + Copilot)"
             >
@@ -372,7 +372,7 @@ export const UnifiedDebriefTab = () => {
             <button
               onClick={() => setViewMode('replay_full')}
               className={`px-2.5 py-1 rounded text-xs font-bold transition-all flex items-center gap-1.5 ${
-                viewMode === 'replay_full' ? 'bg-cyan-500 text-black shadow-sm' : 'text-slate-300 hover:text-white'
+                viewMode === 'replay_full' ? 'bg-white text-sky-700 border border-slate-200 shadow-xs' : 'text-slate-600 hover:text-slate-900'
               }`}
               title="Full Width Replay Deck"
             >
@@ -382,12 +382,12 @@ export const UnifiedDebriefTab = () => {
             <button
               onClick={() => setViewMode('copilot_full')}
               className={`px-2.5 py-1 rounded text-xs font-bold transition-all flex items-center gap-1.5 ${
-                viewMode === 'copilot_full' ? 'bg-cyan-500 text-black shadow-sm' : 'text-slate-300 hover:text-white'
+                viewMode === 'copilot_full' ? 'bg-white text-sky-700 border border-slate-200 shadow-xs' : 'text-slate-600 hover:text-slate-900'
               }`}
-              title="Full Screen AI Copilot"
+              title="Full Screen Diagnostic Reasoner"
             >
               <MessageSquare className="w-3.5 h-3.5" />
-              <span>COPILOT</span>
+              <span>DIAGNOSTICS</span>
             </button>
           </div>
 
@@ -396,11 +396,11 @@ export const UnifiedDebriefTab = () => {
             onClick={() => handleSelectPreset('HIGH_ALT_FL280')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-1.5 ${
               activePreset === 'HIGH_ALT_FL280'
-                ? 'bg-cyan-950 border-cyan-400 text-cyan-200 shadow-[0_0_12px_rgba(0,240,255,0.4)]'
-                : 'bg-slate-900/90 border-slate-700 text-slate-300 hover:text-white hover:border-slate-500'
+                ? 'bg-sky-50 border-sky-400 text-sky-800 shadow-xs'
+                : 'bg-white border-slate-200 text-slate-700 hover:text-slate-900 hover:bg-slate-50'
             }`}
           >
-            <Mountain className="w-3.5 h-3.5 text-cyan-400" />
+            <Mountain className="w-3.5 h-3.5 text-sky-600" />
             <span>FL280 BASELINE</span>
           </button>
 
@@ -408,11 +408,11 @@ export const UnifiedDebriefTab = () => {
             onClick={() => handleSelectPreset('HIGH_ALT_FL200')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-1.5 ${
               activePreset === 'HIGH_ALT_FL200'
-                ? 'bg-blue-950 border-blue-400 text-blue-200 shadow-[0_0_12px_rgba(59,130,246,0.4)]'
-                : 'bg-slate-900/90 border-slate-700 text-slate-300 hover:text-white hover:border-slate-500'
+                ? 'bg-blue-50 border-blue-400 text-blue-800 shadow-xs'
+                : 'bg-white border-slate-200 text-slate-700 hover:text-slate-900 hover:bg-slate-50'
             }`}
           >
-            <Cloud className="w-3.5 h-3.5 text-blue-400" />
+            <Cloud className="w-3.5 h-3.5 text-blue-600" />
             <span>HIGH-ALT FL200</span>
           </button>
 
@@ -420,11 +420,11 @@ export const UnifiedDebriefTab = () => {
             onClick={() => handleSelectPreset('HOT_DESERT')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-1.5 ${
               activePreset === 'HOT_DESERT'
-                ? 'bg-amber-950 border-amber-400 text-amber-200 shadow-[0_0_12px_rgba(245,158,11,0.4)]'
-                : 'bg-slate-900/90 border-slate-700 text-slate-300 hover:text-white hover:border-slate-500'
+                ? 'bg-amber-50 border-amber-400 text-amber-800 shadow-xs'
+                : 'bg-white border-slate-200 text-slate-700 hover:text-slate-900 hover:bg-slate-50'
             }`}
           >
-            <Sun className="w-3.5 h-3.5 text-amber-400" />
+            <Sun className="w-3.5 h-3.5 text-amber-600" />
             <span>HOT DESERT +48°C</span>
           </button>
 
@@ -432,17 +432,17 @@ export const UnifiedDebriefTab = () => {
             onClick={() => handleSelectPreset('MARITIME')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-1.5 ${
               activePreset === 'MARITIME'
-                ? 'bg-teal-950 border-teal-400 text-teal-200 shadow-[0_0_12px_rgba(20,184,166,0.4)]'
-                : 'bg-slate-900/90 border-slate-700 text-slate-300 hover:text-white hover:border-slate-500'
+                ? 'bg-teal-50 border-teal-400 text-teal-800 shadow-xs'
+                : 'bg-white border-slate-200 text-slate-700 hover:text-slate-900 hover:bg-slate-50'
             }`}
           >
-            <Waves className="w-3.5 h-3.5 text-teal-400" />
+            <Waves className="w-3.5 h-3.5 text-teal-600" />
             <span>MARITIME RELAY</span>
           </button>
 
           <button
             onClick={() => setShowMoreScenarios(!showMoreScenarios)}
-            className="px-2.5 py-1.5 rounded-lg bg-slate-900/90 border border-slate-700 text-slate-200 hover:text-cyan-300 text-xs font-bold flex items-center gap-1 transition-all"
+            className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 hover:text-slate-900 text-xs font-bold flex items-center gap-1 transition-all shadow-xs"
           >
             <span>MORE SCENARIOS</span>
             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showMoreScenarios ? 'rotate-180' : ''}`} />
@@ -452,70 +452,70 @@ export const UnifiedDebriefTab = () => {
 
       {/* Expandable Scenario Presets Drawer */}
       {showMoreScenarios && (
-        <div className="bg-[#060C18] border border-cyan-500/40 rounded-xl p-3.5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 shadow-2xl transition-all">
+        <div className="bg-white border border-slate-200 rounded-xl p-3.5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 shadow-lg transition-all">
           <button
             onClick={() => { handleSelectPreset('ARCTIC_SOAK'); setShowMoreScenarios(false); }}
             className={`p-2.5 rounded-lg border text-left flex flex-col gap-1 transition-all ${
-              activePreset === 'ARCTIC_SOAK' ? 'bg-cyan-950/80 border-cyan-400' : 'bg-slate-900/60 border-slate-700 hover:border-slate-500'
+              activePreset === 'ARCTIC_SOAK' ? 'bg-sky-50 border-sky-400 text-sky-800' : 'bg-slate-50 border-slate-200 hover:border-slate-300'
             }`}
           >
-            <div className="flex items-center gap-1.5 text-xs font-bold text-cyan-300">
-              <Snowflake className="w-4 h-4 text-cyan-400" />
+            <div className="flex items-center gap-1.5 text-xs font-bold text-sky-700">
+              <Snowflake className="w-4 h-4 text-sky-600" />
               <span>ARCTIC SOAK (-45°C)</span>
             </div>
-            <span className="text-xs text-slate-300">FL080 Sub-zero cold-soak oil viscosity</span>
+            <span className="text-xs text-slate-500">FL080 Sub-zero cold-soak oil viscosity</span>
           </button>
 
           <button
             onClick={() => { handleSelectPreset('MONSOON'); setShowMoreScenarios(false); }}
             className={`p-2.5 rounded-lg border text-left flex flex-col gap-1 transition-all ${
-              activePreset === 'MONSOON' ? 'bg-blue-950/80 border-blue-400' : 'bg-slate-900/60 border-slate-700 hover:border-slate-500'
+              activePreset === 'MONSOON' ? 'bg-blue-50 border-blue-400 text-blue-800' : 'bg-slate-50 border-slate-200 hover:border-slate-300'
             }`}
           >
-            <div className="flex items-center gap-1.5 text-xs font-bold text-blue-300">
-              <CloudRain className="w-4 h-4 text-blue-400" />
+            <div className="flex items-center gap-1.5 text-xs font-bold text-blue-700">
+              <CloudRain className="w-4 h-4 text-blue-600" />
               <span>TROPICAL MONSOON</span>
             </div>
-            <span className="text-xs text-slate-300">FL120 Heavy precipitation & turbulence</span>
+            <span className="text-xs text-slate-500">FL120 Heavy precipitation & turbulence</span>
           </button>
 
           <button
             onClick={() => { handleSelectPreset('FL300_CEILING'); setShowMoreScenarios(false); }}
             className={`p-2.5 rounded-lg border text-left flex flex-col gap-1 transition-all ${
-              activePreset === 'FL300_CEILING' ? 'bg-indigo-950/80 border-indigo-400' : 'bg-slate-900/60 border-slate-700 hover:border-slate-500'
+              activePreset === 'FL300_CEILING' ? 'bg-indigo-50 border-indigo-400 text-indigo-800' : 'bg-slate-50 border-slate-200 hover:border-slate-300'
             }`}
           >
-            <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-300">
-              <Zap className="w-4 h-4 text-indigo-400" />
+            <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-700">
+              <Zap className="w-4 h-4 text-indigo-600" />
               <span>FL300 MAX CEILING</span>
             </div>
-            <span className="text-xs text-slate-300">30,000 FT Critical turbocharger PR limit</span>
+            <span className="text-xs text-slate-500">30,000 FT Critical turbocharger PR limit</span>
           </button>
 
           <button
             onClick={() => { handleSelectPreset('TERRAIN_MASK'); setShowMoreScenarios(false); }}
             className={`p-2.5 rounded-lg border text-left flex flex-col gap-1 transition-all ${
-              activePreset === 'TERRAIN_MASK' ? 'bg-amber-950/80 border-amber-400' : 'bg-slate-900/60 border-slate-700 hover:border-slate-500'
+              activePreset === 'TERRAIN_MASK' ? 'bg-amber-50 border-amber-400 text-amber-800' : 'bg-slate-50 border-slate-200 hover:border-slate-300'
             }`}
           >
-            <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
-              <Crosshair className="w-4 h-4 text-amber-400" />
+            <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700">
+              <Crosshair className="w-4 h-4 text-amber-600" />
               <span>TERRAIN MASK 500FT</span>
             </div>
-            <span className="text-xs text-slate-300">Low-level tactical high air density</span>
+            <span className="text-xs text-slate-500">Low-level tactical high air density</span>
           </button>
 
           <button
             onClick={() => { handleSelectPreset('ULTRA_LOITER'); setShowMoreScenarios(false); }}
             className={`p-2.5 rounded-lg border text-left flex flex-col gap-1 transition-all ${
-              activePreset === 'ULTRA_LOITER' ? 'bg-emerald-950/80 border-emerald-400' : 'bg-slate-900/60 border-slate-700 hover:border-slate-500'
+              activePreset === 'ULTRA_LOITER' ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-slate-50 border-slate-200 hover:border-slate-300'
             }`}
           >
-            <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-300">
-              <Clock className="w-4 h-4 text-emerald-400" />
+            <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700">
+              <Clock className="w-4 h-4 text-emerald-600" />
               <span>ULTRA-LOITER ECO</span>
             </div>
-            <span className="text-xs text-slate-300">FL160 24h Endurance derated fuel burn</span>
+            <span className="text-xs text-slate-500">FL160 24h Endurance derated fuel burn</span>
           </button>
         </div>
       )}
@@ -526,15 +526,15 @@ export const UnifiedDebriefTab = () => {
         {viewMode !== 'copilot_full' && (
           <div className={`flex flex-col gap-3.5 transition-all ${viewMode === 'replay_full' ? 'w-full' : 'w-full lg:w-[65%]'}`}>
             {/* 2. 8-Phase Tactical Sortie Timeline */}
-            <div className="bg-[#0A101D] border border-slate-800 rounded-xl p-4 flex flex-col gap-3 shadow-lg">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col gap-3 shadow-xs">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
                 <div className="flex items-center gap-2.5">
-                  <Clock className="w-4 h-4 text-cyan-400" />
+                  <Clock className="w-4 h-4 text-sky-600" />
                   <div>
-                    <div className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider">
+                    <div className="text-xs sm:text-sm font-bold text-slate-900 uppercase tracking-wider">
                       TACTICAL ISR MISSION REPLAY TIMELINE • 8-PHASE SORTIE (BLACK-BOX FADEC TRACE)
                     </div>
-                    <div className="text-xs text-slate-300 font-medium">
+                    <div className="text-xs text-slate-500 font-medium">
                       Synchronized FADEC recorder & physics twin • Scrub timeline to inspect telemetry and causal residuals
                     </div>
                   </div>
@@ -543,15 +543,15 @@ export const UnifiedDebriefTab = () => {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleTogglePlay}
-                    className="px-4 py-1.5 rounded-lg bg-cyan-400 text-black hover:bg-cyan-300 font-bold text-xs flex items-center gap-1.5 transition-all shadow-[0_0_12px_rgba(0,240,255,0.4)]"
+                    className="px-4 py-1.5 rounded-lg bg-sky-600 text-white hover:bg-sky-700 font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs"
                   >
-                    {isPlaying ? <Pause className="w-3.5 h-3.5 fill-black" /> : <Play className="w-3.5 h-3.5 fill-black" />}
+                    {isPlaying ? <Pause className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}
                     <span>{isPlaying ? 'PAUSE REPLAY' : 'PLAY REPLAY'}</span>
                   </button>
 
                   <button
                     onClick={handleToggleSpeed}
-                    className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-200 hover:text-cyan-300 text-xs font-bold font-mono transition-all"
+                    className="px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 hover:bg-slate-200 text-xs font-bold font-mono transition-all"
                   >
                     {playbackSpeed}X SPEED
                   </button>
@@ -568,35 +568,35 @@ export const UnifiedDebriefTab = () => {
                       onClick={() => setActivePhaseIndex(phase.id)}
                       className={`relative rounded-lg p-2.5 cursor-pointer transition-all border flex flex-col justify-between min-h-[82px] ${
                         isSelected
-                          ? 'bg-cyan-950/60 border-cyan-400 shadow-[0_0_15px_rgba(0,240,255,0.35)]'
-                          : 'bg-slate-900/80 border-slate-700/80 hover:border-slate-500 hover:bg-slate-900'
+                          ? 'bg-sky-50 border-sky-500 shadow-xs ring-1 ring-sky-400/40'
+                          : 'bg-slate-50 border-slate-200 hover:border-slate-300 hover:bg-slate-100/70'
                       }`}
                     >
                       {/* Top: Timestamp & Status Dot / Badge */}
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-mono font-bold text-slate-300">{phase.time}</span>
+                        <span className="text-xs font-mono font-bold text-slate-500">{phase.time}</span>
                         {phase.badge ? (
                           <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded font-bold uppercase tracking-wider ${
                             phase.badgeType === 'danger' 
-                              ? 'bg-red-500/30 text-red-200 border border-red-400' 
+                              ? 'bg-red-50 text-red-700 border border-red-200' 
                               : phase.badgeType === 'orange'
-                              ? 'bg-amber-500/30 text-amber-200 border border-amber-400'
-                              : 'bg-yellow-500/30 text-yellow-200 border border-yellow-400'
+                              ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                              : 'bg-yellow-50 text-yellow-800 border border-yellow-200'
                           }`}>
                             {phase.badge}
                           </span>
                         ) : (
-                          <div className={`w-2 h-2 rounded-full ${isSelected ? 'bg-emerald-400 animate-pulse shadow-[0_0_8px_#10B981]' : 'bg-slate-600'}`}></div>
+                          <div className={`w-2 h-2 rounded-full ${isSelected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`}></div>
                         )}
                       </div>
 
                       {/* Middle: Phase Title */}
-                      <div className="font-bold text-xs text-white uppercase truncate mt-1">
+                      <div className="font-bold text-xs text-slate-900 uppercase truncate mt-1">
                         {phase.name}
                       </div>
 
                       {/* Bottom: Alt & Spd */}
-                      <div className="text-xs font-mono text-cyan-300 font-medium">
+                      <div className="text-xs font-mono text-sky-700 font-semibold">
                         {phase.alt} • {phase.spd}
                       </div>
                     </div>
@@ -606,9 +606,9 @@ export const UnifiedDebriefTab = () => {
             </div>
 
             {/* 3. Mission Anomaly Events */}
-            <div className="bg-[#0A101D] border border-slate-800 rounded-xl p-4 flex flex-col gap-3 shadow-lg">
-              <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-amber-300 uppercase tracking-wider">
-                <AlertTriangle className="w-4 h-4 text-amber-400" />
+            <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col gap-3 shadow-xs">
+              <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-amber-800 uppercase tracking-wider">
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
                 <span>MISSION ANOMALY EVENTS (SELECT TO INSPECT ROOT CAUSE & FADEC RESIDUALS)</span>
               </div>
 
@@ -618,18 +618,18 @@ export const UnifiedDebriefTab = () => {
                   onClick={() => setActivePhaseIndex(3)}
                   className={`p-3 rounded-lg border transition-all cursor-pointer ${
                     activePhaseIndex === 3 
-                      ? 'bg-amber-950/60 border-amber-400 shadow-[0_0_14px_rgba(245,158,11,0.35)]' 
-                      : 'bg-slate-900/80 border-slate-700/80 hover:border-slate-500'
+                      ? 'bg-amber-50/70 border-amber-300 shadow-xs' 
+                      : 'bg-slate-50 border-slate-200 hover:border-slate-300'
                   }`}
                 >
-                  <div className="flex items-center justify-between text-xs font-bold text-amber-300 mb-1">
+                  <div className="flex items-center justify-between text-xs font-bold text-amber-800 mb-1">
                     <span className="font-mono">T+01:42:00 (ISR ORBIT)</span>
-                    <span className="text-[10px] font-mono bg-amber-500/25 text-amber-200 px-1.5 py-0.5 rounded border border-amber-400/60 font-bold">
+                    <span className="text-[10px] font-mono bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-300 font-bold">
                       RESIDUAL: +0.08 MSE
                     </span>
                   </div>
-                  <div className="font-bold text-sm text-white mb-1">Minor Fuel Delivery Anomaly</div>
-                  <div className="text-xs text-slate-300 leading-relaxed font-medium">
+                  <div className="font-bold text-sm text-slate-900 mb-1">Minor Fuel Delivery Anomaly</div>
+                  <div className="text-xs text-slate-600 leading-relaxed font-normal">
                     Injector #2 micro-pulsation during cruise loiter. Fuel flow differential +0.4 GPH.
                   </div>
                 </div>
@@ -639,18 +639,18 @@ export const UnifiedDebriefTab = () => {
                   onClick={() => setActivePhaseIndex(4)}
                   className={`p-3 rounded-lg border transition-all cursor-pointer ${
                     activePhaseIndex === 4 
-                      ? 'bg-amber-950/60 border-amber-400 shadow-[0_0_14px_rgba(245,158,11,0.35)]' 
-                      : 'bg-slate-900/80 border-slate-700/80 hover:border-slate-500'
+                      ? 'bg-amber-50/70 border-amber-300 shadow-xs' 
+                      : 'bg-slate-50 border-slate-200 hover:border-slate-300'
                   }`}
                 >
-                  <div className="flex items-center justify-between text-xs font-bold text-amber-300 mb-1">
+                  <div className="flex items-center justify-between text-xs font-bold text-amber-800 mb-1">
                     <span className="font-mono">T+03:18:00 (EVASIVE)</span>
-                    <span className="text-[10px] font-mono bg-amber-500/25 text-amber-200 px-1.5 py-0.5 rounded border border-amber-400/60 font-bold">
+                    <span className="text-[10px] font-mono bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-300 font-bold">
                       RESIDUAL: +0.28 MSE
                     </span>
                   </div>
-                  <div className="font-bold text-sm text-white mb-1">Thermal Degradation Surge</div>
-                  <div className="text-xs text-slate-300 leading-relaxed font-medium">
+                  <div className="font-bold text-sm text-slate-900 mb-1">Thermal Degradation Surge</div>
+                  <div className="text-xs text-slate-600 leading-relaxed font-normal">
                     High-G turn thermal transient. CHT surged to 132.8°C; oil radiator dissipation throttled.
                   </div>
                 </div>
@@ -660,18 +660,18 @@ export const UnifiedDebriefTab = () => {
                   onClick={() => setActivePhaseIndex(5)}
                   className={`p-3 rounded-lg border transition-all cursor-pointer ${
                     activePhaseIndex === 5 
-                      ? 'bg-red-950/60 border-red-400 shadow-[0_0_14px_rgba(239,68,68,0.35)]' 
-                      : 'bg-slate-900/80 border-slate-700/80 hover:border-slate-500'
+                      ? 'bg-red-50/70 border-red-300 shadow-xs' 
+                      : 'bg-slate-50 border-slate-200 hover:border-slate-300'
                   }`}
                 >
-                  <div className="flex items-center justify-between text-xs font-bold text-red-300 mb-1">
+                  <div className="flex items-center justify-between text-xs font-bold text-red-700 mb-1">
                     <span className="font-mono">T+04:05:00 (RTB CLIMB)</span>
-                    <span className="text-[10px] font-mono bg-red-500/25 text-red-200 px-1.5 py-0.5 rounded border border-red-400/60 font-bold">
+                    <span className="text-[10px] font-mono bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-300 font-bold">
                       ALERT: +0.54 MSE
                     </span>
                   </div>
-                  <div className="font-bold text-sm text-white mb-1">2X Harmonic Vibration Spike</div>
-                  <div className="text-xs text-slate-300 leading-relaxed font-medium">
+                  <div className="font-bold text-sm text-slate-900 mb-1">2X Harmonic Vibration Spike</div>
+                  <div className="text-xs text-slate-600 leading-relaxed font-normal">
                     Vibration surged to 0.082 IPS (+0.048 spike). PRGB reduction gear bearing micro-spalling.
                   </div>
                 </div>
@@ -679,14 +679,14 @@ export const UnifiedDebriefTab = () => {
             </div>
 
             {/* 4. 14 Synchronized Dynamic Telemetry Cards */}
-            <div className="bg-[#0A101D] border border-slate-800 rounded-xl p-4 flex flex-col gap-3 shadow-lg">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col gap-3 shadow-xs">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2 font-bold text-sm text-cyan-300 uppercase tracking-wider">
-                  <Activity className="w-4 h-4 text-cyan-400" />
+                <div className="flex items-center gap-2 font-bold text-sm text-slate-900 uppercase tracking-wider">
+                  <Activity className="w-4 h-4 text-sky-600" />
                   <span>DYNAMIC ROTAX 915 iS ENGINE TELEMETRY • {currentPhase.name} ({currentPhase.time})</span>
                 </div>
-                <span className="text-xs text-slate-300">
-                  SCENARIO: <span className="text-cyan-300 font-bold font-mono">{activePreset.replace(/_/g, ' ')}</span>
+                <span className="text-xs text-slate-500">
+                  SCENARIO: <span className="text-sky-700 font-bold font-mono">{activePreset.replace(/_/g, ' ')}</span>
                 </span>
               </div>
 
@@ -697,150 +697,150 @@ export const UnifiedDebriefTab = () => {
                   : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-7'
               }`}>
                 {/* 1. ALTITUDE */}
-                <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/80 flex flex-col justify-between min-h-[80px]">
-                  <div className="text-xs font-bold text-slate-300 uppercase tracking-wider">1. ALTITUDE</div>
-                  <div className="text-lg font-bold font-mono text-white">{activeTelemetry.alt}</div>
-                  <div className="text-xs font-mono text-cyan-300/90 font-medium">{activeTelemetry.flTag} • GPS Baro</div>
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex flex-col justify-between min-h-[80px]">
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">1. ALTITUDE</div>
+                  <div className="text-lg font-bold font-mono text-slate-900">{activeTelemetry.alt}</div>
+                  <div className="text-xs font-mono text-slate-500 font-medium">{activeTelemetry.flTag} • GPS Baro</div>
                 </div>
 
                 {/* 2. AIRSPEED */}
-                <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/80 flex flex-col justify-between min-h-[80px]">
-                  <div className="text-xs font-bold text-slate-300 uppercase tracking-wider">2. AIRSPEED</div>
-                  <div className="text-lg font-bold font-mono text-white">{activeTelemetry.spd}</div>
-                  <div className="text-xs font-mono text-cyan-300/90 font-medium">{activeTelemetry.spdSub}</div>
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex flex-col justify-between min-h-[80px]">
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">2. AIRSPEED</div>
+                  <div className="text-lg font-bold font-mono text-slate-900">{activeTelemetry.spd}</div>
+                  <div className="text-xs font-mono text-slate-500 font-medium">{activeTelemetry.spdSub}</div>
                 </div>
 
                 {/* 3. THROTTLE */}
-                <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/80 flex flex-col justify-between min-h-[80px]">
-                  <div className="text-xs font-bold text-slate-300 uppercase tracking-wider">3. THROTTLE</div>
-                  <div className="text-lg font-bold font-mono text-white">{activeTelemetry.thr}</div>
-                  <div className="text-xs font-mono text-cyan-300/90 font-medium">{activeTelemetry.thrSub}</div>
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex flex-col justify-between min-h-[80px]">
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">3. THROTTLE</div>
+                  <div className="text-lg font-bold font-mono text-slate-900">{activeTelemetry.thr}</div>
+                  <div className="text-xs font-mono text-slate-500 font-medium">{activeTelemetry.thrSub}</div>
                 </div>
 
                 {/* 4. ENGINE RPM */}
-                <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/80 flex flex-col justify-between min-h-[80px]">
-                  <div className="text-xs font-bold text-slate-300 uppercase tracking-wider">4. ENGINE RPM</div>
-                  <div className="text-lg font-bold font-mono text-white">{activeTelemetry.rpm}</div>
-                  <div className="text-xs font-mono text-cyan-300/90 font-medium">{activeTelemetry.rpmSub}</div>
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex flex-col justify-between min-h-[80px]">
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">4. ENGINE RPM</div>
+                  <div className="text-lg font-bold font-mono text-slate-900">{activeTelemetry.rpm}</div>
+                  <div className="text-xs font-mono text-slate-500 font-medium">{activeTelemetry.rpmSub}</div>
                 </div>
 
                 {/* 5. FUEL FLOW */}
-                <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/80 flex flex-col justify-between min-h-[80px]">
-                  <div className="text-xs font-bold text-slate-300 uppercase tracking-wider">5. FUEL FLOW</div>
-                  <div className="text-lg font-bold font-mono text-white">{activeTelemetry.fuelFlow}</div>
-                  <div className="text-xs font-mono text-cyan-300/90 font-medium">{activeTelemetry.fuelFlowSub}</div>
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex flex-col justify-between min-h-[80px]">
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">5. FUEL FLOW</div>
+                  <div className="text-lg font-bold font-mono text-slate-900">{activeTelemetry.fuelFlow}</div>
+                  <div className="text-xs font-mono text-slate-500 font-medium">{activeTelemetry.fuelFlowSub}</div>
                 </div>
 
                 {/* 6. MAX CHT */}
-                <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/80 flex flex-col justify-between min-h-[80px]">
-                  <div className="text-xs font-bold text-slate-300 uppercase tracking-wider">6. MAX CHT</div>
-                  <div className={`text-lg font-bold font-mono ${parseFloat(activeTelemetry.cht) > 130 ? 'text-red-400 animate-pulse' : 'text-white'}`}>
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex flex-col justify-between min-h-[80px]">
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">6. MAX CHT</div>
+                  <div className={`text-lg font-bold font-mono ${parseFloat(activeTelemetry.cht) > 130 ? 'text-red-600 animate-pulse' : 'text-slate-900'}`}>
                     {activeTelemetry.cht}
                   </div>
-                  <div className="text-xs font-mono text-cyan-300/90 font-medium">{activeTelemetry.chtSub}</div>
+                  <div className="text-xs font-mono text-slate-500 font-medium">{activeTelemetry.chtSub}</div>
                 </div>
 
                 {/* 7. MAX EGT */}
-                <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/80 flex flex-col justify-between min-h-[80px]">
-                  <div className="text-xs font-bold text-slate-300 uppercase tracking-wider">7. MAX EGT</div>
-                  <div className="text-lg font-bold font-mono text-white">{activeTelemetry.egt}</div>
-                  <div className="text-xs font-mono text-cyan-300/90 font-medium">{activeTelemetry.egtSub}</div>
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex flex-col justify-between min-h-[80px]">
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">7. MAX EGT</div>
+                  <div className="text-lg font-bold font-mono text-slate-900">{activeTelemetry.egt}</div>
+                  <div className="text-xs font-mono text-slate-500 font-medium">{activeTelemetry.egtSub}</div>
                 </div>
 
                 {/* 8. OIL PRESSURE */}
-                <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/80 flex flex-col justify-between min-h-[80px]">
-                  <div className="text-xs font-bold text-slate-300 uppercase tracking-wider">8. OIL PRESSURE</div>
-                  <div className="text-lg font-bold font-mono text-white">{activeTelemetry.oilP}</div>
-                  <div className="text-xs font-mono text-cyan-300/90 font-medium">{activeTelemetry.oilPSub}</div>
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex flex-col justify-between min-h-[80px]">
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">8. OIL PRESSURE</div>
+                  <div className="text-lg font-bold font-mono text-slate-900">{activeTelemetry.oilP}</div>
+                  <div className="text-xs font-mono text-slate-500 font-medium">{activeTelemetry.oilPSub}</div>
                 </div>
 
                 {/* 9. OIL TEMP */}
-                <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/80 flex flex-col justify-between min-h-[80px]">
-                  <div className="text-xs font-bold text-slate-300 uppercase tracking-wider">9. OIL TEMP</div>
-                  <div className="text-lg font-bold font-mono text-white">{activeTelemetry.oilT}</div>
-                  <div className="text-xs font-mono text-cyan-300/90 font-medium">Nom: &lt;130°C</div>
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex flex-col justify-between min-h-[80px]">
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">9. OIL TEMP</div>
+                  <div className="text-lg font-bold font-mono text-slate-900">{activeTelemetry.oilT}</div>
+                  <div className="text-xs font-mono text-slate-500 font-medium">Nom: &lt;130°C</div>
                 </div>
 
                 {/* 10. VIBRATION */}
-                <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/80 flex flex-col justify-between min-h-[80px]">
-                  <div className="text-xs font-bold text-slate-300 uppercase tracking-wider">10. VIBRATION</div>
-                  <div className={`text-lg font-bold font-mono ${parseFloat(activeTelemetry.vib) > 0.05 ? 'text-amber-400' : 'text-white'}`}>
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex flex-col justify-between min-h-[80px]">
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">10. VIBRATION</div>
+                  <div className={`text-lg font-bold font-mono ${parseFloat(activeTelemetry.vib) > 0.05 ? 'text-amber-600' : 'text-slate-900'}`}>
                     {activeTelemetry.vib}
                   </div>
-                  <div className="text-xs font-mono text-cyan-300/90 font-medium">Nom: &lt;0.050 IPS</div>
+                  <div className="text-xs font-mono text-slate-500 font-medium">Nom: &lt;0.050 IPS</div>
                 </div>
 
                 {/* 11. BOOST / MAP */}
-                <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/80 flex flex-col justify-between min-h-[80px]">
-                  <div className="text-xs font-bold text-slate-300 uppercase tracking-wider">11. BOOST / MAP</div>
-                  <div className="text-lg font-bold font-mono text-white">{activeTelemetry.map}</div>
-                  <div className="text-xs font-mono text-cyan-300/90 font-medium">Rotax Turbo Boost</div>
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex flex-col justify-between min-h-[80px]">
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">11. BOOST / MAP</div>
+                  <div className="text-lg font-bold font-mono text-slate-900">{activeTelemetry.map}</div>
+                  <div className="text-xs font-mono text-slate-500 font-medium">Rotax Turbo Boost</div>
                 </div>
 
                 {/* 12. HEALTH INDEX */}
-                <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/80 flex flex-col justify-between min-h-[80px]">
-                  <div className="text-xs font-bold text-slate-300 uppercase tracking-wider">12. HEALTH INDEX</div>
-                  <div className={`text-lg font-bold font-mono ${activeTelemetry.healthVal < 80 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex flex-col justify-between min-h-[80px]">
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">12. HEALTH INDEX</div>
+                  <div className={`text-lg font-bold font-mono ${activeTelemetry.healthVal < 80 ? 'text-amber-600' : 'text-emerald-700'}`}>
                     {activeTelemetry.health}
                   </div>
-                  <div className="text-xs font-mono text-cyan-300/90 font-medium">Prognostic Twin</div>
+                  <div className="text-xs font-mono text-slate-500 font-medium">Prognostic Twin</div>
                 </div>
 
                 {/* 13. ANOMALY SCORE */}
-                <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/80 flex flex-col justify-between min-h-[80px]">
-                  <div className="text-xs font-bold text-slate-300 uppercase tracking-wider">13. ANOMALY SCORE</div>
-                  <div className={`text-lg font-bold font-mono ${parseFloat(activeTelemetry.anomalyScore) > 0.25 ? 'text-red-400' : 'text-emerald-400'}`}>
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex flex-col justify-between min-h-[80px]">
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">13. ANOMALY SCORE</div>
+                  <div className={`text-lg font-bold font-mono ${parseFloat(activeTelemetry.anomalyScore) > 0.25 ? 'text-red-600' : 'text-emerald-700'}`}>
                     {activeTelemetry.anomalyScore}
                   </div>
-                  <div className="text-xs font-mono text-cyan-300/90 font-medium">Autoencoder MSE</div>
+                  <div className="text-xs font-mono text-slate-500 font-medium">Autoencoder MSE</div>
                 </div>
 
                 {/* 14. ESTIMATED RUL */}
-                <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/80 flex flex-col justify-between min-h-[80px]">
-                  <div className="text-xs font-bold text-slate-300 uppercase tracking-wider">14. ESTIMATED RUL</div>
-                  <div className="text-lg font-bold font-mono text-cyan-300">{activeTelemetry.rul}</div>
-                  <div className="text-xs font-mono text-cyan-300/90 font-medium">Bi-LSTM 95% CI</div>
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex flex-col justify-between min-h-[80px]">
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">14. ESTIMATED RUL</div>
+                  <div className="text-lg font-bold font-mono text-sky-700 font-bold">{activeTelemetry.rul}</div>
+                  <div className="text-xs font-mono text-slate-500 font-medium">Bi-LSTM 95% CI</div>
                 </div>
               </div>
             </div>
 
             {/* 5. Phase Log Note */}
-            <div className="bg-[#0A101D] border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 shadow-lg font-medium">
-              <span className="text-cyan-400 font-bold uppercase tracking-wider font-mono">PHASE LOG NOTE: </span>
+            <div className="bg-sky-50/60 border border-sky-200 rounded-xl px-4 py-3 text-sm text-slate-800 shadow-xs font-medium">
+              <span className="text-sky-700 font-bold uppercase tracking-wider font-mono">PHASE LOG NOTE: </span>
               <span>{currentLogNote}</span>
             </div>
 
             {/* 6. Dynamic Engine Health Degradation Curve */}
-            <div className="bg-[#0A101D] border border-slate-800 rounded-xl p-4 flex flex-col gap-3 shadow-lg">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col gap-3 shadow-xs">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2 font-bold text-sm text-cyan-300 uppercase tracking-wider">
-                  <Activity className="w-4 h-4 text-cyan-400" />
+                <div className="flex items-center gap-2 font-bold text-sm text-slate-900 uppercase tracking-wider">
+                  <Activity className="w-4 h-4 text-sky-600" />
                   <span>ENGINE HEALTH THROUGH MISSION • TIME VS HEALTH INDEX</span>
                 </div>
 
                 {/* Legend */}
-                <div className="flex items-center gap-4 text-xs font-medium text-slate-300">
+                <div className="flex items-center gap-4 text-xs font-medium text-slate-600">
                   <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#10B981]"></span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-xs"></span>
                     <span>Health Index (%)</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-[0_0_6px_#F59E0B]"></span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-xs"></span>
                     <span>Anomaly Event</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="w-4 h-[2px] bg-red-500 border-b border-dashed border-red-500"></span>
-                    <span className="text-red-400 font-bold">50% MEL Overhaul Limit</span>
+                    <span className="text-red-600 font-bold">50% MEL Overhaul Limit</span>
                   </div>
                 </div>
               </div>
 
-              <p className="text-xs text-slate-300 -mt-1 font-medium">
+              <p className="text-xs text-slate-500 -mt-1 font-medium">
                 Continuous multi-stress fatigue degradation curve with dynamic physics & ML projections • Click anywhere to scrub
               </p>
 
               {/* SVG Curve */}
-              <div className="relative w-full h-56 bg-[#040812] rounded-lg border border-slate-800 p-2 overflow-hidden">
+              <div className="relative w-full h-56 bg-slate-50/90 rounded-lg border border-slate-200 p-2 overflow-hidden">
                 <svg 
                   className="w-full h-full cursor-pointer" 
                   viewBox="0 0 1000 200" 
@@ -849,25 +849,25 @@ export const UnifiedDebriefTab = () => {
                 >
                   <defs>
                     <linearGradient id="degradationGradientClean" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#10B981" stopOpacity="0.45" />
-                      <stop offset="50%" stopColor="#F59E0B" stopOpacity="0.30" />
-                      <stop offset="100%" stopColor="#EF4444" stopOpacity="0.25" />
+                      <stop offset="0%" stopColor="#0284C7" stopOpacity="0.25" />
+                      <stop offset="50%" stopColor="#F59E0B" stopOpacity="0.18" />
+                      <stop offset="100%" stopColor="#DC2626" stopOpacity="0.15" />
                     </linearGradient>
                   </defs>
 
                   {/* Horizontal Grid lines with bold crisp labels */}
-                  <line x1="60" y1="30" x2="960" y2="30" stroke="#1E293B" strokeWidth="1" strokeDasharray="3 3" />
-                  <text x="24" y="34" fill="#94A3B8" fontSize="11" fontWeight="bold" fontFamily="monospace">100%</text>
+                  <line x1="60" y1="30" x2="960" y2="30" stroke="#E2E8F0" strokeWidth="1" strokeDasharray="3 3" />
+                  <text x="24" y="34" fill="#64748B" fontSize="11" fontWeight="bold" fontFamily="monospace">100%</text>
 
-                  <line x1="60" y1="75" x2="960" y2="75" stroke="#1E293B" strokeWidth="1" strokeDasharray="3 3" />
-                  <text x="30" y="79" fill="#94A3B8" fontSize="11" fontWeight="bold" fontFamily="monospace">80%</text>
+                  <line x1="60" y1="75" x2="960" y2="75" stroke="#E2E8F0" strokeWidth="1" strokeDasharray="3 3" />
+                  <text x="30" y="79" fill="#64748B" fontSize="11" fontWeight="bold" fontFamily="monospace">80%</text>
 
-                  <line x1="60" y1="120" x2="960" y2="120" stroke="#1E293B" strokeWidth="1" strokeDasharray="3 3" />
-                  <text x="30" y="124" fill="#94A3B8" fontSize="11" fontWeight="bold" fontFamily="monospace">60%</text>
+                  <line x1="60" y1="120" x2="960" y2="120" stroke="#E2E8F0" strokeWidth="1" strokeDasharray="3 3" />
+                  <text x="30" y="124" fill="#64748B" fontSize="11" fontWeight="bold" fontFamily="monospace">60%</text>
 
                   {/* Red Dashed 50% MEL Overhaul Line */}
-                  <line x1="60" y1="145" x2="960" y2="145" stroke="#EF4444" strokeWidth="2" strokeDasharray="6 4" opacity="0.9" />
-                  <text x="860" y="140" fill="#EF4444" fontSize="11" fontWeight="bold" fontFamily="monospace">MEL 50% LIMIT</text>
+                  <line x1="60" y1="145" x2="960" y2="145" stroke="#DC2626" strokeWidth="2" strokeDasharray="6 4" opacity="0.9" />
+                  <text x="860" y="140" fill="#DC2626" fontSize="11" fontWeight="bold" fontFamily="monospace">MEL 50% LIMIT</text>
 
                   {/* Dynamic Gradient Area */}
                   <polygon
@@ -879,7 +879,7 @@ export const UnifiedDebriefTab = () => {
                   <polyline
                     points={svgCoordinates.polylinePoints}
                     fill="none"
-                    stroke="#10B981"
+                    stroke="#0284C7"
                     strokeWidth="3"
                   />
 
@@ -892,8 +892,8 @@ export const UnifiedDebriefTab = () => {
                         cx={x}
                         cy={y}
                         r="5.5"
-                        fill="#10B981"
-                        className="cursor-pointer hover:stroke-cyan-400 hover:stroke-2 transition-all"
+                        fill="#0284C7"
+                        className="cursor-pointer hover:stroke-sky-700 hover:stroke-2 transition-all"
                         onClick={(e) => { e.stopPropagation(); setActivePhaseIndex(i); }}
                       />
                     );
@@ -904,9 +904,9 @@ export const UnifiedDebriefTab = () => {
                     const yAnom1 = Number((30 + (100.0 - (trajectory[3] || 94.0)) * 2.3).toFixed(1));
                     return (
                       <g className="cursor-pointer" onClick={(e) => { e.stopPropagation(); setActivePhaseIndex(3); }}>
-                        <circle cx="300" cy={yAnom1} r="6" fill="#F59E0B" stroke="#000" strokeWidth="2" />
-                        <rect x="268" y={Math.max(8, yAnom1 - 26)} width="64" height="18" rx="4" fill="#78350F" stroke="#F59E0B" strokeWidth="1.5" />
-                        <text x="272" y={Math.max(21, yAnom1 - 13)} fill="#FEF08A" fontSize="10" fontWeight="bold" fontFamily="monospace">▲ ANOMALY</text>
+                        <circle cx="300" cy={yAnom1} r="6" fill="#F59E0B" stroke="#FFF" strokeWidth="2" />
+                        <rect x="268" y={Math.max(8, yAnom1 - 26)} width="64" height="18" rx="4" fill="#FEF3C7" stroke="#F59E0B" strokeWidth="1.5" />
+                        <text x="272" y={Math.max(21, yAnom1 - 13)} fill="#92400E" fontSize="10" fontWeight="bold" fontFamily="monospace">▲ ANOMALY</text>
                       </g>
                     );
                   })()}
@@ -916,9 +916,9 @@ export const UnifiedDebriefTab = () => {
                     const yAnom2 = Number((30 + (100.0 - (trajectory[4] || 86.0)) * 2.3).toFixed(1));
                     return (
                       <g className="cursor-pointer" onClick={(e) => { e.stopPropagation(); setActivePhaseIndex(4); }}>
-                        <circle cx="500" cy={yAnom2} r="6" fill="#F59E0B" stroke="#000" strokeWidth="2" />
-                        <rect x="468" y={Math.max(8, yAnom2 - 26)} width="64" height="18" rx="4" fill="#78350F" stroke="#F59E0B" strokeWidth="1.5" />
-                        <text x="472" y={Math.max(21, yAnom2 - 13)} fill="#FEF08A" fontSize="10" fontWeight="bold" fontFamily="monospace">▲ ANOMALY</text>
+                        <circle cx="500" cy={yAnom2} r="6" fill="#F59E0B" stroke="#FFF" strokeWidth="2" />
+                        <rect x="468" y={Math.max(8, yAnom2 - 26)} width="64" height="18" rx="4" fill="#FEF3C7" stroke="#F59E0B" strokeWidth="1.5" />
+                        <text x="472" y={Math.max(21, yAnom2 - 13)} fill="#92400E" fontSize="10" fontWeight="bold" fontFamily="monospace">▲ ANOMALY</text>
                       </g>
                     );
                   })()}
@@ -928,9 +928,9 @@ export const UnifiedDebriefTab = () => {
                     const yAnom3 = Number((30 + (100.0 - (trajectory[5] || 76.0)) * 2.3).toFixed(1));
                     return (
                       <g className="cursor-pointer" onClick={(e) => { e.stopPropagation(); setActivePhaseIndex(5); }}>
-                        <circle cx="600" cy={yAnom3} r="6.5" fill="#EF4444" stroke="#000" strokeWidth="2" />
-                        <rect x="568" y={Math.max(8, yAnom3 - 26)} width="68" height="18" rx="4" fill="#7F1D1D" stroke="#EF4444" strokeWidth="1.5" />
-                        <text x="572" y={Math.max(21, yAnom3 - 13)} fill="#FCA5A5" fontSize="10" fontWeight="bold" fontFamily="monospace">● VIB SPIKE</text>
+                        <circle cx="600" cy={yAnom3} r="6.5" fill="#DC2626" stroke="#FFF" strokeWidth="2" />
+                        <rect x="568" y={Math.max(8, yAnom3 - 26)} width="68" height="18" rx="4" fill="#FEE2E2" stroke="#DC2626" strokeWidth="1.5" />
+                        <text x="572" y={Math.max(21, yAnom3 - 13)} fill="#991B1B" fontSize="10" fontWeight="bold" fontFamily="monospace">● VIB SPIKE</text>
                       </g>
                     );
                   })()}
@@ -944,13 +944,13 @@ export const UnifiedDebriefTab = () => {
 
                     return (
                       <g>
-                        <line x1={curX} y1="20" x2={curX} y2="180" stroke="#00F0FF" strokeWidth="2" strokeDasharray="4 3" />
-                        <circle cx={curX} cy={curY} r="8" fill="none" stroke="#00F0FF" strokeWidth="2.5" />
-                        <circle cx={curX} cy={curY} r="4" fill="#00F0FF" />
+                        <line x1={curX} y1="20" x2={curX} y2="180" stroke="#0284C7" strokeWidth="2" strokeDasharray="4 3" />
+                        <circle cx={curX} cy={curY} r="8" fill="none" stroke="#0284C7" strokeWidth="2.5" />
+                        <circle cx={curX} cy={curY} r="4" fill="#0284C7" />
                         <text 
                           x={curX > 780 ? curX - 125 : curX + 12} 
                           y="42" 
-                          fill="#00F0FF" 
+                          fill="#0284C7" 
                           fontSize="12" 
                           fontWeight="bold"
                           fontFamily="monospace"
@@ -965,19 +965,19 @@ export const UnifiedDebriefTab = () => {
             </div>
 
             {/* 7. Sliders & ISA 1976 Derivations */}
-            <div className="bg-[#0A101D] border border-slate-800 rounded-xl p-4 flex flex-col gap-3.5 shadow-lg">
-              <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-cyan-300 uppercase tracking-wider">
-                <Sliders className="w-4 h-4 text-cyan-400" />
+            <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col gap-3.5 shadow-xs">
+              <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-slate-800 uppercase tracking-wider">
+                <Sliders className="w-4 h-4 text-sky-600" />
                 <span>ENVIRONMENTAL BOUNDARY CONDITIONS & FIRST-PRINCIPLES ISA 1976 DERIVATIONS</span>
               </div>
 
               {/* Sliders Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-3.5 bg-slate-900/90 rounded-lg border border-slate-700/80">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-3.5 bg-slate-50 rounded-lg border border-slate-200">
                 {/* Pressure Altitude */}
                 <div className="flex flex-col gap-1.5">
                   <div className="flex justify-between text-xs font-bold">
-                    <span className="text-slate-300">PRESSURE ALTITUDE:</span>
-                    <span className="text-cyan-300 font-mono">{altitudeFt.toLocaleString()} FT</span>
+                    <span className="text-slate-600">PRESSURE ALTITUDE:</span>
+                    <span className="text-sky-700 font-mono">{altitudeFt.toLocaleString()} FT</span>
                   </div>
                   <input 
                     type="range" 
@@ -986,9 +986,9 @@ export const UnifiedDebriefTab = () => {
                     step="500"
                     value={altitudeFt}
                     onChange={(e) => setAltitudeFt(Number(e.target.value))}
-                    className="w-full accent-cyan-400 cursor-pointer h-2"
+                    className="w-full accent-sky-600 cursor-pointer h-2"
                   />
-                  <div className="flex justify-between text-xs font-mono text-slate-400 font-medium">
+                  <div className="flex justify-between text-xs font-mono text-slate-500 font-medium">
                     <span>0 FT (SL)</span>
                     <span>FL145</span>
                     <span>FL300 (Ceiling)</span>
@@ -998,8 +998,8 @@ export const UnifiedDebriefTab = () => {
                 {/* Ambient Static Temp */}
                 <div className="flex flex-col gap-1.5">
                   <div className="flex justify-between text-xs font-bold">
-                    <span className="text-slate-300">AMBIENT STATIC TEMP:</span>
-                    <span className="text-cyan-300 font-mono">{deltaIsaTempC}°C</span>
+                    <span className="text-slate-600">AMBIENT STATIC TEMP:</span>
+                    <span className="text-sky-700 font-mono">{deltaIsaTempC}°C</span>
                   </div>
                   <input 
                     type="range" 
@@ -1008,9 +1008,9 @@ export const UnifiedDebriefTab = () => {
                     step="1"
                     value={deltaIsaTempC}
                     onChange={(e) => setDeltaIsaTempC(Number(e.target.value))}
-                    className="w-full accent-cyan-400 cursor-pointer h-2"
+                    className="w-full accent-sky-600 cursor-pointer h-2"
                   />
-                  <div className="flex justify-between text-xs font-mono text-slate-400 font-medium">
+                  <div className="flex justify-between text-xs font-mono text-slate-500 font-medium">
                     <span>-50°C (Arctic)</span>
                     <span>+15°C (ISA Std)</span>
                     <span>+50°C (Desert)</span>
@@ -1020,13 +1020,13 @@ export const UnifiedDebriefTab = () => {
                 {/* Payload Configuration */}
                 <div className="flex flex-col gap-1.5">
                   <div className="flex justify-between text-xs font-bold">
-                    <span className="text-slate-300">PAYLOAD CONFIG:</span>
-                    <span className="text-cyan-300 font-mono">{payloadStr}</span>
+                    <span className="text-slate-600">PAYLOAD CONFIG:</span>
+                    <span className="text-sky-700 font-mono">{payloadStr}</span>
                   </div>
                   <select
                     value={payloadStr}
                     onChange={(e) => setPayloadStr(e.target.value)}
-                    className="bg-slate-950 border border-slate-600 rounded px-2.5 py-1.5 text-xs text-white outline-none focus:border-cyan-400 font-medium"
+                    className="bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-sky-500 font-medium shadow-xs"
                   >
                     <option value="65 kg (Minimal Standoff Pod)">65 kg (Minimal Standoff Pod)</option>
                     <option value="70 kg (Endurance Pod)">70 kg (Endurance Pod)</option>
@@ -1043,14 +1043,14 @@ export const UnifiedDebriefTab = () => {
                       <option value={payloadStr}>{payloadStr}</option>
                     )}
                   </select>
-                  <div className="text-xs text-slate-400 font-medium">Directly impacts climb fuel burn & CHT</div>
+                  <div className="text-xs text-slate-500 font-medium">Directly impacts climb fuel burn & CHT</div>
                 </div>
 
                 {/* Atmospheric Headwind */}
                 <div className="flex flex-col gap-1.5">
                   <div className="flex justify-between text-xs font-bold">
-                    <span className="text-slate-300">HEADWIND / GUST:</span>
-                    <span className="text-cyan-300 font-mono">{headwindKts} KTS</span>
+                    <span className="text-slate-600">HEADWIND / GUST:</span>
+                    <span className="text-sky-700 font-mono">{headwindKts} KTS</span>
                   </div>
                   <input 
                     type="range" 
@@ -1059,9 +1059,9 @@ export const UnifiedDebriefTab = () => {
                     step="2"
                     value={headwindKts}
                     onChange={(e) => setHeadwindKts(Number(e.target.value))}
-                    className="w-full accent-cyan-400 cursor-pointer h-2"
+                    className="w-full accent-sky-600 cursor-pointer h-2"
                   />
-                  <div className="flex justify-between text-xs font-mono text-slate-400 font-medium">
+                  <div className="flex justify-between text-xs font-mono text-slate-500 font-medium">
                     <span>0 KTS (Calm)</span>
                     <span>30 KTS (Moderate)</span>
                     <span>60 KTS (Gale)</span>
@@ -1071,28 +1071,28 @@ export const UnifiedDebriefTab = () => {
 
               {/* ISA 1976 Physics Derivation Cards */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/80">
-                  <div className="text-xs font-bold text-slate-300 uppercase">BAROMETRIC PRESSURE p(h)</div>
-                  <div className="text-base font-bold font-mono text-cyan-300 mt-1">{aerothermal.atmosphericPressureHpa} hPa</div>
-                  <div className="text-xs text-slate-400 font-medium mt-0.5">ISA 1976 Standard Lapse</div>
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                  <div className="text-xs font-bold text-slate-500 uppercase">BAROMETRIC PRESSURE p(h)</div>
+                  <div className="text-base font-bold font-mono text-slate-900 mt-1">{aerothermal.atmosphericPressureHpa} hPa</div>
+                  <div className="text-xs text-slate-500 font-medium mt-0.5">ISA 1976 Standard Lapse</div>
                 </div>
 
-                <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/80">
-                  <div className="text-xs font-bold text-slate-300 uppercase">LOCAL AIR DENSITY (rho)</div>
-                  <div className="text-base font-bold font-mono text-cyan-300 mt-1">{aerothermal.airDensityKgM3} kg/m³</div>
-                  <div className="text-xs text-slate-400 font-medium mt-0.5">Ratio: {aerothermal.densityRatio} rho0</div>
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                  <div className="text-xs font-bold text-slate-500 uppercase">LOCAL AIR DENSITY (rho)</div>
+                  <div className="text-base font-bold font-mono text-slate-900 mt-1">{aerothermal.airDensityKgM3} kg/m³</div>
+                  <div className="text-xs text-slate-500 font-medium mt-0.5">Ratio: {aerothermal.densityRatio} rho0</div>
                 </div>
 
-                <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/80">
-                  <div className="text-xs font-bold text-slate-300 uppercase">TURBO WASTEGATE RATIO</div>
-                  <div className="text-base font-bold font-mono text-cyan-300 mt-1">{aerothermal.turboCompensatorRatio}:1 PR</div>
-                  <div className="text-xs text-slate-400 font-medium mt-0.5">Rotax 915 iS Wastegate</div>
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                  <div className="text-xs font-bold text-slate-500 uppercase">TURBO WASTEGATE RATIO</div>
+                  <div className="text-base font-bold font-mono text-slate-900 mt-1">{aerothermal.turboCompensatorRatio}:1 PR</div>
+                  <div className="text-xs text-slate-500 font-medium mt-0.5">Rotax 915 iS Wastegate</div>
                 </div>
 
-                <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/80">
-                  <div className="text-xs font-bold text-slate-300 uppercase">HEAT REJECTION FLUX</div>
-                  <div className="text-base font-bold font-mono text-cyan-300 mt-1">{aerothermal.radiatorHeatFluxKw} kW</div>
-                  <div className="text-xs text-slate-400 font-medium mt-0.5">Forced Convection Radiator</div>
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                  <div className="text-xs font-bold text-slate-500 uppercase">HEAT REJECTION FLUX</div>
+                  <div className="text-base font-bold font-mono text-slate-900 mt-1">{aerothermal.radiatorHeatFluxKw} kW</div>
+                  <div className="text-xs text-slate-500 font-medium mt-0.5">Forced Convection Radiator</div>
                 </div>
               </div>
             </div>
@@ -1103,35 +1103,35 @@ export const UnifiedDebriefTab = () => {
         {viewMode !== 'replay_full' && (
           <div className={`flex flex-col gap-3.5 shrink-0 transition-all ${viewMode === 'copilot_full' ? 'w-full' : 'w-full lg:w-[35%]'}`}>
             {/* Copilot Chat Console */}
-            <div className="bg-[#0A101D] border border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-xl min-h-[580px] h-full">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col justify-between shadow-xs min-h-[580px] h-full">
               <div>
                 {/* Copilot Header */}
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-3">
                   <div className="flex items-center gap-2.5">
-                    <div className="p-2 rounded-lg bg-cyan-500/15 border border-cyan-400/50 text-cyan-300 shadow-sm">
-                      <Bot className="w-5 h-5 text-cyan-400 animate-pulse" />
+                    <div className="p-2 rounded-lg bg-sky-50 border border-sky-200 text-sky-700 shadow-xs">
+                      <Bot className="w-5 h-5 text-sky-600 animate-pulse" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-sm tracking-wider text-cyan-300">
-                        GARUDATWIN GCS COPILOT
+                      <h3 className="font-bold text-sm tracking-wider text-slate-900">
+                        TELEMETRY REASONING KERNEL
                       </h3>
-                      <span className="text-xs text-slate-300 font-medium">
-                        AI DIAGNOSTIC & ROOT-CAUSE REASONER
+                      <span className="text-xs text-slate-500 font-medium font-mono">
+                        BLACK-BOX TELEMETRY INCIDENT &amp; ROOT-CAUSE REASONER
                       </span>
                     </div>
                   </div>
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-cyan-950 border border-cyan-400/60 text-cyan-300">
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-sky-50 border border-sky-200 text-sky-700">
                     REPLAY SYNC
                   </span>
                 </div>
 
                 {/* Replay Context Bar */}
-                <div className="mt-3 px-3.5 py-2 rounded-lg bg-cyan-950/40 border border-cyan-500/30 text-xs flex items-center justify-between text-cyan-300 font-medium">
-                  <span className="flex items-center gap-1.5 font-mono">
-                    <Clock className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>SYNCED: {currentPhase.name} ({currentPhase.time})</span>
+                <div className="mt-3 px-3.5 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs flex items-center justify-between text-slate-700 font-medium">
+                  <span className="flex items-center gap-1.5 font-mono text-slate-600">
+                    <Clock className="w-3.5 h-3.5 text-sky-600" />
+                    <span>SYNCED: <strong className="text-slate-800">{currentPhase.name}</strong> ({currentPhase.time})</span>
                   </span>
-                  <span className="text-white font-bold font-mono">{activeTelemetry.health} HEALTH</span>
+                  <span className="text-emerald-700 font-bold font-mono bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">{activeTelemetry.health} HEALTH</span>
                 </div>
 
                 {/* Chat Messages Stream */}
@@ -1143,16 +1143,16 @@ export const UnifiedDebriefTab = () => {
                         key={idx}
                         className={`flex flex-col max-w-[92%] ${isAi ? 'self-start' : 'self-end'}`}
                       >
-                        <div className="flex items-center gap-1.5 mb-1 text-xs text-slate-400">
-                          {isAi ? <Bot className="w-3.5 h-3.5 text-cyan-400" /> : <Terminal className="w-3.5 h-3.5 text-slate-300" />}
-                          <span className="font-bold text-slate-200">{isAi ? 'GARUDATWIN COPILOT' : 'FLIGHT CONTROLLER'}</span>
+                        <div className="flex items-center gap-1.5 mb-1 text-xs text-slate-500">
+                          {isAi ? <Bot className="w-3.5 h-3.5 text-sky-600" /> : <Terminal className="w-3.5 h-3.5 text-slate-500" />}
+                          <span className="font-bold text-slate-700">{isAi ? 'REASONING KERNEL' : 'GCS FLIGHT CONTROLLER'}</span>
                           <span className="text-xs font-mono text-slate-400">[{msg.timestamp}]</span>
                         </div>
                         <div
                           className={`p-3.5 rounded-xl text-xs sm:text-sm leading-relaxed whitespace-pre-wrap font-sans ${
                             isAi
-                              ? 'bg-slate-900 border border-slate-700/90 rounded-tl-none text-slate-100 shadow-md font-medium'
-                              : 'bg-cyan-950 border border-cyan-400/80 rounded-tr-none text-white font-medium'
+                              ? 'bg-slate-50 border border-slate-200 rounded-tl-none text-slate-800 shadow-xs font-medium'
+                              : 'bg-sky-600 text-white rounded-tr-none font-medium shadow-xs'
                           }`}
                         >
                           {msg.text}
@@ -1164,31 +1164,31 @@ export const UnifiedDebriefTab = () => {
               </div>
 
               {/* Prompt Chips & Input */}
-              <div className="flex flex-col gap-2 mt-auto">
+              <div className="flex flex-col gap-2 mt-auto pt-2 border-t border-slate-100">
                 <div className="flex flex-wrap gap-1.5">
                   {promptChips.map((chip, idx) => (
                     <button
                       key={idx}
                       onClick={() => handleSendMessage(chip)}
-                      className="px-2.5 py-1 bg-slate-900 hover:bg-cyan-950 border border-slate-700 hover:border-cyan-400 rounded-full text-xs text-slate-200 hover:text-white transition-all font-medium"
+                      className="px-2.5 py-1 bg-slate-50 hover:bg-sky-50 border border-slate-200 hover:border-sky-300 rounded-full text-xs text-slate-700 hover:text-sky-700 transition-all font-medium shadow-2xs"
                     >
                       + {chip}
                     </button>
                   ))}
                 </div>
 
-                <div className="flex items-center gap-1.5 bg-slate-950 p-2 rounded-lg border border-slate-700 shadow-inner">
+                <div className="flex items-center gap-1.5 bg-slate-50 p-2 rounded-lg border border-slate-300 shadow-inner">
                   <input
                     type="text"
                     value={inputQuery}
                     onChange={(e) => setInputQuery(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                    placeholder="Ask Copilot about engine health or anomalies..."
-                    className="flex-1 bg-transparent text-xs sm:text-sm text-white placeholder-slate-400 outline-none px-2.5 font-medium"
+                    placeholder="Query diagnostic telemetry engine (e.g. CHT thermal runaway, MAP drop)..."
+                    className="flex-1 bg-transparent text-xs sm:text-sm text-slate-900 placeholder-slate-400 outline-none px-2.5 font-medium"
                   />
                   <button
                     onClick={() => handleSendMessage()}
-                    className="px-3.5 py-1.5 bg-cyan-400 hover:bg-cyan-300 text-black font-bold text-xs rounded transition-all flex items-center gap-1"
+                    className="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded transition-all flex items-center gap-1 shadow-xs"
                   >
                     <Send className="w-3.5 h-3.5" />
                   </button>
@@ -1197,20 +1197,20 @@ export const UnifiedDebriefTab = () => {
             </div>
 
             {/* 1-Click PDF Airworthiness Dossier Card */}
-            <div className="bg-[#0A101D] border border-slate-800 rounded-xl p-4 flex flex-col gap-3 shadow-xl">
-              <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-cyan-300 uppercase tracking-wider">
-                <FileText className="w-4 h-4 text-cyan-400" />
-                <span>DO-178C AIRWORTHINESS EXPORTER</span>
+            <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col gap-3 shadow-xs">
+              <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-slate-800 uppercase tracking-wider">
+                <FileText className="w-4 h-4 text-sky-600" />
+                <span>CERTIFIED AIRWORTHINESS DOSSIER (DO-178C LEVEL B)</span>
               </div>
 
-              <div className="text-xs text-slate-300 leading-relaxed bg-slate-900/90 p-3 rounded-lg border border-slate-700/80 font-medium">
-                Compiles an official certified flight debrief containing full 14-parameter telemetry tables, ISA 1976 aerothermal derivations, autoencoder anomaly scores, and signed digital clearance for <span className="text-cyan-300 font-bold font-mono">{activePreset.replace(/_/g, ' ')}</span>.
+              <div className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-200 font-medium">
+                Compiles an official certified flight debrief containing full 14-parameter telemetry tables, ISA 1976 aerothermal derivations, autoencoder anomaly scores, and signed digital clearance for <span className="text-sky-700 font-bold font-mono">{activePreset.replace(/_/g, ' ')}</span>.
               </div>
 
               <button
                 onClick={exportPdfReport}
                 disabled={isGeneratingPdf}
-                className="w-full py-3.5 bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-black font-bold text-xs tracking-wider rounded-lg shadow-[0_0_15px_rgba(0,240,255,0.4)] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                className="w-full py-3.5 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs tracking-wider rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 <FileDown className="w-4 h-4" />
                 <span>{isGeneratingPdf ? 'COMPILING DOSSIER...' : 'EXPORT AIRWORTHINESS REPORT (PDF)'}</span>

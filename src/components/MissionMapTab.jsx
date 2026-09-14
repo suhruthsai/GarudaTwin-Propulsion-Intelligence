@@ -306,7 +306,16 @@ const indiaAirspaceIcon = createTerritoryLabel('INDIA (WESTERN AIR COMMAND)', '�
 const pakistanAirspaceIcon = createTerritoryLabel('PAKISTAN (HOSTILE RADAR ADZ)', '🇵🇰', '#F87171', 'rgba(30, 10, 10, 0.9)', 'rgba(239, 68, 68, 0.8)');
 
 export const MissionMapTab = () => {
-  const { telemetry, aiPrognostics } = useTelemetry();
+  const { 
+    telemetry, 
+    aiPrognostics, 
+    fcsState,
+    loadFcsMission,
+    setFcsAirspeed,
+    setFcsAltitude,
+    setFcsMode,
+    updateManualConditions
+  } = useTelemetry();
   
   // Selected Unit State
   const [selectedUnit, setSelectedUnit] = useState('Vahak-1');
@@ -321,6 +330,8 @@ export const MissionMapTab = () => {
   const [isDerateEngaged, setIsDerateEngaged] = useState(false);
   const [isSolving, setIsSolving] = useState(false);
   const [lastReplanTime, setLastReplanTime] = useState(Date.now());
+  const [backendRlSolution, setBackendRlSolution] = useState(null);
+  const [derateStatusMsg, setDerateStatusMsg] = useState('');
 
   // Swarm fleet real-time physics status helper
   const getUavStats = useCallback((uavId) => {
@@ -395,7 +406,18 @@ export const MissionMapTab = () => {
   }, [telemetry, aiPrognostics]);
 
   // Unit Status & Telemetry Resolver
-  const unitGeo = FLEET_GEO[selectedUnit] || FLEET_GEO['Vahak-1'];
+  const baseGeo = FLEET_GEO[selectedUnit] || FLEET_GEO['Vahak-1'];
+  const unitGeo = useMemo(() => {
+    if (selectedUnit === 'Vahak-1' && (telemetry.mission?.lat || fcsState?.north_m !== undefined)) {
+      const lat = telemetry.mission?.lat ?? (26.4500 + (fcsState?.north_m ?? 0) / 111320);
+      const lon = telemetry.mission?.lon ?? (70.5200 + (fcsState?.east_m ?? 0) / (111320 * Math.cos(26.45 * Math.PI / 180)));
+      return {
+        ...baseGeo,
+        coords: [Number(lat.toFixed(5)), Number(lon.toFixed(5))],
+      };
+    }
+    return baseGeo;
+  }, [selectedUnit, baseGeo, telemetry.mission?.lat, telemetry.mission?.lon, fcsState?.north_m, fcsState?.east_m]);
   const currentStats = getUavStats(selectedUnit);
   const unitHealth = currentStats.health;
   const unitRul = currentStats.rul;
@@ -409,7 +431,66 @@ export const MissionMapTab = () => {
   const isPreview = replanMode === 'CONTINGENCY_PREVIEW';
 
   // Whether RL Replanner Active Route Should Render
-  const isReplannerActive = isCritical || isDegraded || isSimulating || isPreview || isDerateEngaged;
+  const isReplannerActive = isCritical || isDegraded || isSimulating || isPreview || isDerateEngaged || selectedAirfieldId !== 'AUTO';
+
+  // Asynchronous RL Replan Solver connecting to Python FastAPI / Node Gateway
+  const solveRlReplan = useCallback(async () => {
+    if (isGrounded) return;
+    setIsSolving(true);
+    try {
+      const uavPos = unitGeo.coords;
+      const payload = {
+        current_lat: uavPos[0],
+        current_lng: uavPos[1],
+        altitude_ft: unitAltitude,
+        fuel_remaining_liters: 84.0,
+        engine_health_index: unitHealth,
+        rul_hours: unitRul,
+        target_field_id: selectedAirfieldId,
+        mode: replanMode
+      };
+
+      const primaryHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? `http://${window.location.hostname}:8001`
+        : '/ai';
+      const gatewayHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? `http://${window.location.hostname}:5002`
+        : '';
+
+      let res = null;
+      try {
+        res = await fetch(`${primaryHost}/api/rl-replan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } catch {
+        res = await fetch(`${gatewayHost}/api/rl-replan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      }
+
+      if (res && res.ok) {
+        const data = await res.json();
+        setBackendRlSolution(data);
+      }
+    } catch (err) {
+      console.warn('[RL Replanner] Backend query failed:', err);
+    } finally {
+      setIsSolving(false);
+      setLastReplanTime(Date.now());
+    }
+  }, [isGrounded, unitGeo.coords, unitAltitude, unitHealth, unitRul, selectedAirfieldId, replanMode]);
+
+  // Automatically trigger asynchronous solve when relevant parameters change
+  useEffect(() => {
+    const t = setTimeout(() => {
+      solveRlReplan();
+    }, 120);
+    return () => clearTimeout(t);
+  }, [selectedUnit, replanMode, selectedAirfieldId, isCritical, isDegraded]);
 
   // -------------------------------------------------------------
   // PPO Reinforcement Learning Policy Evaluation
@@ -558,6 +639,50 @@ export const MissionMapTab = () => {
     const glideConeRadiusNm = Number(((unitAltitude / 6076.12) * 12.0).toFixed(1)); // 12:1 glide ratio in NM
     const glideMarginNm = Number((glideConeRadiusNm - chosenField.distNm).toFixed(1));
 
+    // Merge backend RL policy solution if available and matches non-grounded state
+    if (backendRlSolution && backendRlSolution.optimized_rtb_flight_plan && !isGrounded) {
+      const backendCmds = backendRlSolution.rl_control_commands || {};
+      const backendWps = backendRlSolution.optimized_rtb_flight_plan.map((w, idx) => ({
+        id: idx + 1,
+        name: w.name || w.wp_id || `WP-${idx + 1}`,
+        coords: [w.lat, w.lng],
+        altitudeFt: w.altitude_ft,
+        airspeedKts: w.commanded_airspeed_kts || commandedSpeedKts,
+        distRemainingNm: w.dist_remaining_nm ?? Number((backendRlSolution.distance_to_field_nm * (1 - idx / 4)).toFixed(1)),
+        etaMin: w.eta_min ?? Number((backendRlSolution.estimated_flight_time_minutes * (idx / 4)).toFixed(1))
+      }));
+
+      const matchedDest = AIRFIELDS.find(f => f.id === backendRlSolution.target_field_id) || chosenField;
+
+      return {
+        action: backendRlSolution.action,
+        label: backendRlSolution.action === 'EMERGENCY_DIVERT_RTB'
+          ? 'AUTONOMOUS EMERGENCY RTB ENGAGED (RL OPTIMAL)'
+          : (isDerateEngaged ? 'CLOSED-LOOP DERATE APPLIED TO FADEC' : policyLabel),
+        destination: {
+          ...matchedDest,
+          distNm: backendRlSolution.distance_to_field_nm
+        },
+        allFields: candidateDistances,
+        distNm: backendRlSolution.distance_to_field_nm,
+        flightTimeMin: backendRlSolution.estimated_flight_time_minutes,
+        safetyMarginRatio: backendRlSolution.rul_safety_margin_factor,
+        recommendedThrottle: backendCmds.recommended_throttle_pct ?? recommendedThrottle,
+        recommendedRpm: backendCmds.recommended_rpm ?? recommendedRpm,
+        recommendedClimbFpm: backendCmds.recommended_vertical_speed_fpm ?? recommendedClimbFpm,
+        commandedSpeedKts: backendCmds.commanded_airspeed_kts ?? commandedSpeedKts,
+        fuelFlowLph: backendCmds.fuel_flow_target_lph ?? (recommendedThrottle < 65 ? 18.5 : 25.0),
+        waypoints: backendWps,
+        routePolyline: backendWps.map(w => w.coords),
+        metrics: {
+          survivabilityPct,
+          cyclePreservationPct,
+          glideConeRadiusNm,
+          glideMarginNm: Number((glideConeRadiusNm - backendRlSolution.distance_to_field_nm).toFixed(1))
+        }
+      };
+    }
+
     return {
       action: policyAction,
       label: policyLabel,
@@ -595,48 +720,75 @@ export const MissionMapTab = () => {
     isPreview,
     isDerateEngaged,
     selectedAirfieldId,
-    lastReplanTime
+    lastReplanTime,
+    backendRlSolution
   ]);
 
   // Recalculate Trigger
   const handleRecalculate = () => {
-    setIsSolving(true);
-    setTimeout(() => {
-      setLastReplanTime(Date.now());
-      setIsSolving(false);
-    }, 450);
+    solveRlReplan();
   };
 
-  // Engage Derate Trigger
+  // Engage Derate Trigger - Transmit closed-loop commands to FCS Autopilot and Engine FADEC
   const handleEngageDerate = () => {
+    if (isGrounded) return;
     setIsDerateEngaged(true);
-    setTimeout(() => setIsDerateEngaged(false), 8000);
+
+    // 1. Transform RL flight plan waypoints to local ENU for 6-DOF Autopilot
+    if (rlSolution.waypoints && rlSolution.waypoints.length > 0) {
+      const fcsWps = rlSolution.waypoints.map(wp => ({
+        north: (wp.coords[0] - 26.4500) * 111320,
+        east: (wp.coords[1] - 70.5200) * (111320 * Math.cos(26.45 * Math.PI / 180)),
+        alt_m: (wp.altitudeFt || 14500) * 0.3048,
+        speed_ms: (wp.airspeedKts || 95) / 1.94384
+      }));
+      loadFcsMission(fcsWps);
+    }
+
+    // 2. Set Autopilot setpoints
+    setFcsAirspeed(rlSolution.commandedSpeedKts);
+    if (rlSolution.destination && rlSolution.destination.altFt) {
+      setFcsAltitude(rlSolution.destination.altFt);
+    }
+
+    // 3. Command FADEC engine derate to live engine twin
+    updateManualConditions({
+      throttlePct: rlSolution.recommendedThrottle,
+      targetRpm: rlSolution.recommendedRpm,
+      airspeedKts: rlSolution.commandedSpeedKts
+    });
+
+    // 4. Arm Autopilot in AUTO_MISSION
+    setFcsMode('AUTO_MISSION');
+
+    setDerateStatusMsg('COMMANDS TRANSMITTED: FADEC DERATED & FCS AUTO-MISSION ARMED');
+    setTimeout(() => setDerateStatusMsg(''), 6000);
   };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-3.5 h-[calc(100vh-140px)] w-full text-slate-100 font-mono">
+    <div className="flex flex-col lg:flex-row gap-3.5 h-[calc(100vh-140px)] w-full text-slate-900 font-mono">
       
       {/* ─────────────────────────────────────────────────────────────
           1. LEFT MAP CANVAS: Tactical Leaflet Display & Visual Overlays
          ───────────────────────────────────────────────────────────── */}
-      <div className="flex-1 relative starship-glass rounded-xl overflow-hidden flex flex-col min-h-[480px] border border-white/[0.08] shadow-starship-glass">
+      <div className="flex-1 relative gcs-panel rounded-lg overflow-hidden flex flex-col min-h-[480px] border border-slate-200 shadow-xs">
         
         {/* Top Header Control Banner */}
         <div className="absolute top-3 left-3 right-3 z-[1000] flex flex-wrap items-center justify-between gap-2 pointer-events-none">
           <div className="flex flex-wrap items-center gap-2 pointer-events-auto">
             {/* Title Badge */}
-            <div className="px-3.5 py-1.5 bg-slate-950/90 border border-white/[0.08] rounded-xl text-xs font-mono text-cyan-300 flex items-center gap-2 backdrop-blur-xl shadow-lg">
-              <Navigation className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+            <div className="px-3 py-1 bg-white/95 border border-slate-200 rounded-md text-xs font-mono text-sky-700 flex items-center gap-2 backdrop-blur shadow-xs">
+              <Navigation className="w-3.5 h-3.5 text-sky-600 animate-pulse" />
               <span className="font-bold tracking-wider">RL AUTONOMOUS REPLANNER</span>
             </div>
 
             {/* Decision Status Badge */}
-            <div className={`px-3.5 py-1.5 rounded-xl text-xs font-mono font-bold flex items-center gap-2 backdrop-blur-xl shadow-lg border ${
+            <div className={`px-3 py-1 rounded-md text-xs font-mono font-bold flex items-center gap-2 backdrop-blur shadow-xs border ${
               isCritical || isSimulating
-                ? 'bg-red-950/90 border-red-500/80 text-red-200 animate-pulse shadow-hud-red'
+                ? 'bg-red-50 border-red-200 text-red-700 animate-pulse'
                 : isDegraded || isPreview
-                ? 'bg-amber-950/90 border-amber-500/80 text-amber-200 shadow-hud-amber'
-                : 'bg-emerald-950/90 border-emerald-500/60 text-emerald-200 shadow-hud-green'
+                ? 'bg-amber-50 border-amber-200 text-amber-700'
+                : 'bg-emerald-50 border-emerald-200 text-emerald-700'
             }`}>
               <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
               <span>RL DECISION: {rlSolution.label}</span>
@@ -644,15 +796,15 @@ export const MissionMapTab = () => {
           </div>
 
           {/* Unit Switcher Pills on Map */}
-          <div className="flex items-center gap-1 bg-slate-950/90 p-1 rounded-xl border border-white/[0.08] backdrop-blur-xl pointer-events-auto shadow-lg text-[10px]">
+          <div className="flex items-center gap-1 bg-white/95 p-1 rounded-md border border-slate-200 backdrop-blur-md pointer-events-auto shadow-sm text-[10px]">
             {['Vahak-1', 'Vahak-2', 'Vahak-3', 'Vahak-4', 'Vahak-5'].map(u => (
               <button
                 key={u}
                 onClick={() => setSelectedUnit(u)}
-                className={`px-2.5 py-1 rounded-lg transition-all font-bold ${
+                className={`px-2.5 py-1 rounded-md transition-all font-bold ${
                   selectedUnit === u
-                    ? 'bg-cyan-400 text-black shadow-[0_0_10px_rgba(0,240,255,0.6)]'
-                    : 'text-slate-400 hover:text-white hover:bg-white/[0.05]'
+                    ? 'bg-sky-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
                 {u}
@@ -666,13 +818,13 @@ export const MissionMapTab = () => {
           <MapContainer
             center={[26.3500, 71.1000]}
             zoom={8}
-            style={{ height: '100%', width: '100%', minHeight: '480px', background: '#030712' }}
+            style={{ height: '100%', width: '100%', minHeight: '480px', background: '#F1F5F9' }}
             zoomControl={false}
           >
             {/* Automatic Size Invalidation for Tab Switching */}
             <MapResizer />
 
-            {/* Dark Tactical Map Tiles (Free OpenStreetMap with Tactical HUD Inversion Filter) */}
+            {/* Natural Daylight Cartography */}
             <TileLayer
               attribution='&copy; OpenStreetMap contributors'
               url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -683,9 +835,9 @@ export const MissionMapTab = () => {
             <Polyline
               positions={INDO_PAK_BORDER}
               pathOptions={{
-                color: '#000000',
-                weight: 7,
-                opacity: 0.95,
+                color: '#0F172A',
+                weight: 5,
+                opacity: 0.85,
                 lineCap: 'round',
                 lineJoin: 'round'
               }}
@@ -694,8 +846,8 @@ export const MissionMapTab = () => {
             <Polyline
               positions={INDO_PAK_BORDER}
               pathOptions={{
-                color: '#EF4444',
-                weight: 3.5,
+                color: '#DC2626',
+                weight: 3,
                 dashArray: '10, 6',
                 opacity: 1
               }}
@@ -708,21 +860,51 @@ export const MissionMapTab = () => {
             {/* Geofence Perimeter */}
             <Polygon
               positions={GEOFENCE_POLYGON}
-              pathOptions={{ color: '#00F0FF', weight: 1.5, dashArray: '6, 6', fillOpacity: 0.02 }}
+              pathOptions={{ color: '#0284C7', weight: 1.5, dashArray: '6, 6', fillOpacity: 0.04 }}
             />
 
-            {/* Nominal Flight Plan (Cyan Polyline) */}
+            {/* Nominal Flight Plan (Sky Polyline) */}
             <Polyline
               positions={unitGeo.nominalPath}
-              pathOptions={{ color: '#00F0FF', weight: 2.5, opacity: 0.6 }}
+              pathOptions={{ color: '#0284C7', weight: 2.5, opacity: 0.8 }}
             />
+
+            {/* 6-DOF Autopilot Active Mission Waypoints */}
+            {fcsState?.waypoints && fcsState.waypoints.length > 0 && (
+              <>
+                <Polyline
+                  positions={fcsState.waypoints.map(w => [
+                    26.4500 + (w.north || 0) / 111320,
+                    70.5200 + (w.east || 0) / (111320 * Math.cos(26.45 * Math.PI / 180))
+                  ])}
+                  pathOptions={{ color: '#059669', weight: 3, dashArray: '6, 6', opacity: 0.9 }}
+                />
+                {fcsState.waypoints.map((w, idx) => {
+                  const lat = 26.4500 + (w.north || 0) / 111320;
+                  const lon = 70.5200 + (w.east || 0) / (111320 * Math.cos(26.45 * Math.PI / 180));
+                  const isCurrentTarget = fcsState.wp_idx === idx;
+                  return (
+                    <Marker key={`fcs-wp-${idx}`} position={[lat, lon]} icon={waypointIcon(`WP${idx + 1}`)}>
+                      <Popup>
+                        <div className="font-mono text-xs">
+                          <div className="text-sky-700 font-bold">FCS WAYPOINT {idx + 1}</div>
+                          <div>North: {w.north}m | East: {w.east}m</div>
+                          <div>Alt: {Math.round(w.alt_m * 3.28084)} ft</div>
+                          {isCurrentTarget && <div className="text-emerald-600 font-bold mt-1">▶ ACTIVE TARGET</div>}
+                        </div>
+                      </Popup>
+                    </Marker>
+                  );
+                })}
+              </>
+            )}
 
             {/* RL Autonomous Recalculated Flight Plan (Amber / Red Dotted) */}
             {isReplannerActive && (
               <Polyline
                 positions={rlSolution.routePolyline}
                 pathOptions={{
-                  color: isCritical || isSimulating ? '#EF4444' : '#F59E0B',
+                  color: isCritical || isSimulating ? '#DC2626' : '#D97706',
                   weight: 4,
                   dashArray: '8, 8',
                   opacity: 0.95
@@ -730,27 +912,69 @@ export const MissionMapTab = () => {
               />
             )}
 
-            {/* Safe Glide Cone Reachability Footprint */}
-            <Circle
-              center={unitGeo.coords}
-              radius={rlSolution.metrics.glideConeRadiusNm * 1852} // Convert NM to meters
-              pathOptions={{
-                color: isCritical || isSimulating ? '#EF4444' : '#10B981',
-                fillColor: isCritical || isSimulating ? '#EF4444' : '#10B981',
-                fillOpacity: 0.05,
-                weight: 1.5,
-                dashArray: '5, 5'
-              }}
-            />
+            {/* Safe Glide Cone Reachability Footprint / FCS 6-DOF Dynamic Glide Cone */}
+            {(() => {
+              const isFcsEmergency = fcsState?.ap_mode === 'EMERGENCY_GLIDE' || fcsState?.engine_out;
+              const fcsGlideRadiusM = (fcsState?.glide_range_m && fcsState.glide_range_m > 0)
+                ? fcsState.glide_range_m
+                : (rlSolution.metrics.glideConeRadiusNm * 1852);
+              return (
+                <>
+                  <Circle
+                    center={unitGeo.coords}
+                    radius={fcsGlideRadiusM}
+                    pathOptions={{
+                      color: isFcsEmergency ? '#DC2626' : (isCritical || isSimulating ? '#EF4444' : '#059669'),
+                      fillColor: isFcsEmergency ? '#DC2626' : (isCritical || isSimulating ? '#EF4444' : '#059669'),
+                      fillOpacity: isFcsEmergency ? 0.15 : 0.06,
+                      weight: isFcsEmergency ? 3 : 1.5,
+                      dashArray: isFcsEmergency ? '6, 4' : '5, 5'
+                    }}
+                  >
+                    <Popup>
+                      <div className="text-xs font-mono p-1">
+                        <div className="font-bold text-red-600">
+                          {isFcsEmergency ? '⚠ 6-DOF EMERGENCY GLIDE FOOTPRINT' : 'SAFE GLIDE CONE FOOTPRINT'}
+                        </div>
+                        <div className="text-slate-700 mt-1">
+                          L/D Max: 14.5 | Vbg: 82 kts
+                        </div>
+                        <div className="text-emerald-700 font-bold mt-1">
+                          Radius: {(fcsGlideRadiusM / 1000).toFixed(1)} km ({(fcsGlideRadiusM / 1852).toFixed(1)} NM)
+                        </div>
+                        {isFcsEmergency && (
+                          <div className="text-amber-800 text-[10px] mt-1 border-t border-red-300 pt-1">
+                            FADEC flameout/derate interlock triggered best-glide guidance.
+                          </div>
+                        )}
+                      </div>
+                    </Popup>
+                  </Circle>
+                  {isFcsEmergency && (
+                    <Circle
+                      center={unitGeo.coords}
+                      radius={fcsGlideRadiusM * 0.7}
+                      pathOptions={{
+                        color: '#D97706',
+                        fillColor: '#D97706',
+                        fillOpacity: 0.08,
+                        weight: 1.5,
+                        dashArray: '3, 3'
+                      }}
+                    />
+                  )}
+                </>
+              );
+            })()}
 
             {/* Airfield Markers */}
             {AIRFIELDS.map(f => (
               <Marker key={f.id} position={f.coords} icon={f.icon}>
                 <Popup>
                   <div className="text-xs font-mono">
-                    <div className="font-bold text-hud-cyan">{f.name}</div>
-                    <div className="text-slate-300">Elev: {f.altFt} ft | Rwy: {f.rwyLengthFt} ft</div>
-                    <div className="text-amber-400 font-bold mt-1">
+                    <div className="font-bold text-slate-900">{f.name}</div>
+                    <div className="text-slate-600">Elev: {f.altFt} ft | Rwy: {f.rwyLengthFt} ft</div>
+                    <div className="text-amber-700 font-bold mt-1">
                       Distance from {selectedUnit}: {calcDistNm(unitGeo.coords[0], unitGeo.coords[1], f.coords[0], f.coords[1]).toFixed(1)} NM
                     </div>
                   </div>
@@ -763,7 +987,7 @@ export const MissionMapTab = () => {
               <Marker key={wp.id} position={wp.coords} icon={waypointIcon(wp.id)}>
                 <Popup>
                   <div className="text-xs font-mono">
-                    <div className="font-bold text-sky-400">{wp.name} (#{wp.id})</div>
+                    <div className="font-bold text-sky-700">{wp.name} (#{wp.id})</div>
                     <div>Target Alt: {wp.altitudeFt.toLocaleString()} ft</div>
                     <div>Airspeed: {wp.airspeedKts} kts</div>
                     <div>Distance to Touchdown: {wp.distRemainingNm} NM</div>
@@ -781,7 +1005,7 @@ export const MissionMapTab = () => {
               return (
                 <Marker
                   key={uId}
-                  position={geo.coords}
+                  position={(uId === 'Vahak-1' || isSelected) ? unitGeo.coords : geo.coords}
                   icon={createSwarmUavIcon(uId, stats.status, isSelected)}
                   eventHandlers={{
                     click: () => setSelectedUnit(uId)
@@ -789,18 +1013,18 @@ export const MissionMapTab = () => {
                 >
                   <Popup>
                     <div className="text-xs font-mono">
-                      <div className="font-bold text-hud-cyan flex items-center justify-between gap-2">
+                      <div className="font-bold text-slate-900 flex items-center justify-between gap-2">
                         <span>{geo.callsign}</span>
-                        {isSelected && <span className="text-[9px] bg-hud-cyan text-black px-1 rounded font-bold">FOCUSED</span>}
+                        {isSelected && <span className="text-[9px] bg-sky-600 text-white px-1.5 py-0.2 rounded font-bold">FOCUSED</span>}
                       </div>
-                      <div className="text-slate-300 mt-1">Status: <span className={stats.statusColor}>{stats.status}</span> ({stats.desc})</div>
-                      <div>Health: <span className="font-bold text-white">{stats.health}%</span> | RUL: <span className="font-bold text-white">{stats.rul} hrs</span></div>
-                      <div>Altitude: <span className="font-bold text-white">{stats.altitude.toLocaleString()} ft</span> | Speed: <span className="font-bold text-white">{stats.speed} kts</span></div>
-                      <div className="text-amber-400">Active Fault: {stats.fault}</div>
+                      <div className="text-slate-600 mt-1">Status: <span className={stats.statusColor}>{stats.status}</span> ({stats.desc})</div>
+                      <div>Health: <span className="font-bold text-slate-900">{stats.health}%</span> | RUL: <span className="font-bold text-slate-900">{stats.rul} hrs</span></div>
+                      <div>Altitude: <span className="font-bold text-slate-900">{stats.altitude.toLocaleString()} ft</span> | Speed: <span className="font-bold text-slate-900">{stats.speed} kts</span></div>
+                      <div className="text-amber-700">Active Fault: {stats.fault}</div>
                       {!isSelected && (
                         <button
                           onClick={() => setSelectedUnit(uId)}
-                          className="mt-2 w-full py-1 text-[10px] bg-hud-cyan hover:bg-hud-cyan/80 text-black font-bold rounded transition-colors"
+                          className="mt-2 w-full py-1 text-[10px] bg-sky-600 hover:bg-sky-700 text-white font-bold rounded transition-colors shadow-xs"
                         >
                           SELECT & REPLAN TRAJECTORY →
                         </button>
@@ -814,21 +1038,21 @@ export const MissionMapTab = () => {
         </div>
 
         {/* Bottom Tactical Map Legend */}
-        <div className="absolute bottom-3 left-3 z-[1000] flex flex-wrap items-center gap-3 bg-black/85 border border-slate-700/80 px-3 py-1.5 rounded-lg text-[11px] font-mono backdrop-blur-md shadow-lg">
-          <div className="flex items-center gap-1.5 text-red-400 font-bold">
-            <span className="w-3.5 h-1 bg-red-500 inline-block border-t border-b border-black"></span> INDO-PAK BORDER (IB)
+        <div className="absolute bottom-3 left-3 z-[1000] flex flex-wrap items-center gap-3 bg-white/95 border border-slate-200 px-3 py-1.5 rounded-lg text-[11px] font-mono backdrop-blur-md shadow-md text-slate-700">
+          <div className="flex items-center gap-1.5 text-red-600 font-bold">
+            <span className="w-3.5 h-1 bg-red-600 inline-block border-t border-b border-slate-900"></span> INDO-PAK BORDER (IB)
           </div>
-          <div className="flex items-center gap-1.5 text-slate-300">
-            <span className="w-3 h-1 bg-hud-cyan inline-block rounded"></span> Nominal Flight Path
+          <div className="flex items-center gap-1.5 text-slate-600 font-medium">
+            <span className="w-3 h-1 bg-sky-600 inline-block rounded"></span> Nominal Flight Path
           </div>
-          <div className="flex items-center gap-1.5 text-slate-300">
-            <span className="w-3 h-1 bg-amber-400 inline-block border-t border-dashed"></span> RL Recalculated RTB Route
+          <div className="flex items-center gap-1.5 text-slate-600 font-medium">
+            <span className="w-3 h-1 bg-amber-500 inline-block border-t border-dashed"></span> RL Recalculated RTB Route
           </div>
-          <div className="flex items-center gap-1.5 text-slate-300">
-            <span className="w-2.5 h-2.5 rounded-full border border-emerald-400 inline-block"></span> Glide Footprint ({rlSolution.metrics.glideConeRadiusNm} NM)
+          <div className="flex items-center gap-1.5 text-slate-600 font-medium">
+            <span className={`w-2.5 h-2.5 rounded-full border inline-block ${fcsState?.ap_mode === 'EMERGENCY_GLIDE' || fcsState?.engine_out ? 'border-red-500 bg-red-100' : 'border-emerald-600 bg-emerald-50'}`}></span> Glide Footprint ({fcsState?.glide_range_m && fcsState.glide_range_m > 0 ? (fcsState.glide_range_m / 1852).toFixed(1) : rlSolution.metrics.glideConeRadiusNm} NM)
           </div>
-          <div className="flex items-center gap-1.5 text-slate-300 border-l border-slate-700 pl-3">
-            <span className="text-hud-cyan font-bold">SWARM ASSETS:</span> 5 UNITS (4 PATROL · 1 HANGAR)
+          <div className="flex items-center gap-1.5 text-slate-700 border-l border-slate-200 pl-3 font-semibold">
+            <span className="text-sky-700 font-bold">SWARM ASSETS:</span> 5 UNITS (4 PATROL · 1 HANGAR)
           </div>
         </div>
       </div>
@@ -836,39 +1060,39 @@ export const MissionMapTab = () => {
       {/* ─────────────────────────────────────────────────────────────
           2. RIGHT CONTROL PANEL: RL Policy Engine & Real-Time Commands
          ───────────────────────────────────────────────────────────── */}
-      <div className="w-full lg:w-[420px] starship-glass rounded-xl border border-white/[0.08] p-4 flex flex-col gap-4 overflow-y-auto custom-scrollbar shadow-starship-glass">
+      <div className="w-full lg:w-[420px] gcs-panel rounded-lg border border-slate-200 bg-white p-4 flex flex-col gap-4 overflow-y-auto custom-scrollbar shadow-xs">
         
         {/* Panel Header */}
-        <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-cyan-500/10 border border-cyan-400/40 text-cyan-300">
-              <Compass className="w-4 h-4 text-cyan-400" />
+            <div className="p-2 rounded-md bg-sky-50 border border-sky-200 text-sky-600 shadow-xs">
+              <Compass className="w-4 h-4 text-sky-600" />
             </div>
             <div>
-              <h3 className="font-display font-black text-sm tracking-wider text-cyan-300 glow-cyan">
+              <h3 className="font-display font-bold text-sm tracking-wider text-slate-900 uppercase">
                 RL POLICY CONTROLLER
               </h3>
-              <p className="text-[10px] font-mono text-slate-400">PPO CL-TRAJECTORY OPTIMIZER v2.4</p>
+              <p className="text-[10px] font-mono text-slate-500 font-medium">PPO CL-TRAJECTORY OPTIMIZER v2.4</p>
             </div>
           </div>
           <button
             onClick={handleRecalculate}
             disabled={isSolving}
-            className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-white/[0.08] text-cyan-300 hover:bg-slate-800 hover:border-cyan-400/50 transition-colors flex items-center gap-1.5 text-xs font-mono font-bold shadow-sm"
+            className="px-2.5 py-1.5 rounded-md bg-white border border-slate-200 text-slate-700 hover:text-slate-900 hover:bg-slate-50 transition-colors flex items-center gap-1.5 text-xs font-mono font-bold shadow-xs"
             title="Force RL policy re-solve"
           >
-            <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${isSolving ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 text-sky-600 ${isSolving ? 'animate-spin' : ''}`} />
             SOLVE
           </button>
         </div>
 
         {/* 1. Interactive Replanning Controls */}
-        <div className="starship-glass-card p-3.5 rounded-xl border border-white/[0.08] flex flex-col gap-2.5">
-          <div className="text-[10px] font-mono text-slate-400 font-bold uppercase tracking-wider flex items-center justify-between">
-            <span className="flex items-center gap-1.5 text-hud-cyan">
+        <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50 flex flex-col gap-2.5 shadow-2xs">
+          <div className="text-[10px] font-mono text-slate-600 font-bold uppercase tracking-wider flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-sky-700">
               <Sliders className="w-3.5 h-3.5" /> REPLANNER OPERATING MODE
             </span>
-            <span className="text-[9px] bg-slate-900 text-slate-400 px-1 rounded">POLICY STATE</span>
+            <span className="text-[9px] bg-white text-slate-600 px-1.5 py-0.5 rounded border border-slate-200 font-semibold shadow-2xs">POLICY STATE</span>
           </div>
 
           <div className="grid grid-cols-3 gap-1 text-[10px]">
@@ -880,10 +1104,10 @@ export const MissionMapTab = () => {
               <button
                 key={m.id}
                 onClick={() => setReplanMode(m.id)}
-                className={`py-1.5 px-1 rounded border font-bold text-center transition-all ${
+                className={`py-1.5 px-1 rounded-md border font-bold text-center transition-all ${
                   replanMode === m.id
-                    ? 'bg-hud-cyan text-black border-hud-cyan shadow-sm'
-                    : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
+                    ? 'bg-sky-600 text-white border-sky-600 shadow-xs'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:text-slate-900'
                 }`}
               >
                 {m.label}
@@ -893,11 +1117,11 @@ export const MissionMapTab = () => {
 
           {/* Divert Recovery Field Selector */}
           <div className="flex flex-col gap-1 text-xs">
-            <span className="text-[10px] text-slate-400">TARGET RECOVERY AIRFIELD:</span>
+            <span className="text-[10px] text-slate-500 font-semibold">TARGET RECOVERY AIRFIELD:</span>
             <select
               value={selectedAirfieldId}
               onChange={e => setSelectedAirfieldId(e.target.value)}
-              className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-hud-cyan font-mono focus:outline-none focus:border-hud-cyan"
+              className="bg-white border border-slate-200 rounded-md px-2.5 py-1.5 text-xs text-slate-900 font-mono font-medium focus:outline-none focus:border-sky-500 shadow-xs"
             >
               <option value="AUTO">★ AUTO (RL Policy Optimal Selection)</option>
               {AIRFIELDS.map(f => (
@@ -910,58 +1134,58 @@ export const MissionMapTab = () => {
         </div>
 
         {/* 2. Closed-Loop Command Panel */}
-        <div className={`p-3 rounded border flex flex-col gap-2 ${
+        <div className={`p-3 rounded-lg border flex flex-col gap-2 shadow-xs ${
           isCritical || isSimulating
-            ? 'bg-red-950/30 border-red-500/50'
+            ? 'bg-red-50/70 border-red-200'
             : isDegraded || isPreview
-            ? 'bg-amber-950/30 border-amber-500/50'
-            : 'bg-emerald-950/20 border-emerald-500/30'
+            ? 'bg-amber-50/70 border-amber-200'
+            : 'bg-emerald-50/50 border-emerald-200'
         }`}>
           <div className="text-xs font-mono font-bold flex items-center justify-between">
-            <span className={isCritical || isSimulating ? 'text-red-400' : isDegraded ? 'text-amber-400' : 'text-emerald-400'}>
+            <span className={isCritical || isSimulating ? 'text-red-700' : isDegraded ? 'text-amber-700' : 'text-emerald-700'}>
               CLOSED-LOOP FADEC COMMANDS
             </span>
-            <span className="text-[10px] bg-black/60 px-1.5 py-0.5 rounded text-slate-400">
+            <span className="text-[10px] bg-white border border-slate-200 px-1.5 py-0.5 rounded text-slate-600 font-bold shadow-2xs">
               {isGrounded ? 'GROUNDED' : isDerateEngaged ? 'ENGAGED' : 'STANDBY'}
             </span>
           </div>
 
           <div className="flex flex-col gap-1.5 text-xs font-mono">
-            <div className="flex items-center justify-between bg-slate-900/90 p-2 rounded border border-slate-800">
-              <span className="text-slate-400">COMMANDED THROTTLE:</span>
-              <span className="font-bold text-white">
+            <div className="flex items-center justify-between bg-white p-2 rounded-md border border-slate-200 shadow-2xs">
+              <span className="text-slate-500 font-medium">COMMANDED THROTTLE:</span>
+              <span className="font-bold text-slate-900">
                 {isGrounded 
                   ? '0.0% (ENGINE OFF)' 
                   : `${rlSolution.recommendedThrottle.toFixed(1)}% ${isCritical || isSimulating ? '(DERATED CRUISE)' : isDegraded ? '(POWER DERATE)' : '(NOMINAL)'}`}
               </span>
             </div>
 
-            <div className="flex items-center justify-between bg-slate-900/90 p-2 rounded border border-slate-800">
-              <span className="text-slate-400">TARGET RECOVERY FIELD:</span>
-              <span className="font-bold text-hud-cyan truncate max-w-[200px]" title={rlSolution.destination.name}>
+            <div className="flex items-center justify-between bg-white p-2 rounded-md border border-slate-200 shadow-2xs">
+              <span className="text-slate-500 font-medium">TARGET RECOVERY FIELD:</span>
+              <span className="font-bold text-sky-700 truncate max-w-[200px]" title={rlSolution.destination.name}>
                 {rlSolution.destination.shortName} ({rlSolution.distNm} NM) {!isCritical && !isDegraded && !isSimulating && !isGrounded ? '[CONTINGENCY]' : ''}
               </span>
             </div>
 
-            <div className="flex items-center justify-between bg-slate-900/90 p-2 rounded border border-slate-800">
-              <span className="text-slate-400">DESCENT RATE PROFILE:</span>
-              <span className="font-bold text-white">
+            <div className="flex items-center justify-between bg-white p-2 rounded-md border border-slate-200 shadow-2xs">
+              <span className="text-slate-500 font-medium">DESCENT RATE PROFILE:</span>
+              <span className="font-bold text-slate-900">
                 {isGrounded
                   ? '0 FPM (ON GROUND)'
                   : `${rlSolution.recommendedClimbFpm} FPM ${rlSolution.recommendedClimbFpm < 0 ? '(GLIDE DESCENT)' : '(LEVEL CRUISE)'}`}
               </span>
             </div>
 
-            <div className="flex items-center justify-between bg-slate-900/90 p-2 rounded border border-slate-800">
-              <span className="text-slate-400">EST. TIME TO TOUCHDOWN:</span>
-              <span className="font-bold text-emerald-400">
+            <div className="flex items-center justify-between bg-white p-2 rounded-md border border-slate-200 shadow-2xs">
+              <span className="text-slate-500 font-medium">EST. TIME TO TOUCHDOWN:</span>
+              <span className="font-bold text-emerald-700">
                 {isGrounded ? '0.0 MINUTES (ON GROUND)' : `${rlSolution.flightTimeMin} MINUTES`}
               </span>
             </div>
 
-            <div className="flex items-center justify-between bg-slate-900/90 p-2 rounded border border-slate-800">
-              <span className="text-slate-400">FUEL FLOW TARGET:</span>
-              <span className="font-bold text-amber-400">
+            <div className="flex items-center justify-between bg-white p-2 rounded-md border border-slate-200 shadow-2xs">
+              <span className="text-slate-500 font-medium">FUEL FLOW TARGET:</span>
+              <span className="font-bold text-amber-700">
                 {rlSolution.fuelFlowLph.toFixed(1)} L/h
               </span>
             </div>
@@ -971,17 +1195,17 @@ export const MissionMapTab = () => {
           <button
             onClick={isGrounded ? undefined : handleEngageDerate}
             disabled={isGrounded}
-            className={`mt-2 py-2 px-3 rounded text-xs font-mono font-bold tracking-wider flex items-center justify-center gap-2 border transition-all ${
+            className={`mt-2 py-2 px-3 rounded-md text-xs font-mono font-bold tracking-wider flex items-center justify-center gap-2 border transition-all ${
               isGrounded
-                ? 'bg-slate-900 border-slate-700 text-slate-500 cursor-not-allowed'
+                ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
                 : isDerateEngaged
-                ? 'bg-emerald-950 border-emerald-500 text-emerald-400'
-                : 'bg-hud-cyan/15 border-hud-cyan text-hud-cyan hover:bg-hud-cyan hover:text-black shadow-sm'
+                ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs'
+                : 'bg-sky-600 border-sky-600 text-white hover:bg-sky-700 shadow-xs'
             }`}
           >
             {isGrounded ? (
               <>
-                <ShieldAlert className="w-4 h-4 text-red-400" /> AIRCRAFT GROUNDED — ENGINE SHUTDOWN
+                <ShieldAlert className="w-4 h-4 text-red-600" /> AIRCRAFT GROUNDED — ENGINE SHUTDOWN
               </>
             ) : isDerateEngaged ? (
               <>
@@ -993,21 +1217,27 @@ export const MissionMapTab = () => {
               </>
             )}
           </button>
+
+          {derateStatusMsg && (
+            <div className="text-[10px] font-mono text-emerald-800 bg-emerald-50 border border-emerald-200 rounded p-2 text-center animate-pulse">
+              ✓ {derateStatusMsg}
+            </div>
+          )}
         </div>
 
         {/* 3. Safety Margin & RL Policy Rewards */}
-        <div className="bg-slate-950 p-3 rounded border border-slate-800 flex flex-col gap-2.5">
+        <div className="bg-white p-3 rounded-lg border border-slate-200 flex flex-col gap-2.5 shadow-xs">
           <div className="flex items-center justify-between text-xs font-mono">
-            <span className="text-slate-400">RUL / FLIGHT TIME MARGIN:</span>
-            <span className={`font-bold ${isGrounded ? 'text-slate-400' : rlSolution.safetyMarginRatio < 2.0 ? 'text-red-400' : rlSolution.safetyMarginRatio < 5.0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+            <span className="text-slate-500 font-semibold">RUL / FLIGHT TIME MARGIN:</span>
+            <span className={`font-bold ${isGrounded ? 'text-slate-400' : rlSolution.safetyMarginRatio < 2.0 ? 'text-red-600' : rlSolution.safetyMarginRatio < 5.0 ? 'text-amber-600' : 'text-emerald-600'}`}>
               {isGrounded ? 'N/A (GROUNDED)' : rlSolution.safetyMarginRatio > 99 ? '>99x (EXCESS)' : `${rlSolution.safetyMarginRatio}x (SAFE MARGIN)`}
             </span>
           </div>
 
-          <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden border border-slate-800">
+          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200">
             <div
               className={`h-full rounded-full transition-all duration-500 ${
-                isGrounded ? 'bg-slate-700' : rlSolution.safetyMarginRatio < 2.0 ? 'bg-red-500' : rlSolution.safetyMarginRatio < 5.0 ? 'bg-amber-500' : 'bg-emerald-500'
+                isGrounded ? 'bg-slate-400' : rlSolution.safetyMarginRatio < 2.0 ? 'bg-red-500' : rlSolution.safetyMarginRatio < 5.0 ? 'bg-amber-500' : 'bg-emerald-500'
               }`}
               style={{ width: `${isGrounded ? 100 : Math.min(100, Math.max(10, (rlSolution.safetyMarginRatio / 10.0) * 100))}%` }}
             />
@@ -1015,9 +1245,9 @@ export const MissionMapTab = () => {
 
           {/* RL Policy Performance Badges */}
           <div className="grid grid-cols-2 gap-2 text-[10px] mt-1">
-            <div className="bg-slate-900/90 p-2 rounded border border-slate-800">
-              <span className="text-slate-400 block">{isGrounded ? 'IN-FLIGHT CRASH RISK:' : 'SURVIVABILITY:'}</span>
-              <span className="text-emerald-400 font-bold text-xs">
+            <div className="bg-slate-50 p-2 rounded-md border border-slate-200 shadow-2xs">
+              <span className="text-slate-500 font-semibold block">{isGrounded ? 'IN-FLIGHT CRASH RISK:' : 'SURVIVABILITY:'}</span>
+              <span className="text-emerald-700 font-bold text-xs">
                 {isGrounded ? '0.0%' : `${rlSolution.metrics.survivabilityPct}%`}
               </span>
               <span className="text-[8.5px] block text-slate-500">
@@ -1025,9 +1255,9 @@ export const MissionMapTab = () => {
               </span>
             </div>
 
-            <div className="bg-slate-900/90 p-2 rounded border border-slate-800">
-              <span className="text-slate-400 block">{isGrounded ? 'DEGRADATION RATE:' : 'CYCLE LIFE PRESERVED:'}</span>
-              <span className="text-hud-cyan font-bold text-xs">
+            <div className="bg-slate-50 p-2 rounded-md border border-slate-200 shadow-2xs">
+              <span className="text-slate-500 font-semibold block">{isGrounded ? 'DEGRADATION RATE:' : 'CYCLE LIFE PRESERVED:'}</span>
+              <span className="text-sky-700 font-bold text-xs">
                 {isGrounded ? '0.0%/hr' : `+${rlSolution.metrics.cyclePreservationPct}%`}
               </span>
               <span className="text-[8.5px] block text-slate-500">
@@ -1035,9 +1265,9 @@ export const MissionMapTab = () => {
               </span>
             </div>
 
-            <div className="bg-slate-900/90 p-2 rounded border border-slate-800">
-              <span className="text-slate-400 block">GLIDE CONE REACH:</span>
-              <span className={`font-bold text-xs ${isGrounded ? 'text-slate-400' : 'text-amber-400'}`}>
+            <div className="bg-slate-50 p-2 rounded-md border border-slate-200 shadow-2xs">
+              <span className="text-slate-500 font-semibold block">GLIDE CONE REACH:</span>
+              <span className={`font-bold text-xs ${isGrounded ? 'text-slate-400' : 'text-amber-700'}`}>
                 {isGrounded ? 'N/A' : `${rlSolution.metrics.glideConeRadiusNm} NM`}
               </span>
               <span className="text-[8.5px] block text-slate-500">
@@ -1045,9 +1275,9 @@ export const MissionMapTab = () => {
               </span>
             </div>
 
-            <div className="bg-slate-900/90 p-2 rounded border border-slate-800">
-              <span className="text-slate-400 block">GLIDE MARGIN:</span>
-              <span className={`font-bold text-xs ${isGrounded ? 'text-slate-400' : rlSolution.metrics.glideMarginNm >= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+            <div className="bg-slate-50 p-2 rounded-md border border-slate-200 shadow-2xs">
+              <span className="text-slate-500 font-semibold block">GLIDE MARGIN:</span>
+              <span className={`font-bold text-xs ${isGrounded ? 'text-slate-400' : rlSolution.metrics.glideMarginNm >= 0 ? 'text-emerald-700' : 'text-amber-700'}`}>
                 {isGrounded ? 'N/A' : rlSolution.metrics.glideMarginNm > 0 ? `+${rlSolution.metrics.glideMarginNm} NM` : `${rlSolution.metrics.glideMarginNm} NM`}
               </span>
               <span className="text-[8.5px] block text-slate-500">
@@ -1058,26 +1288,26 @@ export const MissionMapTab = () => {
         </div>
 
         {/* 4. Optimized Waypoint Flight Plan Table */}
-        <div className="bg-slate-950 p-3 rounded border border-slate-800 flex flex-col gap-2">
-          <div className="text-[10px] font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
-            <span className="flex items-center gap-1.5 text-hud-cyan">
+        <div className="bg-white p-3 rounded-lg border border-slate-200 flex flex-col gap-2 shadow-xs">
+          <div className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-sky-700">
               <Layers className="w-3.5 h-3.5" /> {isGrounded ? 'GROUND DISPATCH & ISOLATION STATUS' : `WAYPOINT FLIGHT PROFILE (${rlSolution.waypoints.length} PTS)`}
             </span>
-            <span className="text-[9px] text-slate-500">{rlSolution.destination.shortName}</span>
+            <span className="text-[9px] text-slate-500 font-semibold">{rlSolution.destination.shortName}</span>
           </div>
 
           {isGrounded ? (
-            <div className="bg-slate-900/80 border border-red-500/40 rounded p-3 text-xs font-mono flex flex-col gap-1.5">
-              <div className="flex items-center justify-between text-red-400 font-bold text-[11px] border-b border-slate-800 pb-1">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs font-mono flex flex-col gap-1.5 shadow-2xs">
+              <div className="flex items-center justify-between text-red-700 font-bold text-[11px] border-b border-red-200/80 pb-1">
                 <span className="flex items-center gap-1.5">
-                  <ShieldAlert className="w-4 h-4 text-red-400" /> RED-X GROUNDING ORDER
+                  <ShieldAlert className="w-4 h-4 text-red-600" /> RED-X GROUNDING ORDER
                 </span>
-                <span className="text-[9px] bg-red-950/80 text-red-300 border border-red-500/40 px-1.5 py-0.5 rounded">STANAG 4671</span>
+                <span className="text-[9px] bg-red-100 text-red-800 border border-red-300 px-1.5 py-0.5 rounded font-bold">STANAG 4671</span>
               </div>
-              <div className="text-slate-300 text-[10px]">LOCATION: <span className="font-bold text-white">AFS Uttarlai — Hangar Bay 3 (Concrete Ramp)</span></div>
-              <div className="text-slate-300 text-[10px]">CRITICAL FAULT: <span className="font-bold text-red-400">OIL_PUMP_CAVITATION (RUL: 120.0h)</span></div>
-              <div className="text-slate-300 text-[10px]">FADEC STATUS: <span className="font-bold text-hud-cyan">ECU LOCKOUT / INJECTION DISABLED</span></div>
-              <div className="text-slate-400 text-[9px] mt-1 pt-1 border-t border-slate-800">
+              <div className="text-slate-700 text-[10px]">LOCATION: <span className="font-bold text-slate-900">AFS Uttarlai — Hangar Bay 3 (Concrete Ramp)</span></div>
+              <div className="text-slate-700 text-[10px]">CRITICAL FAULT: <span className="font-bold text-red-700">OIL_PUMP_CAVITATION (RUL: 120.0h)</span></div>
+              <div className="text-slate-700 text-[10px]">FADEC STATUS: <span className="font-bold text-sky-700">ECU LOCKOUT / INJECTION DISABLED</span></div>
+              <div className="text-slate-600 text-[9px] mt-1 pt-1 border-t border-red-200/80 font-medium">
                 * Flight operations suspended pending depot-level mechanical oil scavenge pump replacement and hydrodynamic lubrication loop flush.
               </div>
             </div>
@@ -1085,22 +1315,22 @@ export const MissionMapTab = () => {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-[10px] border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-800 text-slate-400 font-bold">
-                    <th className="py-1">WP</th>
-                    <th className="py-1">ALTITUDE</th>
-                    <th className="py-1">SPEED</th>
-                    <th className="py-1">DIST</th>
-                    <th className="py-1 text-right">ETA</th>
+                  <tr className="border-b border-slate-200 bg-slate-50/80 text-slate-600 font-bold">
+                    <th className="py-1.5 px-2">WP</th>
+                    <th className="py-1.5 px-2">ALTITUDE</th>
+                    <th className="py-1.5 px-2">SPEED</th>
+                    <th className="py-1.5 px-2">DIST</th>
+                    <th className="py-1.5 px-2 text-right">ETA</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-900">
+                <tbody className="divide-y divide-slate-100">
                   {rlSolution.waypoints.map(w => (
-                    <tr key={w.id} className="hover:bg-slate-900/50">
-                      <td className="py-1.5 font-bold text-sky-400">{w.name}</td>
-                      <td className="py-1.5 text-slate-300">{w.altitudeFt.toLocaleString()} ft</td>
-                      <td className="py-1.5 text-slate-300">{w.airspeedKts} kts</td>
-                      <td className="py-1.5 text-slate-400">{w.distRemainingNm} NM</td>
-                      <td className="py-1.5 text-right font-bold text-emerald-400">+{w.etaMin}m</td>
+                    <tr key={w.id} className="hover:bg-slate-50/80">
+                      <td className="py-1.5 px-2 font-bold text-sky-700">{w.name}</td>
+                      <td className="py-1.5 px-2 text-slate-700">{w.altitudeFt.toLocaleString()} ft</td>
+                      <td className="py-1.5 px-2 text-slate-700">{w.airspeedKts} kts</td>
+                      <td className="py-1.5 px-2 text-slate-500">{w.distRemainingNm} NM</td>
+                      <td className="py-1.5 px-2 text-right font-bold text-emerald-700">+{w.etaMin}m</td>
                     </tr>
                   ))}
                 </tbody>

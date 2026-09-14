@@ -1,0 +1,222 @@
+"""
+test_complete_ai_physics.py
+===========================
+Automated Full-Project Validation Suite for:
+1. Rotax 915 iS Thermodynamics & Analytical Physics Baseline
+2. PyTorch Deep Autoencoder (Sensor Micro-Residual Anomaly Detector)
+3. PyTorch Bi-LSTM Network (RUL Estimator with 95% Confidence Intervals)
+4. SHAP Feature Attribution & Root Cause Diagnosis
+5. Reinforcement Learning (RL) Closed-Loop Divert Replanner
+6. Unified AI Health & RUL Service (XGBoost + Isolation Forest + OOD Guard)
+"""
+
+import math
+import numpy as np
+import torch
+import sys
+
+from ai_service import (
+    PhysicsBaselineEngine,
+    TelemetryInput,
+    detect_anomaly,
+    predict_rul,
+    explain_shap,
+    rl_mission_replan,
+    RlReplanRequest,
+    autoencoder,
+    lstm_prognostics,
+)
+from ai_health_rul.services.health_rul_service import HealthRulService
+
+print("=" * 70)
+print("🧪 GARUDATWIN FULL AI/ML & PHYSICS VERIFICATION SUITE")
+print("=" * 70)
+
+passed = 0
+total = 6
+
+# -------------------------------------------------------------
+# 1. Physics First-Principles Baseline Thermodynamics
+# -------------------------------------------------------------
+print("\n[SECTION 1/6] Validating Rotax 915 iS Thermodynamics & Physics Core...")
+try:
+    # Test at standard cruise: 14,500 ft, 78.5% throttle, 4850 RPM
+    states = PhysicsBaselineEngine.compute_nominal_states(4850.0, 78.5, 14500.0)
+    
+    # Expected: p_ambient at 14,500 ft (~4420 m) ≈ 0.584 bar
+    assert 0.55 <= states["p_ambient_bar"] <= 0.62, f"p_ambient out of range: {states['p_ambient_bar']}"
+    # Expected: t_ambient at 14,500 ft ≈ -13.7 °C
+    assert -18.0 <= states["t_ambient_c"] <= -10.0, f"t_ambient out of range: {states['t_ambient_c']}"
+    # Expected: nominal MAP around 1.10 - 1.45 bar (turbocharged boost at 14,500 ft)
+    assert 1.05 <= states["nominal_map_bar"] <= 1.45, f"nominal_map out of range: {states['nominal_map_bar']}"
+    # Expected: nominal EGT around 840 - 880 °C
+    assert 840.0 <= states["nominal_egt_c"] <= 890.0, f"nominal_egt out of range: {states['nominal_egt_c']}"
+    # Expected: nominal CHT around 104 - 116 °C
+    assert 104.0 <= states["nominal_cht_c"] <= 118.0, f"nominal_cht out of range: {states['nominal_cht_c']}"
+    # Expected: oil pressure around 3.5 - 4.2 bar
+    assert 3.5 <= states["nominal_oil_press_bar"] <= 4.2, f"nominal_oil_press out of range: {states['nominal_oil_press_bar']}"
+
+    print(f"  ✓ Barometric pressure at 14,500 ft: {states['p_ambient_bar']} bar")
+    print(f"  ✓ Ambient lapse temperature: {states['t_ambient_c']} °C")
+    print(f"  ✓ Turbocharger compressor boost MAP: {states['nominal_map_bar']} bar")
+    print(f"  ✓ Thermal balance: EGT = {states['nominal_egt_c']} °C, CHT = {states['nominal_cht_c']} °C")
+    print(f"  ✓ Lubrication hydrodynamic pressure: {states['nominal_oil_press_bar']} bar")
+    print("  ✓ Analytical physics formulas verified against Rotax 915 iS engine specs.")
+    passed += 1
+except Exception as e:
+    print(f"  ✗ Physics baseline test failed: {e}")
+
+# -------------------------------------------------------------
+# 2. PyTorch Deep Autoencoder Micro-Residual Anomaly Detection
+# -------------------------------------------------------------
+print("\n[SECTION 2/6] Validating PyTorch Deep Autoencoder Micro-Anomaly Detection...")
+try:
+    nom_telemetry = TelemetryInput(
+        rpm=4850.0, throttle_pct=78.5, altitude_ft=14500.0,
+        egt=[855.0, 852.0, 854.0, 850.0],
+        cht=[108.0, 107.5, 109.0, 108.0],
+        map_bar=1.45, oil_press_bar=3.85, oil_temp_c=98.0,
+        vibration_grms=0.28
+    )
+    res_nom = detect_anomaly(nom_telemetry)
+    print(f"  ✓ Nominal Reconstruction MSE: {res_nom.reconstruction_mse} (Threshold: {res_nom.threshold})")
+    assert not res_nom.is_anomaly, "Nominal telemetry falsely flagged as anomaly"
+    assert res_nom.diagnosed_fault == "NOMINAL_OPERATION"
+
+    fault_telemetry = TelemetryInput(
+        rpm=4850.0, throttle_pct=78.5, altitude_ft=14500.0,
+        egt=[855.0, 852.0, 975.0, 850.0],
+        cht=[108.0, 107.5, 136.0, 108.0],
+        map_bar=1.45, oil_press_bar=3.85, oil_temp_c=98.0,
+        vibration_grms=1.25
+    )
+    res_fault = detect_anomaly(fault_telemetry)
+    print(f"  ✓ Fault Reconstruction MSE: {res_fault.reconstruction_mse} > Threshold")
+    print(f"  ✓ Diagnosed Fault: {res_fault.diagnosed_fault} (Severity: {res_fault.severity_level})")
+    assert res_fault.is_anomaly, "Fault condition not detected"
+    assert "CYLINDER_3_INJECTOR" in res_fault.diagnosed_fault
+    print("  ✓ PyTorch Autoencoder micro-residual anomaly classification verified.")
+    passed += 1
+except Exception as e:
+    print(f"  ✗ Autoencoder test failed: {e}")
+
+# -------------------------------------------------------------
+# 3. PyTorch Bi-LSTM Remaining Useful Life (RUL) Network
+# -------------------------------------------------------------
+print("\n[SECTION 3/6] Validating PyTorch Bi-LSTM RUL & 95% Confidence Intervals...")
+try:
+    rul_nom = predict_rul(nom_telemetry)
+    print(f"  ✓ Nominal Engine Health Index: {rul_nom.engine_health_index}%")
+    print(f"  ✓ Predicted Mean RUL: {rul_nom.rul_hours_mean} hrs (95% CI: [{rul_nom.rul_hours_lower_95}, {rul_nom.rul_hours_upper_95}] hrs)")
+    assert rul_nom.rul_hours_lower_95 <= rul_nom.rul_hours_mean <= rul_nom.rul_hours_upper_95
+    assert rul_nom.engine_health_index > 80.0
+
+    rul_fault = predict_rul(fault_telemetry)
+    print(f"  ✓ Degraded Health Index: {rul_fault.engine_health_index}%")
+    print(f"  ✓ Degraded Mean RUL: {rul_fault.rul_hours_mean} hrs (Degradation Rate: {rul_fault.degradation_rate_pct_per_hour}%/hr)")
+    assert rul_fault.rul_hours_mean < rul_nom.rul_hours_mean, "Fault did not decrease RUL"
+    assert rul_fault.engine_health_index < rul_nom.engine_health_index, "Fault did not reduce health index"
+    print("  ✓ Bi-LSTM RUL estimation and Bayesian uncertainty quantification verified.")
+    passed += 1
+except Exception as e:
+    print(f"  ✗ Bi-LSTM RUL test failed: {e}")
+
+# -------------------------------------------------------------
+# 4. SHAP Feature Attribution & Root Cause Analysis
+# -------------------------------------------------------------
+print("\n[SECTION 4/6] Validating SHAP Explainable AI Feature Attributions...")
+try:
+    shap_res = explain_shap(fault_telemetry)
+    print(f"  ✓ Dominant Root-Cause Feature: {shap_res.dominant_root_cause_feature}")
+    print(f"  ✓ Top Attribution Features: {[(a['feature'], str(a['importance_pct']) + '%') for a in shap_res.attributions[:3]]}")
+    print(f"  ✓ Physics-Grounded Explanation:\n    \"{shap_res.physics_explanation[:100]}...\"")
+    assert len(shap_res.attributions) > 0
+    assert shap_res.dominant_root_cause_feature in ["EGT_Cyl3", "Vibration_gRMS"]
+    print("  ✓ SHAP explainability engine verified.")
+    passed += 1
+except Exception as e:
+    print(f"  ✗ SHAP test failed: {e}")
+
+# -------------------------------------------------------------
+# 5. Reinforcement Learning (RL) Autonomous Divert Replanner
+# -------------------------------------------------------------
+print("\n[SECTION 5/6] Validating Closed-Loop RL Trajectory Replanner...")
+try:
+    req_healthy = RlReplanRequest(
+        current_lat=26.45, current_lng=70.52, altitude_ft=14500.0,
+        fuel_remaining_liters=80.0, engine_health_index=95.0, rul_hours=820.0
+    )
+    plan_healthy = rl_mission_replan(req_healthy)
+    print(f"  ✓ Healthy Scenario Decision: {plan_healthy['action']}")
+    print(f"  ✓ Target Recovery Field: {plan_healthy['target_recovery_field']} ({plan_healthy['distance_to_field_nm']} NM)")
+    assert plan_healthy["action"] == "DERATE_AND_CONTINUE_MISSION"
+
+    req_crit = RlReplanRequest(
+        current_lat=26.45, current_lng=70.52, altitude_ft=14500.0,
+        fuel_remaining_liters=25.0, engine_health_index=28.0, rul_hours=0.8
+    )
+    plan_crit = rl_mission_replan(req_crit)
+    print(f"  ✓ Critical Scenario Decision: {plan_crit['action']}")
+    print(f"  ✓ Emergency Recovery Field: {plan_crit['target_recovery_field']} ({plan_crit['distance_to_field_nm']} NM)")
+    print(f"  ✓ Recommended Power Derate: Throttle {plan_crit['rl_control_commands']['recommended_throttle_pct']}%, RPM {plan_crit['rl_control_commands']['recommended_rpm']}")
+    print(f"  ✓ Recalculated Descent Waypoints: {len(plan_crit['optimized_rtb_flight_plan'])} waypoints")
+    assert plan_crit["action"] == "EMERGENCY_DIVERT_RTB"
+    assert "Jaisalmer" in plan_crit["target_recovery_field"]
+    assert plan_crit["rl_control_commands"]["recommended_throttle_pct"] <= 60.0
+    print("  ✓ Closed-loop RL trajectory replanning verified.")
+    passed += 1
+except Exception as e:
+    print(f"  ✗ RL replanner test failed: {e}")
+
+# -------------------------------------------------------------
+# 6. Unified AI Health & RUL Service (XGBoost + IsolationForest)
+# -------------------------------------------------------------
+print("\n[SECTION 6/6] Validating Unified AI Health & RUL Service...")
+try:
+    svc = HealthRulService()
+    base_telem = {
+        "timestamp_s": 10.0, "rpm": 4800.0, "true_cht": 106.0, "sensor_cht": 106.0,
+        "egt": 840.0, "oil_pressure": 3.85, "oil_temp": 98.0, "fuel_flow": 26.0,
+        "vibration": 0.28, "battery_voltage": 28.4, "injection_timing": 18.5,
+        "health_index": 0.98, "altitude": 14500.0, "ambient_temp": -12.5, "throttle": 78.5
+    }
+    for i in range(35):
+        t = base_telem.copy()
+        t["timestamp_s"] = float(i)
+        svc.predict(t)
+        
+    res = svc.predict(base_telem)
+    print(f"  ✓ Unified Pipeline Prediction: Health Score = {res.rul.healthIndexScore}, RUL = {res.rul.rulHours} hrs")
+    print(f"  ✓ Maintenance Priority: {res.maintenance.priority} (Action: {res.maintenance.action})")
+    assert res.rul.rulHours > 50.0
+    assert res.maintenance.priority == "LOW"
+
+    # 1. Test DataQualityGuard outlier detection
+    ood_telem = base_telem.copy()
+    ood_telem["rpm"] = 8500.0
+    res_ood = svc.predict(ood_telem)
+    assert "rpm" in res_ood.data_quality.outliers_detected, "RPM outlier was not detected by DataQualityGuard"
+    print(f"  ✓ DataQualityGuard detected physical boundary outlier: {res_ood.data_quality.outliers_detected}")
+
+    # 2. Test RulPredictor direct OOD exception rejection
+    from ai_health_rul.inference.rul_predictor import RulPredictor
+    import pandas as pd
+    predictor = RulPredictor()
+    df_ood = pd.DataFrame([ood_telem] * 35)
+    try:
+        predictor.predict(feature_df=df_ood, raw_telemetry=ood_telem, anomaly_score=0.1)
+        print("  ✗ Failed: RulPredictor did not raise OUT_OF_DISTRIBUTION")
+    except ValueError as err:
+        if "OUT_OF_DISTRIBUTION" in str(err):
+            print(f"  ✓ RulPredictor correctly raised OUT_OF_DISTRIBUTION exception: {err}")
+            passed += 1
+    print("  ✓ Unified Health & RUL service with DataQualityGuard and OOD protection verified.")
+except Exception as e:
+    print(f"  ✗ Unified service test failed: {e}")
+
+print("\n" + "=" * 70)
+perc = int((passed / total) * 100)
+print(f"AI/ML & PHYSICS VERIFICATION: {passed}/{total} SECTIONS PASSED ({perc}%)")
+print("=" * 70)
+
+sys.exit(0 if passed == total else 1)

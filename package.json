@@ -8,11 +8,15 @@
     "build": "vite build",
     "preview": "vite preview",
     "server": "node server.js",
-    "start": "node server.js"
+    "ai": "./ai_venv/bin/python ai_service.py",
+    "backend": "node server.js",
+    "start": "node server.js",
+    "start:all": "bash start_services.sh"
   },
   "dependencies": {
     "@react-three/drei": "^9.106.0",
     "@react-three/fiber": "^8.16.8",
+    "better-sqlite3": "^13.0.3",
     "clsx": "^2.1.1",
     "cors": "^2.8.5",
     "express": "^4.19.2",

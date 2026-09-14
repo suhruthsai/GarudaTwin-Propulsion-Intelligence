@@ -143,54 +143,304 @@ export const PropellerAssembly = ({ rpm = 4800, isSelected, onClick, basePos, ef
   );
 };
 
+// ─────────────────────────────────────────────────────────────
+// CRANKSHAFT ASSEMBLY — 42CrMo4 Forged Nitrided Flat-4 Crankshaft
+// Rotating assembly with main journals, counterweights & crankpins
+// ─────────────────────────────────────────────────────────────
+export const CrankshaftAssembly = ({ rpm = 4800, oilPress = 3.85, isHighlight = false }) => {
+  const crankRef = useRef();
+
+  useFrame((_, dt) => {
+    if (crankRef.current) {
+      const rotSpeed = ((rpm || 4800) / 60) * Math.PI * 2;
+      crankRef.current.rotation.z += rotSpeed * dt;
+    }
+  });
+
+  const steelMat = {
+    color: isHighlight ? '#38BDF8' : '#CBD5E1',
+    metalness: 0.95,
+    roughness: 0.15,
+  };
+  const webMat = {
+    color: '#475569',
+    metalness: 0.90,
+    roughness: 0.28,
+  };
+  const bearingShellMat = {
+    color: oilPress < 2.0 ? '#EF4444' : '#EAB308',
+    emissive: oilPress < 2.0 ? '#EF4444' : '#CA8A04',
+    emissiveIntensity: 0.35,
+    metalness: 0.88,
+    roughness: 0.22,
+  };
+  const rodCapMat = {
+    color: '#334155',
+    metalness: 0.92,
+    roughness: 0.20,
+  };
+
+  return (
+    <group>
+      {/* 1. Static Main Bearing Saddles (Clamped in crankcase split line) */}
+      {[0.68, 0.0, -0.68].map((mz, idx) => (
+        <group key={idx} position={[0, 0, mz]}>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.138, 0.138, 0.12, 20]} />
+            <meshStandardMaterial {...bearingShellMat} />
+          </mesh>
+          <mesh position={[0, -0.08, 0]}>
+            <boxGeometry args={[0.34, 0.14, 0.12]} />
+            <meshStandardMaterial color="#1E293B" metalness={0.8} roughness={0.4} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* 2. Real-Time High-RPM Rotating Crankshaft Core */}
+      <group ref={crankRef}>
+        {/* Main Shaft Journals (Along Z-Axis) */}
+        <mesh position={[0, 0, 0.68]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.115, 0.115, 0.15, 24]} />
+          <meshStandardMaterial {...steelMat} />
+        </mesh>
+        <mesh position={[0, 0, 0.0]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.115, 0.115, 0.19, 24]} />
+          <meshStandardMaterial {...steelMat} />
+        </mesh>
+        <mesh position={[0, 0, -0.68]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.115, 0.115, 0.15, 24]} />
+          <meshStandardMaterial {...steelMat} />
+        </mesh>
+
+        {/* Central Connecting Shaft Stubs */}
+        <mesh position={[0, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.085, 0.085, 1.48, 20]} />
+          <meshStandardMaterial {...steelMat} />
+        </mesh>
+
+        {/* ── FORWARD BANK (Cylinders 1 & 2) ── */}
+        {/* Web 1 & Counterweight 1 (Opposing Cyl 1 pin) */}
+        <group position={[0, 0, 0.58]}>
+          <mesh position={[-0.14, 0, 0]}>
+            <boxGeometry args={[0.32, 0.22, 0.045]} />
+            <meshStandardMaterial {...webMat} />
+          </mesh>
+          <mesh position={[-0.22, 0.05, 0.02]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.028, 0.028, 0.02, 12]} />
+            <meshStandardMaterial color="#0F172A" roughness={0.9} />
+          </mesh>
+          <mesh position={[-0.22, -0.05, 0.02]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.028, 0.028, 0.02, 12]} />
+            <meshStandardMaterial color="#0F172A" roughness={0.9} />
+          </mesh>
+        </group>
+
+        {/* Crankpin 1 (Throw for Cyl 1, Offset +X) */}
+        <group position={[0.22, 0, 0.50]}>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.082, 0.082, 0.11, 20]} />
+            <meshStandardMaterial {...steelMat} />
+          </mesh>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.108, 0.108, 0.085, 16]} />
+            <meshStandardMaterial {...rodCapMat} />
+          </mesh>
+        </group>
+
+        {/* Intermediate Web between 1 & 2 */}
+        <mesh position={[0, 0, 0.43]}>
+          <boxGeometry args={[0.36, 0.18, 0.04]} />
+          <meshStandardMaterial {...webMat} />
+        </mesh>
+
+        {/* Crankpin 2 (Throw for Cyl 2, 180° Opposed, Offset -X) */}
+        <group position={[-0.22, 0, 0.36]}>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.082, 0.082, 0.11, 20]} />
+            <meshStandardMaterial {...steelMat} />
+          </mesh>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.108, 0.108, 0.085, 16]} />
+            <meshStandardMaterial {...rodCapMat} />
+          </mesh>
+        </group>
+
+        {/* Web 2 & Counterweight 2 */}
+        <group position={[0, 0, 0.28]}>
+          <mesh position={[0.14, 0, 0]}>
+            <boxGeometry args={[0.32, 0.22, 0.045]} />
+            <meshStandardMaterial {...webMat} />
+          </mesh>
+          <mesh position={[0.22, 0, 0.02]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.028, 0.028, 0.02, 12]} />
+            <meshStandardMaterial color="#0F172A" roughness={0.9} />
+          </mesh>
+        </group>
+
+        {/* ── AFT BANK (Cylinders 3 & 4) ── */}
+        {/* Web 3 & Counterweight 3 */}
+        <group position={[0, 0, -0.28]}>
+          <mesh position={[0.14, 0, 0]}>
+            <boxGeometry args={[0.32, 0.22, 0.045]} />
+            <meshStandardMaterial {...webMat} />
+          </mesh>
+          <mesh position={[0.22, 0, 0.02]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.028, 0.028, 0.02, 12]} />
+            <meshStandardMaterial color="#0F172A" roughness={0.9} />
+          </mesh>
+        </group>
+
+        {/* Crankpin 3 (Throw for Cyl 3, Offset -X) */}
+        <group position={[-0.22, 0, -0.36]}>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.082, 0.082, 0.11, 20]} />
+            <meshStandardMaterial {...steelMat} />
+          </mesh>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.108, 0.108, 0.085, 16]} />
+            <meshStandardMaterial {...rodCapMat} />
+          </mesh>
+        </group>
+
+        {/* Intermediate Web between 3 & 4 */}
+        <mesh position={[0, 0, -0.43]}>
+          <boxGeometry args={[0.36, 0.18, 0.04]} />
+          <meshStandardMaterial {...webMat} />
+        </mesh>
+
+        {/* Crankpin 4 (Throw for Cyl 4, 180° Opposed, Offset +X) */}
+        <group position={[0.22, 0, -0.50]}>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.082, 0.082, 0.11, 20]} />
+            <meshStandardMaterial {...steelMat} />
+          </mesh>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.108, 0.108, 0.085, 16]} />
+            <meshStandardMaterial {...rodCapMat} />
+          </mesh>
+        </group>
+
+        {/* Web 4 & Counterweight 4 */}
+        <group position={[0, 0, -0.58]}>
+          <mesh position={[-0.14, 0, 0]}>
+            <boxGeometry args={[0.32, 0.22, 0.045]} />
+            <meshStandardMaterial {...webMat} />
+          </mesh>
+          <mesh position={[-0.22, 0, 0.02]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.028, 0.028, 0.02, 12]} />
+            <meshStandardMaterial color="#0F172A" roughness={0.9} />
+          </mesh>
+        </group>
+
+        {/* ── FRONT DRIVE GEAR & PROPELLER OUTPUT ── */}
+        <mesh position={[0, 0, 0.82]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.155, 0.155, 0.08, 28]} />
+          <meshStandardMaterial color="#94A3B8" metalness={0.92} roughness={0.18} />
+        </mesh>
+        <mesh position={[0, 0, 0.89]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.075, 0.075, 0.10, 16]} />
+          <meshStandardMaterial {...steelMat} />
+        </mesh>
+
+        {/* ── REAR FLYWHEEL FLANGE & STARTER RING ── */}
+        <mesh position={[0, 0, -0.79]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.27, 0.27, 0.045, 32]} />
+          <meshStandardMaterial color="#334155" metalness={0.90} roughness={0.25} />
+        </mesh>
+        <mesh position={[0, 0, -0.80]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.285, 0.285, 0.035, 36]} />
+          <meshStandardMaterial color="#64748B" metalness={0.95} roughness={0.2} />
+        </mesh>
+      </group>
+    </group>
+  );
+};
+
 export const CrankcaseAssembly = ({ isSelected, onClick, basePos, ef = 0, tel, vm }) => {
+  const isCrankView = vm === 'CRANK_VIEW';
+  const isCutaway = vm === 'XRAY' || vm === 'PISTON_VIEW' || isCrankView || isSelected;
+
   const col = vm === 'HEALTH'   ? healthColor(tel?.health?.index || 100)
             : vm === 'THERMAL'  ? thermalColor(tel?.engine?.oilTempC || 98, 80, 140)
             : '#647080';
 
   return (
     <group position={basePos} onClick={e => { e.stopPropagation(); onClick?.('ENGINE_BLOCK'); }}>
+      {/* Outer Crankcase Block */}
       <mesh>
         <boxGeometry args={[2.2, 0.95, 1.65]} />
         <meshStandardMaterial
           {...matProps(col, isSelected)}
-          transparent={vm === 'XRAY' || vm === 'PISTON_VIEW'}
-          opacity={vm === 'XRAY' || vm === 'PISTON_VIEW' ? 0.22 : 1.0}
+          transparent={isCutaway}
+          opacity={isCutaway ? 0.24 : 1.0}
         />
       </mesh>
+
+      {/* Wireframe accent cage when cutaway/selected */}
+      {isCutaway && (
+        <mesh>
+          <boxGeometry args={[2.205, 0.955, 1.655]} />
+          <meshBasicMaterial color={isSelected || isCrankView ? '#00F0FF' : '#38BDF8'} wireframe transparent opacity={0.35} />
+        </mesh>
+      )}
+
+      {/* Front & Rear Access Plates */}
       <mesh position={[0, 0, 0.84]}>
         <boxGeometry args={[1.85, 0.75, 0.04]} />
-        <meshStandardMaterial color="#2D3B4F" metalness={0.85} roughness={0.4} />
+        <meshStandardMaterial color="#2D3B4F" metalness={0.85} roughness={0.4} transparent={isCutaway} opacity={isCutaway ? 0.35 : 1.0} />
       </mesh>
       <mesh position={[0, 0, -0.84]}>
         <boxGeometry args={[1.8, 0.75, 0.04]} />
-        <meshStandardMaterial color="#1A2332" metalness={0.85} roughness={0.4} />
+        <meshStandardMaterial color="#1A2332" metalness={0.85} roughness={0.4} transparent={isCutaway} opacity={isCutaway ? 0.35 : 1.0} />
       </mesh>
+
+      {/* Front Nose Bearing Collar */}
       <mesh position={[0, 0, 0.95]} rotation={[Math.PI / 2, 0, 0]}>
         <cylinderGeometry args={[0.16, 0.16, 0.18, 16]} />
         <meshStandardMaterial color="#94A3B8" metalness={0.92} roughness={0.1} />
       </mesh>
+
+      {/* Mount Bosses */}
       {[[-0.9,-0.45,0.6],[0.9,-0.45,0.6],[-0.9,-0.45,-0.6],[0.9,-0.45,-0.6]].map(([mx,my,mz],i)=>(
         <mesh key={i} position={[mx, my, mz]}>
           <cylinderGeometry args={[0.09, 0.09, 0.14, 8]} />
           <meshStandardMaterial color="#2D3B4F" metalness={0.7} roughness={0.5} />
         </mesh>
       ))}
-      <mesh position={[0, 0, 0]} rotation={[Math.PI/2, 0, 0]}>
-        <cylinderGeometry args={[0.07, 0.07, 1.5, 8]} />
-        <meshStandardMaterial color="#334155" metalness={0.9} roughness={0.2} />
-      </mesh>
-      {isSelected && (
+
+      {/* Top Inspection Cutaway Aperture (Provides a viewing port directly onto crankshaft) */}
+      {isCutaway && (
+        <mesh position={[0, 0.48, 0]}>
+          <boxGeometry args={[0.95, 0.02, 1.4]} />
+          <meshBasicMaterial color="#00F0FF" wireframe transparent opacity={0.5} />
+        </mesh>
+      )}
+
+      {/* Internal Crankshaft Cavity Light for dramatic cinematic inspection */}
+      {isCutaway && (
+        <pointLight position={[0, 0.3, 0]} color="#38BDF8" intensity={1.6} distance={2.5} />
+      )}
+
+      {/* Detailed Rotax 915 iS Internal Rotating Crankshaft */}
+      <CrankshaftAssembly
+        rpm={tel?.engine?.rpm || 4800}
+        oilPress={tel?.engine?.oilPressBar || 3.85}
+        isHighlight={isSelected || isCrankView}
+      />
+
+      {/* Interactive HUD Overlay */}
+      {(isSelected || isCrankView) && (
         <>
           <mesh>
             <boxGeometry args={[2.34, 1.09, 1.79]} />
             <meshBasicMaterial color="#00F0FF" wireframe />
           </mesh>
-          <InlineLabel pos={[0, 1.0, 0]} rows={[
-            { value: 'ENGINE_BLOCK' },
-            { label: 'RPM',      value: `${Math.round(tel?.engine?.rpm || 4800)}` },
-            { label: 'Throttle', value: `${(tel?.engine?.throttlePct || 78.5).toFixed(1)}%` },
-            { label: 'Vib.',     value: `${(tel?.engine?.vibrationGrms || 0.28).toFixed(3)} g` },
+          <InlineLabel pos={[0, 0.95, 0]} rows={[
+            { value: 'CRANKSHAFT & POWERTRAIN CORE' },
+            { label: 'Crank Speed', value: `${Math.round(tel?.engine?.rpm || 4800)} RPM (${((tel?.engine?.rpm || 4800) / 60).toFixed(1)} Hz)` },
+            { label: 'Bearing Wedge', value: '4.8 µm (3.85 bar nominal)' },
+            { label: 'Harmonic Vib.', value: `${(tel?.engine?.vibrationGrms || 0.28).toFixed(3)} g (1X/2X orders)` },
+            { label: 'Material', value: 'Forged 42CrMo4 Nitrided Steel' },
           ]} />
         </>
       )}

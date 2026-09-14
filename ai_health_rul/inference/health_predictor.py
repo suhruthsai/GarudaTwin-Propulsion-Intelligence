@@ -79,7 +79,7 @@ class HealthPredictor:
         X_scaled = self.scaler.transform(X_in)
         raw_if = float(self.iforest.decision_function(X_scaled)[0])
         anomaly_score = float(1.0 / (1.0 + np.exp(raw_if * 12.0)))
-        is_anomaly = bool(raw_if < -0.5)
+        is_anomaly = bool(raw_if < 0.0 or anomaly_score > ANOMALY_THRESHOLD)
 
         # 2. Fault Classifier Inference
         probs = self.clf.predict_proba(X_in)[0]
@@ -96,7 +96,7 @@ class HealthPredictor:
         # 3. Physics-Grounded Model Disagreement & Severity Assessment
         health_idx = float(X_in["health_index"].iloc[0])
         
-        if is_anomaly or pred_fault != "none":
+        if is_anomaly or pred_fault != "none" or anomaly_score > ANOMALY_THRESHOLD:
             if health_idx >= 0.95:
                 # Physics says healthy, but ML hallucinates fault (Domain Shift / OOD)
                 # Instead of scaring the user with "MODEL_DISAGREEMENT", we trust physics implicitly
