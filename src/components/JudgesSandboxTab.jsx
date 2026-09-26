@@ -270,7 +270,9 @@ export const JudgesSandboxTab = () => {
           oil_temp_c: oilTempC,
           vibration_grms: vibrationGrms,
           fuel_pressure_bar: fuelPressureBar,
-          gen_voltage_v: genVoltageV
+          gen_voltage_v: genVoltageV,
+          is_sandbox: true,
+          mode: 'SANDBOX'
         };
         const primaryHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
           ? `http://${window.location.hostname}:8001`
@@ -296,7 +298,17 @@ export const JudgesSandboxTab = () => {
         if (res && res.ok) {
           const data = await res.json();
           if (isMounted) {
-            setAiResult(data);
+            setAiResult({
+              ...data,
+              engine_health_index: data?.rul?.healthIndexScore ?? data?.health?.health_score ?? data?.engine_health_index,
+              rul_hours_mean: data?.rul?.rulHours ?? data?.rul_hours_mean,
+              rul_hours_lower_95: data?.rul?.rulLower95 ?? data?.rul_hours_lower_95,
+              rul_hours_upper_95: data?.rul?.rulUpper95 ?? data?.rul_hours_upper_95,
+              degradation_rate_pct_per_hour: data?.rul?.degradationRatePercentPerHour ?? data?.degradation_rate_pct_per_hour,
+              trend: data?.rul?.degradationTrend ?? data?.trend,
+              stress: data?.rul?.stressBreakdown ?? data?.stress,
+              subsystems: data?.rul?.subsystemDegradation ?? data?.subsystems
+            });
             setAiConnected(true);
           }
         } else {
@@ -401,8 +413,8 @@ export const JudgesSandboxTab = () => {
     let airworthinessColor = 'text-emerald-700 font-bold';
     let airworthinessDesc = 'Rotax 915 iS engine operating well within certified EASA/FAA flight envelopes. Safe for sustained mission loiter.';
 
-    const hi = aiResult?.engine_health_index ?? (pipelineOut?.health?.index ?? 100);
-    const rulH = aiResult?.rul_hours_mean ?? (pipelineOut?.rul?.hours ?? 750);
+    const hi = aiResult?.rul?.healthIndexScore ?? aiResult?.engine_health_index ?? (pipelineOut?.health?.index ?? 100);
+    const rulH = aiResult?.rul?.rulHours ?? aiResult?.rul_hours_mean ?? (pipelineOut?.rul?.hours ?? 750);
 
     if (hi < 40 || rulH < 2.0 || oilPressBar < 1.8 || maxEgt > 960 || vibrationGrms > 1.3) {
       airworthinessStatus = 'CRITICAL ABORT';
@@ -419,8 +431,8 @@ export const JudgesSandboxTab = () => {
     // RL Policy Evaluation
     const homeBase = { name: "AFS Uttarlai (Barmer)", lat: 25.8117, lng: 71.4883, alt_ft: 500 };
     const auxStrip = { name: "AFS Jaisalmer Forward Base", lat: 26.8897, lng: 70.8653, alt_ft: 825 };
-    const distHome = 42.5;
-    const distAux = 18.2;
+    const distHome = 64.8;
+    const distAux = 32.3;
 
     const requiresDivert = airworthinessStatus === 'CRITICAL ABORT';
     const targetDest = requiresDivert ? auxStrip : homeBase;
@@ -465,20 +477,20 @@ export const JudgesSandboxTab = () => {
         chtSpread,
         healthIndex: hi,
         rulHours: rulH,
-        rulLower95: aiResult?.rul_hours_lower_95 ?? (pipelineOut?.rul?.lower95 ?? (rulH * 0.85).toFixed(1)),
-        rulUpper95: aiResult?.rul_hours_upper_95 ?? (pipelineOut?.rul?.upper95 ?? (rulH * 1.15).toFixed(1)),
-        confidencePct: pipelineOut?.rul?.confidencePct ?? 92,
-        ratePerHour: aiResult?.degradation_rate_pct_per_hour ?? (pipelineOut?.degradation?.ratePerHour ?? 0.045),
-        trend: pipelineOut?.degradation?.trend ?? 'STABLE',
-        stress: pipelineOut?.degradation?.stressBreakdown ?? { combinedStress: 1.0 }
+        rulLower95: aiResult?.rul?.rulLower95 ?? aiResult?.rul_hours_lower_95 ?? (pipelineOut?.rul?.lower95 ?? (rulH * 0.85).toFixed(1)),
+        rulUpper95: aiResult?.rul?.rulUpper95 ?? aiResult?.rul_hours_upper_95 ?? (pipelineOut?.rul?.upper95 ?? (rulH * 1.15).toFixed(1)),
+        confidencePct: aiResult?.rul?.confidenceScore ?? (pipelineOut?.rul?.confidencePct ?? 92),
+        ratePerHour: aiResult?.rul?.degradationRatePercentPerHour ?? aiResult?.degradation_rate_pct_per_hour ?? (pipelineOut?.degradation?.ratePerHour ?? 0.045),
+        trend: aiResult?.rul?.degradationTrend ?? pipelineOut?.degradation?.trend ?? 'STABLE',
+        stress: aiResult?.rul?.stressBreakdown ?? pipelineOut?.degradation?.stressBreakdown ?? { combinedStress: 1.0 }
       },
       subsystems: {
-        thermal: Number((pipelineOut?.degradation?.subsystems?.thermal ?? aiResult?.rul?.subsystemDegradation?.thermal ?? 4.2)),
-        mechanical: Number((pipelineOut?.degradation?.subsystems?.mechanical ?? aiResult?.rul?.subsystemDegradation?.mechanical ?? 0.0)),
-        lubrication: Number((pipelineOut?.degradation?.subsystems?.lubrication ?? aiResult?.rul?.subsystemDegradation?.lubrication ?? 4.2)),
-        combustion: Number((pipelineOut?.degradation?.subsystems?.combustion ?? aiResult?.rul?.subsystemDegradation?.combustion ?? 0.0)),
-        fuel: Number((pipelineOut?.degradation?.subsystems?.fuel ?? aiResult?.rul?.subsystemDegradation?.fuel ?? 5.7)),
-        electrical: Number((pipelineOut?.degradation?.subsystems?.electrical ?? aiResult?.rul?.subsystemDegradation?.electrical ?? 4.6)),
+        thermal: Number((aiResult?.rul?.subsystemDegradation?.thermal ?? pipelineOut?.degradation?.subsystems?.thermal ?? 4.2)),
+        mechanical: Number((aiResult?.rul?.subsystemDegradation?.mechanical ?? pipelineOut?.degradation?.subsystems?.mechanical ?? 0.0)),
+        lubrication: Number((aiResult?.rul?.subsystemDegradation?.lubrication ?? pipelineOut?.degradation?.subsystems?.lubrication ?? 4.2)),
+        combustion: Number((aiResult?.rul?.subsystemDegradation?.combustion ?? pipelineOut?.degradation?.subsystems?.combustion ?? 0.0)),
+        fuel: Number((aiResult?.rul?.subsystemDegradation?.fuel ?? pipelineOut?.degradation?.subsystems?.fuel ?? 5.7)),
+        electrical: Number((aiResult?.rul?.subsystemDegradation?.electrical ?? pipelineOut?.degradation?.subsystems?.electrical ?? 4.6)),
       },
       rlRecommendation: {
         action: rlAction,

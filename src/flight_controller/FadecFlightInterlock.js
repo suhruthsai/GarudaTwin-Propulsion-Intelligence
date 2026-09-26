@@ -131,5 +131,15 @@ export class FadecFlightInterlock {
 
   getAnnunciators() { return { ...this.annunciators }; }
   isDegraded() { return this._flameoutDetected || this.annunciators.FUEL_BINGO; }
-  resetFlameout() { this._flameoutDetected=false; this._flameoutTimer=0; this.annunciators.ENGINE_OUT=false; }
+  resetFlameout() {
+    this._flameoutDetected = false;
+    this._flameoutTimer = 0;
+    this.annunciators.ENGINE_OUT = false;
+    this.annunciators.FUEL_BINGO = false;
+    this.annunciators.STALL_WARN = false;
+    this.annunciators.OVERSPEED = false;
+    this.annunciators.G_LIMIT = false;
+    this.annunciators.ENGINE_DERATE = false;
+    this.annunciators.FCS_DEGRADED = false;
+  }
 }

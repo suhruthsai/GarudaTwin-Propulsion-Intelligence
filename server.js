@@ -91,11 +91,14 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_surfaces_ts  ON control_surfaces(ts);
   CREATE INDEX IF NOT EXISTS idx_autopilot_ts ON autopilot_guidance(ts);
   CREATE INDEX IF NOT EXISTS idx_emergency_ts ON emergency_events(ts);
+  CREATE INDEX IF NOT EXISTS idx_fcs_sortie   ON fcs_telemetry(sortie_id, ts);
+  CREATE INDEX IF NOT EXISTS idx_surf_sortie  ON control_surfaces(sortie_id, ts);
+  CREATE INDEX IF NOT EXISTS idx_guide_sortie ON autopilot_guidance(sortie_id, ts);
 `);
 
 // Create opening sortie record
 const _stmtOpenSortie = db.prepare(`INSERT INTO sorties (uav_id, start_time, initial_alt) VALUES (?,?,?)`);
-const activeSortieId  = _stmtOpenSortie.run('Vahak-1', Date.now(), 4419.6).lastInsertRowid;
+let activeSortieId    = _stmtOpenSortie.run('Vahak-1', Date.now(), 4419.6).lastInsertRowid;
 
 // Prepared insert statements
 const _insFcs = db.prepare(`
@@ -344,6 +347,62 @@ let thermalState = {
   oilTemp: 98.0
 };
 
+function resetSimulationState() {
+  fcs6dof.reset();
+  if (typeof autopilot.reset === 'function') {
+    autopilot.reset();
+  } else {
+    autopilot.arm();
+    autopilot.setMode(FLIGHT_MODE.ALT_HOLD);
+    autopilot.setAltitude(4419.6);
+    autopilot.setAirspeed(56.6);
+  }
+  fadec.resetFlameout();
+  fcsState = {};
+  fcsControls = { throttle: 0.38, de: -0.045, da: 0, dr: 0, df: 0, sb: false, mode: 'ALT_HOLD' };
+  interlockOut = {};
+
+  missionState.missionTime = 0;
+  missionState.altitudeFt = 14500;
+  missionState.airspeedKts = 110;
+  missionState.headingDeg = 0;
+  missionState.missionPhase = 'LOITER';
+  missionState.lat = 26.4500;
+  missionState.lon = 70.5200;
+  missionState.north_m = 0;
+  missionState.east_m = 0;
+
+  faultState.activeFault = 'NONE';
+  faultState.severity = 0.0;
+  faultState.injectedAt = null;
+
+  thermalState.egt = 840.0;
+  thermalState.cht = 106.0;
+  thermalState.oilTemp = 98.0;
+
+  engineState.rpm = 4800;
+  engineState.throttlePct = 78.5;
+  engineState.mapBar = 1.42;
+  engineState.oilPressBar = 3.85;
+  engineState.oilTempC = 98.4;
+  engineState.vibrationGrms = 0.28;
+  engineState.fuelFlowLph = 26.4;
+  engineState.genVoltageV = 28.4;
+  engineState.genCurrentA = 45.2;
+  engineState.coolantTempC = 88.5;
+
+  try {
+    const res = _stmtOpenSortie.run('Vahak-1', Date.now(), 4419.6);
+    activeSortieId = res.lastInsertRowid;
+    console.log(`[FCS] Full simulation reset -> Started Sortie #${activeSortieId}`);
+  } catch (err) {
+    console.error('[FCS] Error starting new sortie on reset:', err.message);
+  }
+
+  io.emit('fault_updated', faultState);
+  io.emit('fcs_mode_changed', { mode: 'ALT_HOLD', armed: true });
+}
+
 function updatePhysicsStep(dt = 0.01) {
   missionState.missionTime += dt;
 
@@ -485,7 +544,7 @@ setInterval(() => {
       rpm:           engineState.rpm,
       egt_c:         engineState.egt[0],
       fuelFlow_kgh:  engineState.fuelFlowLph * 0.72,  // lph → kg/h (avgas density ~0.72)
-      fuel_kg:       200 - missionState.missionTime * 0.0072,  // approximate fuel burn
+      fuel_kg:       Math.max(0, 200 - missionState.missionTime * 0.0072),  // approximate fuel burn
       combustionEff: engineState.lambda > 0 ? Math.min(1, engineState.lambda) : 0.95,
       thrustN:       engineState.throttlePct * 18.0,  // approximate
     };
@@ -603,6 +662,8 @@ setInterval(() => {
     missionState.lon = 70.5200 + (fcsState.east_m ?? 0) / (111320 * Math.cos(26.45 * Math.PI / 180));
     missionState.north_m = fcsState.north_m ?? 0;
     missionState.east_m = fcsState.east_m ?? 0;
+    missionState.fuel_kg = parseFloat(Math.max(0, 200 - missionState.missionTime * 0.0072).toFixed(1));
+    missionState.fuel_remaining_liters = parseFloat((missionState.fuel_kg / 0.72).toFixed(1));
   }
 
   const payload = {
@@ -788,12 +849,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('fcs_reset', () => {
-    fcs6dof.reset();
-    fadec.resetFlameout();
-    autopilot.arm();
-    autopilot.setMode(FLIGHT_MODE.ALT_HOLD);
-    fcsState = {};
-    console.log('[FCS] Full reset performed');
+    resetSimulationState();
   });
 
   socket.on('disconnect', () => {
@@ -802,6 +858,23 @@ io.on('connection', (socket) => {
 });
 
 // REST API Endpoints for Diagnostics & Sandbox
+app.get('/', (req, res) => {
+  res.json({
+    status: 'ONLINE',
+    service: 'GarudaTwin Telemetry & CAN Bus Gateway Server',
+    port: PORT,
+    frontendUrl: 'http://localhost:5173',
+    endpoints: {
+      health: '/api/health',
+      sorties: '/api/database/sorties',
+      databaseStats: '/api/database/stats',
+      fcsStatus: '/api/fcs/status',
+      fcsTrim: '/api/fcs/trim'
+    },
+    activeSortieId: activeSortieId
+  });
+});
+
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ONLINE',
@@ -888,9 +961,11 @@ app.post('/api/rl-replan', async (req, res) => {
   } catch (error) {
     // Local first-principles analytical RL policy fallback
     const {
+      uav_id = "Vahak-1",
       current_lat = 26.4500,
       current_lng = 70.5200,
       altitude_ft = 14500.0,
+      fuel_remaining_liters = 84.0,
       engine_health_index = 98.5,
       rul_hours = 842.0,
       target_field_id = null,
@@ -919,9 +994,10 @@ app.post('/api/rl-replan', async (req, res) => {
 
     const isSim = mode === "FORCE_SIMULATION";
     const isPreview = mode === "CONTINGENCY_PREVIEW";
-    const isCrit = rul_hours < 2.0 || engine_health_index < 40.0;
+    const isBingo = fuel_remaining_liters <= 22.0;
+    const isCrit = rul_hours < 2.0 || engine_health_index < 40.0 || isBingo;
     const requiresDivert = isCrit || isSim;
-    const isDegraded = !requiresDivert && (engine_health_index < 75.0 || rul_hours < 50.0 || isPreview);
+    const isDegraded = !requiresDivert && !isPreview && (engine_health_index < 75.0 || rul_hours < 50.0 || fuel_remaining_liters < 35.0);
 
     let targetDest = null;
     if (target_field_id && target_field_id !== "AUTO") {
@@ -929,6 +1005,7 @@ app.post('/api/rl-replan', async (req, res) => {
     } else if (requiresDivert || isDegraded) {
       targetDest = candidates[0];
     } else {
+      // Nominal & Contingency Preview: Full primary base Return-to-Base (RTB) recovery to AFS Uttarlai
       targetDest = candidates.find(f => f.id === "AFS_UTTARLAI") || candidates[0];
     }
 
@@ -938,17 +1015,32 @@ app.post('/api/rl-replan', async (req, res) => {
     let recRpm = 4850;
     let recClimbFpm = 0;
     let speedKts = 115.0;
+    let action = "DERATE_AND_CONTINUE_MISSION";
 
     if (requiresDivert) {
+      action = "EMERGENCY_DIVERT_RTB";
       recThrottle = 58.0;
       recRpm = 4200;
       recClimbFpm = -350;
       speedKts = 95.0;
     } else if (isDegraded) {
+      action = "DERATE_AND_CONTINUE_MISSION";
       recThrottle = 68.0;
       recRpm = 4600;
       recClimbFpm = -200;
       speedKts = 105.0;
+    } else if (isPreview) {
+      action = "CONTINGENCY_RTB_PREVIEW";
+      recThrottle = 68.0;
+      recRpm = 4600;
+      recClimbFpm = -200;
+      speedKts = 105.0;
+    } else {
+      action = "DERATE_AND_CONTINUE_MISSION";
+      recThrottle = 78.0;
+      recRpm = 4850;
+      recClimbFpm = 0;
+      speedKts = 115.0;
     }
 
     const flightTimeMin = Math.max(0.1, (targetDist / speedKts) * 60.0);
@@ -962,7 +1054,7 @@ app.post('/api/rl-replan', async (req, res) => {
       const frac = i / numWp;
       waypoints.push({
         wp_id: `RTB-${i + 1}`,
-        name: requiresDivert ? wpNames[i] : `WP-${i + 1}`,
+        name: (requiresDivert || isPreview) ? wpNames[i] : `WP-${i + 1}`,
         lat: Number((current_lat + frac * (targetDest.lat - current_lat)).toFixed(4)),
         lng: Number((current_lng + frac * (targetDest.lng - current_lng)).toFixed(4)),
         altitude_ft: Math.round(altitude_ft - frac * (altitude_ft - targetDest.alt_ft)),
@@ -973,7 +1065,8 @@ app.post('/api/rl-replan', async (req, res) => {
     }
 
     return res.json({
-      action: requiresDivert ? "EMERGENCY_DIVERT_RTB" : "DERATE_AND_CONTINUE_MISSION",
+      uav_id: uav_id,
+      action: action,
       target_recovery_field: targetDest.name,
       target_field_id: targetDest.id,
       distance_to_field_nm: targetDist,
@@ -1177,12 +1270,8 @@ app.get('/api/fcs/trim', (req, res) => {
 // POST /api/fcs/reset  — reset FCS to trimmed level flight cruise
 app.post('/api/fcs/reset', (req, res) => {
   try {
-    fcs6dof.reset();
-    fadec.resetFlameout();
-    autopilot.arm();
-    autopilot.setMode(FLIGHT_MODE.ALT_HOLD);
-    fcsState = {};
-    res.json({ success: true, message: 'FCS reset to nominal cruise' });
+    resetSimulationState();
+    res.json({ success: true, message: 'FCS reset to nominal cruise', active_sortie_id: activeSortieId });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

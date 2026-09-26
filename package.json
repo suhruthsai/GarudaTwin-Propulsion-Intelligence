@@ -11,7 +11,9 @@
     "ai": "./ai_venv/bin/python ai_service.py",
     "backend": "node server.js",
     "start": "node server.js",
-    "start:all": "bash start_services.sh"
+    "start:all": "bash start_services.sh",
+    "restart": "bash start_services.sh --restart",
+    "stop": "kill -9 $(lsof -t -iTCP:8001,5002,5173 -sTCP:LISTEN 2>/dev/null) || true"
   },
   "dependencies": {
     "@react-three/drei": "^9.106.0",

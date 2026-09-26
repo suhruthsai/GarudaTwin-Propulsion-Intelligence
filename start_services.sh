@@ -14,6 +14,16 @@ echo "============================================================"
 echo "  GarudaTwin MALE UAV Propulsion Intelligence System        "
 echo "============================================================"
 
+# Check for restart flag
+if [ "$1" = "--restart" ] || [ "$1" = "-r" ]; then
+    echo "[!] Restart requested: Terminating existing services on ports 8001, 5002, 5173..."
+    PIDS=$(lsof -t -iTCP:8001,5002,5173 -sTCP:LISTEN 2>/dev/null)
+    if [ -n "$PIDS" ]; then
+        kill -9 $PIDS 2>/dev/null || true
+        sleep 1
+    fi
+fi
+
 # Helper function to kill child processes on exit
 cleanup() {
     echo ""

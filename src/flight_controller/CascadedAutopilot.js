@@ -92,6 +92,23 @@ export class CascadedAutopilot {
   arm()    { this.armed = true; }
   disarm() { this.armed = false; this.mode = FLIGHT_MODE.MANUAL_FBW; }
 
+  reset() {
+    this.mode = FLIGHT_MODE.ALT_HOLD;
+    this.armed = true;
+    this.emergencyActive = false;
+    this.glideTarget = null;
+    this.sp = {
+      alt_m: 4419.6, ias_ms: 56.588, heading_rad: 0,
+      loiter_north: 0, loiter_east: 0, loiter_radius: 2000, loiter_cw: true,
+      waypoints: [], wp_idx: 0, wp_accept: 250,
+    };
+    this.fbw = { roll:0, pitch:0, yaw:0, throttle:0.31 };
+    this._prevV = 70.71; this._prevH = 4419.6;
+    this.lastOutput = {};
+    [this.ir,this.ip,this.iy,this.ib,this.ophi,this.otheta,this.ohdg].forEach(c=>c.reset());
+    this.tecs.reset();
+  }
+
   setMode(mode) {
     if (!FLIGHT_MODE[mode] || mode === this.mode) return;
     this.mode = mode;

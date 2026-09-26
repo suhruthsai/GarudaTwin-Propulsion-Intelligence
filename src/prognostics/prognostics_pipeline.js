@@ -53,6 +53,10 @@ export class PrognosticsPipeline {
       rulResult.rulHours = Number(Math.max(0.6, rulResult.rulHours * 0.03).toFixed(1));
     } else if (activeFault === 'PRGB_DEGRADATION') {
       rulResult.rulHours = Number(Math.max(4.5, rulResult.rulHours * 0.15).toFixed(1));
+    } else if (activeFault === 'BLOW_BY') {
+      rulResult.rulHours = Number(Math.max(14.0, rulResult.rulHours * 0.28).toFixed(1));
+    } else if (activeFault === 'TURBO_WASTEGATE_STUCK') {
+      rulResult.rulHours = Number(Math.max(8.5, rulResult.rulHours * 0.20).toFixed(1));
     }
 
     // 5. Failure Risk & Multi-Horizon Evaluation
@@ -161,6 +165,14 @@ export class PrognosticsPipeline {
     } else if (activeFault === 'PRGB_DEGRADATION') {
       crankWeight = -68;
       knockWeight = -44;
+    } else if (activeFault === 'BLOW_BY') {
+      oilWeight = -52;
+      chtWeight = -35;
+      crankWeight = -26;
+    } else if (activeFault === 'TURBO_WASTEGATE_STUCK') {
+      egtWeight = -48;
+      knockWeight = -45;
+      chtWeight = -30;
     }
 
     return [

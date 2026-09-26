@@ -300,7 +300,7 @@ const SingleCylinderCutaway = ({
 /**
  * Interactive P-V Indicator Diagram
  */
-const PvIndicatorDiagram = ({ crankAngle, isBlowBy, rpm = 4800 }) => {
+const PvIndicatorDiagram = ({ crankAngle, isBlowBy, rpm = 4800, instSpeed = 0, meanSpeed = 9.76, ringSealing = 99.8 }) => {
   const deg = crankAngle % 720;
   let pressureBar = 1.4;
   let strokeName = 'INTAKE';
@@ -381,18 +381,28 @@ const PvIndicatorDiagram = ({ crankAngle, isBlowBy, rpm = 4800 }) => {
         </svg>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 text-center text-[10px] font-mono">
+      <div className="grid grid-cols-5 gap-1.5 text-center text-[10px] font-mono">
         <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-200">
-          <div className="text-slate-500 text-[9px] font-bold">CYL PRESSURE</div>
+          <div className="text-slate-500 text-[8px] font-bold uppercase tracking-tight">CYL PRESSURE</div>
           <div className="font-bold text-slate-900 text-xs">{pressureBar.toFixed(1)} bar</div>
         </div>
         <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-200">
-          <div className="text-slate-500 text-[9px] font-bold">CHAMBER VOL</div>
+          <div className="text-slate-500 text-[8px] font-bold uppercase tracking-tight">CHAMBER VOL</div>
           <div className="font-bold text-sky-700 text-xs">{volumeCc.toFixed(0)} cc</div>
         </div>
         <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-200">
-          <div className="text-slate-500 text-[9px] font-bold">CRANK ANGLE</div>
+          <div className="text-slate-500 text-[8px] font-bold uppercase tracking-tight">CRANK ANGLE</div>
           <div className="font-bold text-amber-700 text-xs">{deg.toFixed(0)}°</div>
+        </div>
+        <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-200">
+          <div className="text-slate-500 text-[8px] font-bold uppercase tracking-tight">INST. SPEED</div>
+          <div className="font-bold text-indigo-700 text-xs">{instSpeed.toFixed(1)} m/s</div>
+        </div>
+        <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-200">
+          <div className="text-slate-500 text-[8px] font-bold uppercase tracking-tight">RING SEALING</div>
+          <div className={`font-bold text-xs ${isBlowBy ? 'text-rose-600' : 'text-emerald-600'}`}>
+            {ringSealing.toFixed(1)}%
+          </div>
         </div>
       </div>
     </div>
@@ -406,8 +416,30 @@ export const PistonInspectionModal = ({ isOpen, onClose, tel }) => {
   const [isPlaying, setIsPlaying] = useState(true);
   const [playbackSpeed, setPlaybackSpeed] = useState(0.25);
   const [crankAngle, setCrankAngle] = useState(360);
-  const [isBlowBy, setIsBlowBy] = useState(false);
+  const [isBlowBy, setIsBlowBy] = useState(tel?.health?.activeFault === 'BLOW_BY');
   const [selectedCompTab, setSelectedCompTab] = useState('ANATOMY');
+
+  // Synchronize modal blow-by state with live engine telemetry
+  useEffect(() => {
+    if (tel?.health?.activeFault === 'BLOW_BY') {
+      setIsBlowBy(true);
+    } else if (tel?.health?.activeFault === 'NONE') {
+      setIsBlowBy(false);
+    }
+  }, [tel?.health?.activeFault]);
+
+  // Rotax 915 iS physical kinematics parameters
+  const rpm = tel?.engine?.rpm || 4800;
+  const strokeM = 0.061; // 61 mm
+  const rodM = 0.110;    // 110 mm
+  const crankRadiusM = strokeM / 2; // 30.5 mm = 0.0305 m
+  const lambda = crankRadiusM / rodM;
+  const omega = (2 * Math.PI * rpm) / 60;
+  const thetaRad = (crankAngle * Math.PI) / 180;
+  const meanPistonSpeed = (2 * strokeM * rpm) / 60;
+  const instPistonSpeed = Math.abs(crankRadiusM * omega * (Math.sin(thetaRad) + (lambda / 2) * Math.sin(2 * thetaRad)));
+  const peakPistonSpeed = crankRadiusM * omega * (1 + lambda / 2);
+  const ringSealingPct = isBlowBy ? 64.2 : 99.8;
 
   useEffect(() => {
     if (!isOpen || !isPlaying) return;
@@ -593,7 +625,10 @@ export const PistonInspectionModal = ({ isOpen, onClose, tel }) => {
             <PvIndicatorDiagram
               crankAngle={crankAngle}
               isBlowBy={isBlowBy}
-              rpm={tel?.engine?.rpm || 4800}
+              rpm={rpm}
+              instSpeed={instPistonSpeed}
+              meanSpeed={meanPistonSpeed}
+              ringSealing={ringSealingPct}
             />
 
             <div className="flex border-b border-slate-200 text-xs font-mono">
@@ -637,12 +672,15 @@ export const PistonInspectionModal = ({ isOpen, onClose, tel }) => {
                 }`}>
                   <div className="flex justify-between items-center font-bold mb-1">
                     <span className={isBlowBy ? 'text-rose-700' : 'text-amber-700'}>2. THREE-PIECE RING PACK</span>
-                    <span className="text-[10px] text-slate-400">{isBlowBy ? 'LEAKING' : 'SEALED'}</span>
+                    <span className={`text-[10px] font-bold ${isBlowBy ? 'text-rose-600' : 'text-emerald-600'}`}>
+                      {isBlowBy ? 'LEAKING (64.2%)' : 'SEALED (99.8%)'}
+                    </span>
                   </div>
                   <ul className="text-[10px] text-slate-600 space-y-1">
                     <li>• <strong>Top Ring:</strong> 1.2 mm Nitrided Steel (Seals 135 bar gas)</li>
                     <li>• <strong>2nd Ring:</strong> 1.2 mm Tapered Ductile Iron Scraper</li>
                     <li>• <strong>Oil Ring:</strong> 2.5 mm Chrome-plated with expander coil</li>
+                    <li>• <strong>Sealing Efficiency:</strong> <span className={isBlowBy ? 'text-rose-700 font-bold' : 'text-emerald-700 font-bold'}>{isBlowBy ? '64.2% (-35.6% Blow-By Gas Leakage)' : '99.8% (<0.2% Normal Leakage)'}</span></li>
                   </ul>
                   {isBlowBy && (
                     <div className="mt-1.5 p-1.5 bg-rose-100 rounded border border-rose-300 text-[9px] text-rose-800 flex items-center gap-1 font-medium">
@@ -696,16 +734,26 @@ export const PistonInspectionModal = ({ isOpen, onClose, tel }) => {
                     <span className="font-bold text-slate-900">9.0 : 1</span>
                   </div>
                   <div className="flex justify-between text-slate-600">
-                    <span>Max Continuous RPM:</span>
-                    <span className="font-bold text-slate-900">5,500 RPM</span>
+                    <span>Mean Piston Speed (Live @ {Math.round(rpm)} RPM):</span>
+                    <span className="font-bold text-sky-700">{meanPistonSpeed.toFixed(2)} m/s</span>
                   </div>
                   <div className="flex justify-between text-slate-600">
-                    <span>Max Takeoff RPM:</span>
-                    <span className="font-bold text-slate-900">5,800 RPM (5 min limit)</span>
+                    <span>Mean Piston Speed @ 5800 RPM (Max):</span>
+                    <span className="font-bold text-slate-900">11.79 m/s</span>
                   </div>
                   <div className="flex justify-between text-slate-600">
-                    <span>Mean Piston Speed @ 5800:</span>
-                    <span className="font-bold text-sky-700">11.8 m/s</span>
+                    <span>Peak Piston Velocity (Mid-Stroke):</span>
+                    <span className="font-bold text-indigo-700">{peakPistonSpeed.toFixed(2)} m/s</span>
+                  </div>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Instantaneous Velocity @ {crankAngle.toFixed(0)}° CA:</span>
+                    <span className="font-bold text-amber-700">{instPistonSpeed.toFixed(2)} m/s</span>
+                  </div>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Piston Ring Sealing Status:</span>
+                    <span className={`font-bold ${isBlowBy ? 'text-rose-600' : 'text-emerald-600'}`}>
+                      {isBlowBy ? '64.2% (Combustion Blow-By)' : '99.8% (Aero Certified)'}
+                    </span>
                   </div>
                   <div className="flex justify-between text-slate-600">
                     <span>Peak Piston Acceleration:</span>

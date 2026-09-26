@@ -146,6 +146,23 @@ function MapResizer() {
   return null;
 }
 
+// Dynamic Map Viewport Controller for Replan Corridor Auto-Fit
+function MapFocusController({ routePolyline, isReplannerActive, replanMode }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!isReplannerActive || !routePolyline || routePolyline.length < 2) return;
+    if (replanMode === 'CONTINGENCY_PREVIEW' || replanMode === 'FORCE_SIMULATION') {
+      try {
+        const bounds = routePolyline.map(pt => [pt[0], pt[1]]);
+        map.fitBounds(bounds, { padding: [60, 60], maxZoom: 9, animate: true });
+      } catch (err) {
+        console.warn('[MapFocusController] Auto-fit bounds error:', err);
+      }
+    }
+  }, [map, routePolyline, isReplannerActive, replanMode]);
+  return null;
+}
+
 // Haversine Distance Helper (Nautical Miles)
 const calcDistNm = (lat1, lon1, lat2, lon2) => {
   const R = 3440.065; // Earth radius in NM
@@ -439,11 +456,16 @@ export const MissionMapTab = () => {
     setIsSolving(true);
     try {
       const uavPos = unitGeo.coords;
+      const liveFuelLiters = (telemetry.mission?.fuel_kg ? (telemetry.mission.fuel_kg / 0.72) : null)
+        ?? (telemetry.mission?.fuel_remaining_liters)
+        ?? (telemetry.mission?.missionTime ? Math.max(10, (200 - telemetry.mission.missionTime * 0.0072) / 0.72) : 84.0);
+
       const payload = {
+        uav_id: selectedUnit,
         current_lat: uavPos[0],
         current_lng: uavPos[1],
         altitude_ft: unitAltitude,
-        fuel_remaining_liters: 84.0,
+        fuel_remaining_liters: Number(liveFuelLiters.toFixed(1)),
         engine_health_index: unitHealth,
         rul_hours: unitRul,
         target_field_id: selectedAirfieldId,
@@ -464,17 +486,27 @@ export const MissionMapTab = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
+        if (!res.ok) {
+          throw new Error(`Primary host HTTP ${res.status}`);
+        }
       } catch {
-        res = await fetch(`${gatewayHost}/api/rl-replan`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
+        try {
+          res = await fetch(`${gatewayHost}/api/rl-replan`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          if (!res.ok) {
+            throw new Error(`Gateway host HTTP ${res.status}`);
+          }
+        } catch (gateErr) {
+          console.warn('[RL Replanner] Backend query fallback failed:', gateErr);
+        }
       }
 
       if (res && res.ok) {
         const data = await res.json();
-        setBackendRlSolution(data);
+        setBackendRlSolution({ ...data, uavId: selectedUnit });
       }
     } catch (err) {
       console.warn('[RL Replanner] Backend query failed:', err);
@@ -482,7 +514,19 @@ export const MissionMapTab = () => {
       setIsSolving(false);
       setLastReplanTime(Date.now());
     }
-  }, [isGrounded, unitGeo.coords, unitAltitude, unitHealth, unitRul, selectedAirfieldId, replanMode]);
+  }, [
+    isGrounded,
+    unitGeo.coords,
+    unitAltitude,
+    unitHealth,
+    unitRul,
+    selectedAirfieldId,
+    replanMode,
+    selectedUnit,
+    telemetry.mission?.fuel_kg,
+    telemetry.mission?.fuel_remaining_liters,
+    telemetry.mission?.missionTime
+  ]);
 
   // Automatically trigger asynchronous solve when relevant parameters change
   useEffect(() => {
@@ -550,19 +594,10 @@ export const MissionMapTab = () => {
       } else if (isDegraded) {
         // Degraded power: prioritize nearest base with full recovery facilities
         const sortedByDist = [...candidateDistances].sort((a, b) => a.distNm - b.distNm);
-        chosenField = sortedByDist[0]; // AFS Jaisalmer for Vahak-4
+        chosenField = sortedByDist[0]; // Nearest runway for degraded divert
       } else {
-        // Nominal: auto-assign to the nearest primary air base in sector
-        if (selectedUnit === 'Vahak-2') {
-          // Sector South naturally recovers to AFS Uttarlai
-          chosenField = candidateDistances.find(f => f.id === 'AFS_UTTARLAI') || candidateDistances[0];
-        } else if (selectedUnit === 'Vahak-3') {
-          // Relay Orbit FL180 nearest to Jaisalmer
-          chosenField = candidateDistances.find(f => f.id === 'AFS_JAISALMER') || candidateDistances[0];
-        } else {
-          // Vahak-1 nearest to Jaisalmer
-          chosenField = candidateDistances.find(f => f.id === 'AFS_JAISALMER') || candidateDistances[0];
-        }
+        // Nominal & Contingency Preview: Default to Primary Base AFS Uttarlai (Full depot, 9000ft runway)
+        chosenField = candidateDistances.find(f => f.id === 'AFS_UTTARLAI') || candidateDistances[0];
       }
     }
 
@@ -592,7 +627,7 @@ export const MissionMapTab = () => {
       commandedSpeedKts = 105.0;
     } else if (isDerateEngaged || isPreview) {
       policyAction = isDerateEngaged ? 'DERATE_ACTIVE' : 'CONTINGENCY_PREVIEW';
-      policyLabel = isDerateEngaged ? 'CLOSED-LOOP DERATE APPLIED TO FADEC' : 'CONTINGENCY ENVELOPE PREVIEW';
+      policyLabel = isDerateEngaged ? 'CLOSED-LOOP DERATE APPLIED TO FADEC' : 'CONTINGENCY ENVELOPE PREVIEW — AFS UTTARLAI RTB';
       recommendedThrottle = 68.0;
       recommendedRpm = 4600;
       recommendedClimbFpm = -200;
@@ -639,8 +674,8 @@ export const MissionMapTab = () => {
     const glideConeRadiusNm = Number(((unitAltitude / 6076.12) * 12.0).toFixed(1)); // 12:1 glide ratio in NM
     const glideMarginNm = Number((glideConeRadiusNm - chosenField.distNm).toFixed(1));
 
-    // Merge backend RL policy solution if available and matches non-grounded state
-    if (backendRlSolution && backendRlSolution.optimized_rtb_flight_plan && !isGrounded) {
+    // Merge backend RL policy solution if available and matches selected unit & non-grounded state
+    if (backendRlSolution && backendRlSolution.uavId === selectedUnit && backendRlSolution.optimized_rtb_flight_plan && !isGrounded) {
       const backendCmds = backendRlSolution.rl_control_commands || {};
       const backendWps = backendRlSolution.optimized_rtb_flight_plan.map((w, idx) => ({
         id: idx + 1,
@@ -658,6 +693,8 @@ export const MissionMapTab = () => {
         action: backendRlSolution.action,
         label: backendRlSolution.action === 'EMERGENCY_DIVERT_RTB'
           ? 'AUTONOMOUS EMERGENCY RTB ENGAGED (RL OPTIMAL)'
+          : backendRlSolution.action === 'CONTINGENCY_RTB_PREVIEW'
+          ? 'CONTINGENCY ENVELOPE PREVIEW — AFS UTTARLAI RTB'
           : (isDerateEngaged ? 'CLOSED-LOOP DERATE APPLIED TO FADEC' : policyLabel),
         destination: {
           ...matchedDest,
@@ -747,9 +784,11 @@ export const MissionMapTab = () => {
 
     // 2. Set Autopilot setpoints
     setFcsAirspeed(rlSolution.commandedSpeedKts);
-    if (rlSolution.destination && rlSolution.destination.altFt) {
-      setFcsAltitude(rlSolution.destination.altFt);
-    }
+    // Safe intermediate hold altitude to prevent abrupt nose-dive while waypoints handle gradual descent
+    const safeHoldAlt = (rlSolution.waypoints && rlSolution.waypoints[1]?.altitudeFt)
+      ? rlSolution.waypoints[1].altitudeFt
+      : unitAltitude;
+    setFcsAltitude(safeHoldAlt);
 
     // 3. Command FADEC engine derate to live engine twin
     updateManualConditions({
@@ -823,6 +862,13 @@ export const MissionMapTab = () => {
           >
             {/* Automatic Size Invalidation for Tab Switching */}
             <MapResizer />
+
+            {/* Dynamic Viewport Controller for RTB / Divert Flight Corridor Auto-Framing */}
+            <MapFocusController
+              routePolyline={rlSolution.routePolyline}
+              isReplannerActive={isReplannerActive}
+              replanMode={replanMode}
+            />
 
             {/* Natural Daylight Cartography */}
             <TileLayer
@@ -899,17 +945,31 @@ export const MissionMapTab = () => {
               </>
             )}
 
-            {/* RL Autonomous Recalculated Flight Plan (Amber / Red Dotted) */}
+            {/* RL Autonomous Recalculated Flight Plan (High-Visibility Amber / Red Dotted) */}
             {isReplannerActive && (
-              <Polyline
-                positions={rlSolution.routePolyline}
-                pathOptions={{
-                  color: isCritical || isSimulating ? '#DC2626' : '#D97706',
-                  weight: 4,
-                  dashArray: '8, 8',
-                  opacity: 0.95
-                }}
-              />
+              <>
+                {/* Contrast underlay halo for tactical daylight visibility */}
+                <Polyline
+                  positions={rlSolution.routePolyline}
+                  pathOptions={{
+                    color: '#0F172A',
+                    weight: 6,
+                    opacity: 0.75,
+                    lineCap: 'round',
+                    lineJoin: 'round'
+                  }}
+                />
+                {/* Tactical dashed trajectory line */}
+                <Polyline
+                  positions={rlSolution.routePolyline}
+                  pathOptions={{
+                    color: isCritical || isSimulating ? '#EF4444' : (isPreview ? '#F59E0B' : '#D97706'),
+                    weight: 4,
+                    dashArray: '8, 8',
+                    opacity: 1.0
+                  }}
+                />
+              </>
             )}
 
             {/* Safe Glide Cone Reachability Footprint / FCS 6-DOF Dynamic Glide Cone */}

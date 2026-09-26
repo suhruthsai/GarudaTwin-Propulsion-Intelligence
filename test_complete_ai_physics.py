@@ -66,30 +66,32 @@ try:
 except Exception as e:
     print(f"  ✗ Physics baseline test failed: {e}")
 
+# Test Telemetry Fixtures
+nom_telemetry = TelemetryInput(
+    rpm=4850.0, throttle_pct=78.5, altitude_ft=14500.0,
+    egt=[855.0, 852.0, 854.0, 850.0],
+    cht=[108.0, 107.5, 109.0, 108.0],
+    map_bar=1.45, oil_press_bar=3.85, oil_temp_c=98.0,
+    vibration_grms=0.28
+)
+fault_telemetry = TelemetryInput(
+    rpm=4850.0, throttle_pct=78.5, altitude_ft=14500.0,
+    egt=[855.0, 852.0, 975.0, 850.0],
+    cht=[108.0, 107.5, 136.0, 108.0],
+    map_bar=1.45, oil_press_bar=3.85, oil_temp_c=98.0,
+    vibration_grms=1.25
+)
+
 # -------------------------------------------------------------
 # 2. PyTorch Deep Autoencoder Micro-Residual Anomaly Detection
 # -------------------------------------------------------------
 print("\n[SECTION 2/6] Validating PyTorch Deep Autoencoder Micro-Anomaly Detection...")
 try:
-    nom_telemetry = TelemetryInput(
-        rpm=4850.0, throttle_pct=78.5, altitude_ft=14500.0,
-        egt=[855.0, 852.0, 854.0, 850.0],
-        cht=[108.0, 107.5, 109.0, 108.0],
-        map_bar=1.45, oil_press_bar=3.85, oil_temp_c=98.0,
-        vibration_grms=0.28
-    )
     res_nom = detect_anomaly(nom_telemetry)
     print(f"  ✓ Nominal Reconstruction MSE: {res_nom.reconstruction_mse} (Threshold: {res_nom.threshold})")
     assert not res_nom.is_anomaly, "Nominal telemetry falsely flagged as anomaly"
     assert res_nom.diagnosed_fault == "NOMINAL_OPERATION"
 
-    fault_telemetry = TelemetryInput(
-        rpm=4850.0, throttle_pct=78.5, altitude_ft=14500.0,
-        egt=[855.0, 852.0, 975.0, 850.0],
-        cht=[108.0, 107.5, 136.0, 108.0],
-        map_bar=1.45, oil_press_bar=3.85, oil_temp_c=98.0,
-        vibration_grms=1.25
-    )
     res_fault = detect_anomaly(fault_telemetry)
     print(f"  ✓ Fault Reconstruction MSE: {res_fault.reconstruction_mse} > Threshold")
     print(f"  ✓ Diagnosed Fault: {res_fault.diagnosed_fault} (Severity: {res_fault.severity_level})")
@@ -163,7 +165,20 @@ try:
     assert plan_crit["action"] == "EMERGENCY_DIVERT_RTB"
     assert "Jaisalmer" in plan_crit["target_recovery_field"]
     assert plan_crit["rl_control_commands"]["recommended_throttle_pct"] <= 60.0
-    print("  ✓ Closed-loop RL trajectory replanning verified.")
+
+    # Fuel Bingo (<= 22 L reserve) must trigger emergency divert even with healthy engine
+    req_bingo = RlReplanRequest(
+        uav_id="Vahak-2",
+        current_lat=26.45, current_lng=70.52, altitude_ft=14500.0,
+        fuel_remaining_liters=18.0, engine_health_index=98.0, rul_hours=700.0
+    )
+    plan_bingo = rl_mission_replan(req_bingo)
+    print(f"  ✓ Fuel Bingo Scenario Decision: {plan_bingo['action']} (UAV: {plan_bingo['uav_id']})")
+    assert plan_bingo["action"] == "EMERGENCY_DIVERT_RTB"
+    assert plan_bingo["uav_id"] == "Vahak-2"
+    assert "Jaisalmer" in plan_bingo["target_recovery_field"]
+
+    print("  ✓ Closed-loop RL trajectory replanning & fuel bingo verified.")
     passed += 1
 except Exception as e:
     print(f"  ✗ RL replanner test failed: {e}")

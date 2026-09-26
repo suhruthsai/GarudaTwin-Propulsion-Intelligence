@@ -73,6 +73,98 @@ function matProps(color, isSelected, emissiveInt = 0.2) {
   };
 }
 
+/**
+ * Physics-grounded Mean Piston Speed calculation for Rotax 915/916 iS
+ * Stroke = 61.0 mm = 0.061 m
+ * Mean Piston Speed = 2 * Stroke * RPM / 60 = 0.122 * RPM / 60
+ * Nominal RPM = 4800 -> Nominal Mean Speed = 9.76 m/s
+ */
+export function computeMeanPistonSpeed(rpm) {
+  const nomRpm = 4800;
+  const currentRpm = typeof rpm === 'number' && rpm > 0 ? rpm : nomRpm;
+  const speed = (2 * 0.061 * currentRpm) / 60;
+  const nomSpeed = (2 * 0.061 * nomRpm) / 60; // 9.76 m/s
+  const res = speed - nomSpeed;
+  return {
+    speed: parseFloat(speed.toFixed(2)),
+    res: parseFloat(res.toFixed(2)),
+    nomSpeed: 9.76,
+  };
+}
+
+/**
+ * Physics-grounded Piston Ring Sealing Efficiency for Rotax 915/916 iS
+ * Nominal: 99.8% sealing efficiency (< 0.2% blow-by gas leakage past nitrided rings).
+ * Blow-By: Primary leaky cylinders (Cyl 3 & 2) experience severe compression loss (62-67% sealing).
+ * Adjacent cylinders experience minor seal degradation due to 132°C thinned oil and crankcase backpressure.
+ */
+export function computeRingSealing(cylIdx, tel) {
+  const af = tel?.health?.activeFault || 'NONE';
+  const sev = tel?.health?.severity ?? 0.85;
+  const chtRes = tel?.residuals?.chtResiduals?.[cylIdx] ?? 0;
+
+  if (af === 'BLOW_BY') {
+    if (cylIdx === 2) {
+      // Cylinder 3: Primary Blow-By (highest CHT offset +22°C, crankcase blowby)
+      const val = Math.max(45.0, 99.8 - 35.6 * sev - Math.abs(chtRes) * 0.25);
+      return {
+        pct: parseFloat(val.toFixed(1)),
+        res: parseFloat((val - 99.8).toFixed(1)),
+        isLeak: true,
+        status: 'BLOW-BY LEAK'
+      };
+    }
+    if (cylIdx === 1) {
+      // Cylinder 2: Secondary Blow-By (CHT offset +18°C)
+      const val = Math.max(48.0, 99.8 - 32.0 * sev - Math.abs(chtRes) * 0.25);
+      return {
+        pct: parseFloat(val.toFixed(1)),
+        res: parseFloat((val - 99.8).toFixed(1)),
+        isLeak: true,
+        status: 'BLOW-BY LEAK'
+      };
+    }
+    // Cylinders 1 & 4: Minor secondary seal loss from 132°C thinned oil
+    const val = Math.max(88.0, 99.8 - 5.6 * sev);
+    return {
+      pct: parseFloat(val.toFixed(1)),
+      res: parseFloat((val - 99.8).toFixed(1)),
+      isLeak: false,
+      status: 'PRESSURE STRESS'
+    };
+  }
+
+  if (af === 'CYL3_INJECTOR' && cylIdx === 2) {
+    // Cylinder 3 lean burn causes localized thermal bore distortion
+    const val = Math.max(85.0, 99.8 - Math.abs(chtRes) * 0.32);
+    return {
+      pct: parseFloat(val.toFixed(1)),
+      res: parseFloat((val - 99.8).toFixed(1)),
+      isLeak: false,
+      status: 'THERMAL DISTORTION'
+    };
+  }
+
+  if (af === 'COOLING_DEGRADATION') {
+    // Coolant boil-over degrades ring tension across all cylinders
+    const val = Math.max(80.0, 99.8 - Math.abs(chtRes) * 0.35);
+    return {
+      pct: parseFloat(val.toFixed(1)),
+      res: parseFloat((val - 99.8).toFixed(1)),
+      isLeak: false,
+      status: 'OVERHEAT DECAY'
+    };
+  }
+
+  // Certified Nominal State
+  return {
+    pct: 99.8,
+    res: 0.0,
+    isLeak: false,
+    status: 'SEALED (100%)'
+  };
+}
+
 // ─────────────────────────────────────────────────────────────
 // COMPONENT REGISTRY
 // Maps every component ID to display metadata + camera focus
@@ -511,11 +603,14 @@ const CylinderUnit = ({ compId, cylIdx, basePos, side, tel, isSelected, onClick,
   const egtRes = Math.abs(tel.residuals.egtResiduals[cylIdx] ?? 0);
   const af     = tel.health.activeFault;
 
+  const ringInfo = computeRingSealing(cylIdx, tel);
+  const speedInfo = computeMeanPistonSpeed(tel?.engine?.rpm);
+
   const isFault =
     (cylIdx === 2 && af === 'CYL3_INJECTOR') ||
-    (cylIdx === 1 && af === 'BLOW_BY') ||
+    ringInfo.isLeak ||
     af === 'COOLING_DEGRADATION';
-  const isBlowBy = (cylIdx === 1 && af === 'BLOW_BY');
+  const isBlowBy = ringInfo.isLeak;
 
   const col = vm === 'THERMAL' ? thermalColor(egt, 820, 990)
             : vm === 'HEALTH'  ? healthColor(tel.health.index)
@@ -674,9 +769,9 @@ const CylinderUnit = ({ compId, cylIdx, basePos, side, tel, isSelected, onClick,
             { value: `${compId} • PISTON & CYLINDER`, color: '#00F0FF' },
             { label: 'EGT', value: `${egt.toFixed(1)}°C`, color: egtRes > 40 ? '#EF4444' : egtRes > 15 ? '#F59E0B' : '#10B981' },
             { label: 'CHT', value: `${cht.toFixed(1)}°C` },
-            { label: 'Piston Speed', value: `${(((tel.engine.rpm || 4800) * 2 * 0.061) / 60).toFixed(1)} m/s` },
-            { label: 'Piston Ring', value: isBlowBy ? '⚠ BLOW-BY LEAK' : 'SEALED (100%)', color: isBlowBy ? '#EF4444' : '#10B981' },
-            ...(isFault ? [{ value: '⚠ FAULT DETECTED', color: '#EF4444' }] : []),
+            { label: 'Mean Piston Speed', value: `${speedInfo.speed.toFixed(2)} m/s`, color: '#0284C7' },
+            { label: 'Ring Sealing', value: `${ringInfo.pct.toFixed(1)}% (${ringInfo.status})`, color: ringInfo.isLeak ? '#EF4444' : '#10B981' },
+            ...(isFault ? [{ value: `⚠ ${af !== 'NONE' ? af : 'FAULT DETECTED'}`, color: '#EF4444' }] : []),
           ]} />
         </>
       )}
@@ -1261,13 +1356,13 @@ const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, se
         ];
       case 'CYL_01':case 'CYL_02':case 'CYL_03':case 'CYL_04': {
         const i = parseInt(compId.slice(-1)) - 1;
-        const isCylBlowBy = (i === 1 && tel.health.activeFault === 'BLOW_BY');
-        const pistonSpeed = ((tel.engine.rpm || 4800) * 2 * 0.061) / 60;
+        const ringInfo = computeRingSealing(i, tel);
+        const speedInfo = computeMeanPistonSpeed(tel.engine?.rpm);
         return [
           { label:'EGT', value:tel.engine.egt[i], unit:'°C',p:1, res:tel.residuals.egtResiduals[i], hist:hist[`egt${i+1}`] },
           { label:'CHT', value:tel.engine.cht[i], unit:'°C',p:1, res:tel.residuals.chtResiduals[i], hist:hist[`cht${i+1}`] },
-          { label:'Piston Speed', value:pistonSpeed, unit:'m/s', p:1 },
-          { label:'Ring Sealing', value:isCylBlowBy ? 64.2 : 99.8, unit:'%', p:1, res:isCylBlowBy ? -35.6 : 0 },
+          { label:'Mean Piston Speed', value:speedInfo.speed, unit:'m/s', p:2, res:speedInfo.res },
+          { label:'Ring Sealing', value:ringInfo.pct, unit:'%', p:1, res:ringInfo.res },
         ];
       }
       case 'TURBO_01':
@@ -1326,6 +1421,7 @@ const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, se
   const compFault =
     (compId === 'CYL_03' && af === 'CYL3_INJECTOR') ||
     (compId === 'OIL_SYSTEM' && (af === 'OIL_PUMP_CAVITATION' || af === 'BLOW_BY')) ||
+    (['CYL_02','CYL_03'].includes(compId) && af === 'BLOW_BY') ||
     (compId === 'TURBO_01' && af === 'TURBO_WASTEGATE_STUCK') ||
     (['CYL_01','CYL_02','CYL_04','COOLANT_RADIATOR'].includes(compId) && af === 'COOLING_DEGRADATION') ||
     (compId === 'PRGB_GEARBOX' && af === 'PRGB_DEGRADATION') ||
@@ -1856,6 +1952,7 @@ export const UavBlueprintTab = () => {
   const itemFault = (id) =>
     (id==='CYL_03' && af==='CYL3_INJECTOR') ||
     (id==='OIL_SYSTEM' && (af==='OIL_PUMP_CAVITATION'||af==='BLOW_BY')) ||
+    (['CYL_02','CYL_03'].includes(id) && af==='BLOW_BY') ||
     (id==='TURBO_01' && af==='TURBO_WASTEGATE_STUCK') ||
     (['CYL_01','CYL_02','CYL_04','COOLANT_RADIATOR'].includes(id) && af==='COOLING_DEGRADATION') ||
     (id==='PRGB_GEARBOX' && af==='PRGB_DEGRADATION') ||

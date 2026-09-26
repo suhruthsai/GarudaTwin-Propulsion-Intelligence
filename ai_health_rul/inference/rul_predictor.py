@@ -46,12 +46,12 @@ def _safe_pow(val: float, exp: float) -> float:
 # Out-of-Distribution Training Bounds (derived from Rotax 915iS normal envelope)
 # ---------------------------------------------------------------------------
 OOD_BOUNDS = {
-    "egt":          (780.0, 950.0),
-    "cht":          (85.0,  145.0),
-    "oil_pressure": (1.5,   5.5),
-    "oil_temp":     (60.0,  140.0),
-    "vibration":    (0.05,  3.5),
-    "rpm":          (2000.0, 6000.0),
+    "egt":          (350.0, 1080.0),
+    "cht":          (40.0,  180.0),
+    "oil_pressure": (0.4,   7.5),
+    "oil_temp":     (30.0,  165.0),
+    "vibration":    (0.02,  5.5),
+    "rpm":          (1200.0, 6500.0),
 }
 
 

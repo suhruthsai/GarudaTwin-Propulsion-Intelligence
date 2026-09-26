@@ -53,6 +53,8 @@ export class DegradationEstimator {
     if (isFault) {
       if (['CYL3_INJECTOR', 'OIL_PUMP_CAVITATION', 'PRGB_DEGRADATION'].includes(activeFault)) {
         faultMult = 3.5;
+      } else if (['BLOW_BY', 'TURBO_WASTEGATE_STUCK'].includes(activeFault)) {
+        faultMult = 2.8;
       } else {
         faultMult = 2.2;
       }

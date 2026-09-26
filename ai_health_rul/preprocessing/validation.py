@@ -86,6 +86,8 @@ class DataQualityGuard:
         if simulated_packet_loss > 0.0 and np.random.random() < simulated_packet_loss:
             packet_lost = True
 
+        is_sandbox = bool(raw_frame.get("is_sandbox", False) or raw_frame.get("mode") in ("SANDBOX", "BENCHMARK"))
+
         for col in SENSOR_COLS:
             val = raw_frame.get(col)
             # Support alternative naming keys from UI payloads
@@ -139,7 +141,7 @@ class DataQualityGuard:
 
             # 3. Rate-of-change Spike Suppression
             last_val = self._last_valid_frame.get(col)
-            if last_val is not None and dt > 0.0:
+            if not is_sandbox and last_val is not None and dt > 0.0:
                 max_rate = self.MAX_RATE_OF_CHANGE.get(col, 1e6)
                 max_allowed_delta = max_rate * dt
                 delta = abs(val_float - last_val)

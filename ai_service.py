@@ -108,6 +108,8 @@ class EngineLstmPrognosticNet(nn.Module):
 
 
 # Initialize and load pre-trained PyTorch weights
+torch.manual_seed(42)
+np.random.seed(42)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 autoencoder = EngineAnomalyAutoencoder(input_dim=12, latent_dim=4).to(device)
 lstm_prognostics = EngineLstmPrognosticNet(input_dim=12, hidden_dim=48, num_layers=2).to(device)
@@ -218,6 +220,7 @@ class ShapExplanationResponse(BaseModel):
 
 
 class RlReplanRequest(BaseModel):
+    uav_id: Optional[str] = Field(default="Vahak-1")
     current_lat: float = Field(default=26.4500)
     current_lng: float = Field(default=70.5200)
     altitude_ft: float = Field(default=14500.0)
@@ -233,6 +236,27 @@ class RlReplanRequest(BaseModel):
 # ---------------------------------------------------------
 # 4. FASTAPI ENDPOINTS
 # ---------------------------------------------------------
+
+@app.get("/")
+def root():
+    return {
+        "status": "ONLINE",
+        "service": "GarudaTwin AI Prognostics & Physics Microservice",
+        "port": 8001,
+        "docs_url": "/docs",
+        "redoc_url": "/redoc",
+        "health_url": "/health",
+        "frontend_url": "http://localhost:5173",
+        "endpoints": [
+            "/health",
+            "/docs",
+            "/api/health-rul/predict",
+            "/api/health-rul/detect-anomaly",
+            "/api/health-rul/predict-rul",
+            "/api/rl-replan"
+        ]
+    }
+
 
 @app.get("/health")
 def get_service_health():
@@ -479,21 +503,19 @@ def rl_mission_replan(req: RlReplanRequest):
     # RL Policy Decision Trigger
     is_sim = req.mode == "FORCE_SIMULATION"
     is_preview = req.mode == "CONTINGENCY_PREVIEW"
-    is_crit = req.rul_hours < 2.0 or req.engine_health_index < 40.0
+    is_bingo = req.fuel_remaining_liters <= 22.0  # Fuel reserve critical threshold (~15.8 kg)
+    is_crit = req.rul_hours < 2.0 or req.engine_health_index < 40.0 or is_bingo
     requires_emergency_divert = is_crit or is_sim
-    is_degraded = (not requires_emergency_divert) and (req.engine_health_index < 75.0 or req.rul_hours < 50.0 or is_preview)
+    is_degraded = (not requires_emergency_divert) and (req.engine_health_index < 75.0 or req.rul_hours < 50.0 or req.fuel_remaining_liters < 35.0)
 
     # Airfield Selection Strategy
     if req.target_field_id and req.target_field_id != "AUTO":
         target_destination = next((f for f in candidates if f["id"] == req.target_field_id), by_dist[0])
-    elif requires_emergency_divert:
-        # Emergency: Divert to nearest reachable runway immediately
-        target_destination = by_dist[0]
-    elif is_degraded:
-        # Degraded: Choose nearest base with recovery and maintenance facility
+    elif requires_emergency_divert or is_degraded:
+        # Emergency or Degraded: Divert to nearest reachable runway immediately
         target_destination = by_dist[0]
     else:
-        # Nominal: Primary operational recovery base
+        # Nominal & Contingency Preview: Full primary base Return-to-Base (RTB) recovery to AFS Uttarlai
         target_destination = next((f for f in candidates if f["id"] == "AFS_UTTARLAI"), by_dist[0])
 
     target_dist_nm = target_destination["dist_nm"]
@@ -510,6 +532,12 @@ def rl_mission_replan(req: RlReplanRequest):
         recommended_throttle_pct = 68.0  # Engine stress derate (protect turbo & valves)
         recommended_rpm = 4600
         recommended_climb_fpm = -200      # Controlled descent
+        commanded_speed = 105.0
+    elif is_preview:
+        action = "CONTINGENCY_RTB_PREVIEW"
+        recommended_throttle_pct = 68.0  # Standard conservative RTB descent profile
+        recommended_rpm = 4600
+        recommended_climb_fpm = -200
         commanded_speed = 105.0
     else:
         action = "DERATE_AND_CONTINUE_MISSION"
@@ -543,6 +571,7 @@ def rl_mission_replan(req: RlReplanRequest):
     safety_margin = round(max(0.0, req.rul_hours) / max(0.01, flight_time_hrs), 2)
 
     return {
+        "uav_id": req.uav_id,
         "action": action,
         "target_recovery_field": target_destination["name"],
         "target_field_id": target_destination["id"],
