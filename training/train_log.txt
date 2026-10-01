@@ -1,0 +1,13 @@
+[06:04:00] Loading E:\Downloads\AnumatiOne-main\GarudaTwin-Propulsion-Intelligence-SIH26054\training\data\engine_dataset.csv
+[06:04:01] 377,877 samples, 5,400 episodes
+[06:04:01] Loading cached features engine_dataset.features.npz
+[06:04:01] Golden-twin JS/Python max abs diff [egt, cht, oil_temp]: [0.0103, 0.0034, 0.0017]
+[06:04:02] Split (episodes): train 3780, val 810, test 810
+[06:04:02] Fitting Mahalanobis (Ledoit-Wolf) residual anomaly detector on nominal samples only
+[06:04:03] Training XGBoost fault classifier
+[06:04:50] Training XGBoost severity regressor
+[06:05:00] Training XGBoost RUL quantile regressor (2.5 / 50 / 97.5 %)
+[06:05:27] Training PyTorch autoencoder on nominal single frames
+[06:05:41] Evaluating on held-out test episodes
+[06:05:41] Stress test: same test episodes with per-episode nuisance offsets
+[06:05:49] Done in 109 s. Metrics written to E:\Downloads\AnumatiOne-main\GarudaTwin-Propulsion-Intelligence-SIH26054\ai_health_rul\models\model_card.json

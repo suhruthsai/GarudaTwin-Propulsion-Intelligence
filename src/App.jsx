@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTelemetry } from './context/TelemetryContext';
 import { 
   Box, 
@@ -27,7 +27,8 @@ import {
   ArrowRightLeft,
   RotateCcw,
   Compass,
-  Keyboard
+  Keyboard,
+  Database
 } from 'lucide-react';
 
 // Tab Components
@@ -43,15 +44,37 @@ import { UnifiedDebriefTab } from './components/UnifiedDebriefTab';
 import { FeaturesInspectorModal } from './components/FeaturesInspectorModal';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 import FlightControllerTab from './components/FlightControllerTab';
+import { DataSourceTab } from './components/DataSourceTab';
 
 export default function App() {
-  const { telemetry, isConnected, audioEnabled, setAudioEnabled, injectFault, clearFault, isReplayMode, exitReplayMode } = useTelemetry();
+  const { telemetry, isConnected, audioEnabled, setAudioEnabled, injectFault, clearFault, isReplayMode, exitReplayMode, commandError, clearCommandError, aiPrognostics } = useTelemetry();
+
+  // Server-side command rejections (e.g. invalid input) are shown briefly
+  useEffect(() => {
+    if (!commandError) return;
+    const t = setTimeout(clearCommandError, 5000);
+    return () => clearTimeout(t);
+  }, [commandError, clearCommandError]);
   const [activeTab, setActiveTab] = useState('BLUEPRINT');
   const [secondaryTab, setSecondaryTab] = useState('MISSION_MAP');
   const [isDualDocked, setIsDualDocked] = useState(false);
   const [missionClock, setMissionClock] = useState(new Date().toLocaleTimeString());
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
   const [isKeybindingsOpen, setIsKeybindingsOpen] = useState(false);
+
+  // Measured link figures for the status tray (frames received per second, age of the latest frame)
+  const frameCountRef = useRef(0);
+  const [linkStats, setLinkStats] = useState({ hz: null, ageMs: null });
+  const lastFrameTsRef = useRef(null);
+  useEffect(() => { frameCountRef.current += 1; lastFrameTsRef.current = telemetry.timestamp; }, [telemetry.timestamp]);
+  useEffect(() => {
+    const t = setInterval(() => {
+      const ts = lastFrameTsRef.current;
+      setLinkStats({ hz: frameCountRef.current, ageMs: ts ? Math.max(0, Date.now() - ts) : null });
+      frameCountRef.current = 0;
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
 
   // Update Clock every second
   useEffect(() => {
@@ -74,6 +97,7 @@ export default function App() {
         '6': 'SANDBOX',
         '7': 'DEBRIEF',
         '8': 'FLIGHT_CONTROLLER',
+        '9': 'DATA',
       };
       if (keyMap[e.key]) {
         setActiveTab(keyMap[e.key]);
@@ -93,17 +117,20 @@ export default function App() {
   const health = telemetry.health;
   const isCritical = health.status === 'CRITICAL';
   const isDegraded = health.status === 'DEGRADED';
+  const isNoData = health.status === 'NO_DATA';
+  const srcMode = telemetry.source?.mode ?? 'SIM';
 
   // Tabs Configuration (Consolidated: Tab 7 integrates Mission Replay & AI Debrief, Tab 8 FCS Autopilot)
   const tabs = [
     { id: 'BLUEPRINT', hotkey: '1', label: '3D CAD BLUEPRINT', icon: Box, component: UavBlueprintTab },
     { id: 'TELEMETRY', hotkey: '2', label: 'LIVE TELEMETRY', icon: Activity, component: TelemetryTab },
     { id: 'PROGNOSTICS', hotkey: '3', label: 'AI PROGNOSTICS & XAI', icon: Brain, component: PrognosticsTab },
-    { id: 'MISSION_MAP', hotkey: '4', label: 'RL REPLANNER', icon: Map, component: MissionMapTab },
-    { id: 'FLEET', hotkey: '5', label: 'SWARM FLEET', icon: Users, component: FleetTab },
-    { id: 'SANDBOX', hotkey: '6', label: "HIL ACCEPTANCE BENCH", icon: Sliders, component: JudgesSandboxTab },
+    { id: 'MISSION_MAP', hotkey: '4', label: 'RTB CONTINGENCY PLANNER', icon: Map, component: MissionMapTab },
+    { id: 'FLEET', hotkey: '5', label: 'FLEET HEALTH', icon: Users, component: FleetTab },
+    { id: 'SANDBOX', hotkey: '6', label: "WHAT-IF TEST BENCH", icon: Sliders, component: JudgesSandboxTab },
     { id: 'DEBRIEF', hotkey: '7', label: 'MISSION REPLAY & AI DEBRIEF', icon: RotateCcw, component: UnifiedDebriefTab },
     { id: 'FLIGHT_CONTROLLER', hotkey: '8', label: '6-DOF FLIGHT CONTROLLER', icon: Compass, component: FlightControllerTab },
+    { id: 'DATA', hotkey: '9', label: 'DATA SOURCE & REPLAY', icon: Database, component: DataSourceTab },
   ];
 
   const ActiveComponent = tabs.find(t => t.id === activeTab)?.component || (activeTab === 'REPLAY' || activeTab === 'COPILOT' || activeTab === 'DEBRIEF' ? UnifiedDebriefTab : UavBlueprintTab);
@@ -130,10 +157,10 @@ export default function App() {
                 GarudaTwin <span className="text-slate-400 font-mono text-xs font-normal">//</span> Tactical GCS
               </h1>
               <span className="text-[9px] font-mono px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded text-slate-700 tracking-wider font-medium">
-                MIL-STD-1472H
+                SIH 2026 PROTOTYPE
               </span>
               <span className="text-[9px] font-mono px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded text-slate-600 tracking-wider font-medium">
-                DO-178C
+                SIMULATOR DATA
               </span>
             </div>
             <div className="text-[11px] font-mono text-slate-500 flex items-center gap-2">
@@ -234,13 +261,21 @@ export default function App() {
             </button>
           )}
 
-          {/* CAN Bus Status */}
-          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-white border border-slate-200 text-xs font-mono shadow-xs">
-            <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`}></span>
+          {/* Engine data source (gateway link + which source feeds the twin) */}
+          <button
+            onClick={() => setActiveTab('DATA')}
+            title="Engine data source: open Data Source & Replay [9]"
+            className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md border text-xs font-mono shadow-xs ${
+              srcMode === 'REPLAY' ? 'bg-amber-50 border-amber-300' : srcMode === 'LIVE' ? 'bg-sky-50 border-sky-300' : 'bg-white border-slate-200'}`}
+          >
+            <span className={`w-2 h-2 rounded-full ${!isConnected || isNoData ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`}></span>
             <span className={isConnected ? 'text-slate-800 font-semibold' : 'text-amber-700 font-semibold'}>
-              {isConnected ? 'CAN 100 Hz' : 'BRIDGE BUS'}
+              {!isConnected ? 'GATEWAY OFFLINE'
+                : srcMode === 'REPLAY' ? `REPLAY ${telemetry.source?.replay?.playing ? '▶' : '❚❚'}`
+                : srcMode === 'LIVE' ? (isNoData ? 'LIVE · NO DATA' : 'LIVE INGEST')
+                : 'SIMULATOR'}
             </span>
-          </div>
+          </button>
 
           {/* Overall Health Status Annunciator */}
           <div className={`px-2.5 py-1.5 rounded-md text-xs font-mono font-bold flex items-center gap-1.5 border shadow-xs ${
@@ -248,13 +283,33 @@ export default function App() {
               ? 'bg-red-50 border-red-300 text-red-700'
               : isDegraded
               ? 'bg-amber-50 border-amber-300 text-amber-800'
+              : isNoData
+              ? 'bg-slate-100 border-slate-400 text-slate-700'
               : 'bg-emerald-50 border-emerald-300 text-emerald-800'
           }`}>
-            {isCritical ? <ShieldAlert className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+            {isCritical || isNoData ? <ShieldAlert className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
             <span className="tracking-wider">{health.status}</span>
           </div>
         </div>
       </header>
+
+      {isNoData && (
+        <div role="alert" className="px-4 py-2 text-xs font-mono bg-slate-100 border-b border-slate-300 text-slate-800">
+          {health.alertMessage}
+        </div>
+      )}
+
+      {aiPrognostics?.aiOnline === false && !isReplayMode && srcMode === 'SIM' && (
+        <div role="alert" className="px-4 py-2 text-xs font-mono bg-amber-50 border-b border-amber-300 text-amber-800">
+          AI service offline — diagnosis unavailable; showing physics-only health estimate. Start it with <code>npm run start:all</code> (or <code>npm run ai</code>).
+        </div>
+      )}
+
+      {commandError && (
+        <div role="alert" className="px-4 py-2 text-xs font-mono bg-amber-50 border-b border-amber-300 text-amber-800">
+          Command rejected by gateway — {commandError}
+        </div>
+      )}
 
       {/* 2. Tactical Emergency / Degradation Master Caution Bar */}
       {(isCritical || isDegraded) && (
@@ -273,7 +328,7 @@ export default function App() {
             onClick={() => setActiveTab('MISSION_MAP')}
             className="font-bold flex items-center gap-1 px-3 py-1 rounded bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 transition-all text-xs shadow-xs"
           >
-            <span>RL CONTINGENCY ADVISORY</span>
+            <span>RTB CONTINGENCY PLAN</span>
             <span className="text-sky-600">→</span>
           </button>
         </div>
@@ -425,20 +480,20 @@ export default function App() {
       <footer className="h-6 bg-slate-900 text-slate-300 border-t border-slate-800 px-4 flex items-center gap-4 text-[10px] font-mono shrink-0 select-none z-40">
         <div className="flex items-center gap-1.5">
           <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'}`} />
-          <span className="text-slate-400 font-semibold">CAN 2.0B Bus:</span>
+          <span className="text-slate-400 font-semibold">Gateway telemetry:</span>
           <span className={isConnected ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
-            {isConnected ? 'SYNCED (100 Hz)' : 'BRIDGE BUS'}
+            {isConnected ? `${linkStats.hz ?? '—'} frames/s (measured)` : 'DISCONNECTED'}
           </span>
         </div>
         <span className="text-slate-700">|</span>
         <div className="flex items-center gap-1.5">
-          <span className="text-slate-400 font-semibold">Telemetry Latency:</span>
-          <span className="text-slate-200 font-bold">4.2 ms</span>
+          <span className="text-slate-400 font-semibold">Frame age:</span>
+          <span className="text-slate-200 font-bold">{linkStats.ageMs == null ? '—' : `${linkStats.ageMs} ms`}</span>
         </div>
         <span className="text-slate-700">|</span>
         <div className="flex items-center gap-1.5">
           <span className="text-slate-400 font-semibold">FCS Loop:</span>
-          <span className="text-sky-300 font-bold">50 Hz [TECS+L1]</span>
+          <span className="text-sky-300 font-bold">50 Hz sim-time [TECS+L1]</span>
         </div>
       </footer>
 

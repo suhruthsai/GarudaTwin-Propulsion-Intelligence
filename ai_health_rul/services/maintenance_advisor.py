@@ -89,6 +89,8 @@ class MaintenanceAdvisorEngine:
         mission_demand_hours: float,
         feature_attributions: List[Any],
         raw_telemetry: Dict[str, float],
+        nominal: Optional[Dict[str, float]] = None,
+        suspect_sensor: Optional[str] = None,
     ) -> MaintenanceAdvisory:
         """
         Main entry point: evaluates all evidence and produces advisory.
@@ -98,84 +100,39 @@ class MaintenanceAdvisorEngine:
         affected: List[str] = []
 
         # ------------------------------------------------------------------
-        # 1. Collect Evidence from Physics Residuals & Telemetry
+        # 1. Collect Evidence: live telemetry vs golden-twin nominal at this operating point
         # ------------------------------------------------------------------
-        rpm = raw_telemetry.get("rpm", 4800.0)
-        egt = raw_telemetry.get("egt", 840.0)
-        cht = raw_telemetry.get("true_cht", raw_telemetry.get("sensor_cht", 106.0))
-        oil_p = raw_telemetry.get("oil_pressure", 3.85)
-        oil_t = raw_telemetry.get("oil_temp", 98.0)
-        vib = raw_telemetry.get("vibration", 0.28)
-
-        # EGT deviation
-        egt_dev = egt - 840.0
-        if abs(egt_dev) > 40:
+        nom = nominal or {"egt": 840.0, "cht": 106.0, "oil_pressure": 3.85, "oil_temp": 98.0,
+                          "vibration": 0.28, "map_bar": 1.42, "gen_voltage": 28.4, "coolant_temp": 88.5}
+        # (feature, key, unit, caution residual, weight per unit, subsystem, signed direction)
+        checks = [
+            ("Exhaust Gas Temperature (EGT)", "egt", "°C", 40.0, 1 / 8.0, "COMBUSTION", +1),
+            ("Cylinder Head Temperature (CHT)", "cht", "°C", 12.0, 1 / 3.5, "THERMAL", +1),
+            ("Oil Pressure", "oil_pressure", "bar", 0.5, 1 / 0.06, "LUBRICATION", -1),
+            ("Oil Temperature", "oil_temp", "°C", 10.0, 1 / 1.5, "LUBRICATION", +1),
+            ("Engine Vibration (g-RMS)", "vibration", "g-RMS", 0.25, 1 / 0.01, "MECHANICAL", +1),
+            ("Manifold Pressure (MAP)", "map_bar", "bar", 0.15, 1 / 0.01, "INDUCTION", +1),
+            ("Generator Bus Voltage", "gen_voltage", "V", 1.2, 1 / 0.1, "ELECTRICAL", -1),
+            ("Coolant Temperature", "coolant_temp", "°C", 10.0, 1 / 1.0, "THERMAL", +1),
+        ]
+        for feature, key, unit, caution, weight, subsystem, sign in checks:
+            obs = raw_telemetry.get(key)
+            if obs is None:
+                continue
+            dev = obs - nom[key]
+            if sign * dev <= caution:
+                continue
             evidence.append(EvidenceItem(
-                feature="Exhaust Gas Temperature (EGT)",
-                contribution_pct=round(abs(egt_dev) / 8.0, 1),
-                direction="increases_risk" if egt_dev > 0 else "normalizing",
-                observed_value=round(egt, 1),
-                nominal_value=840.0,
-                residual=round(egt_dev, 1),
-                unit="°C"
-            ))
-            affected.append("COMBUSTION")
-            reasons.append(
-                f"EGT deviation {'+' if egt_dev>0 else ''}{egt_dev:.1f}°C above thermodynamic baseline (nominal 840°C)"
-            )
-
-        # CHT deviation
-        cht_dev = cht - 106.0
-        if abs(cht_dev) > 12:
-            evidence.append(EvidenceItem(
-                feature="Cylinder Head Temperature (CHT)",
-                contribution_pct=round(abs(cht_dev) / 3.5, 1),
+                feature=feature,
+                contribution_pct=round(min(60.0, abs(dev) * weight), 1),
                 direction="increases_risk",
-                observed_value=round(cht, 1),
-                nominal_value=106.0,
-                residual=round(cht_dev, 1),
-                unit="°C"
+                observed_value=round(obs, 3 if unit in ("bar", "g-RMS") else 1),
+                nominal_value=round(nom[key], 3 if unit in ("bar", "g-RMS") else 1),
+                residual=round(dev, 3 if unit in ("bar", "g-RMS") else 1),
+                unit=unit,
             ))
-            affected.append("THERMAL")
-            reasons.append(
-                f"CHT elevated {cht_dev:.1f}°C above nominal — thermal dissipation degraded"
-            )
-
-        # Oil pressure
-        oil_dev = oil_p - 3.85
-        if oil_dev < -0.5:
-            evidence.append(EvidenceItem(
-                feature="Oil Pressure",
-                contribution_pct=round(abs(oil_dev) / 0.06, 1),
-                direction="increases_risk",
-                observed_value=round(oil_p, 2),
-                nominal_value=3.85,
-                residual=round(oil_dev, 2),
-                unit="bar"
-            ))
-            affected.append("LUBRICATION")
-            reasons.append(
-                f"Oil pressure {oil_p:.2f} bar — {abs(oil_dev):.2f} bar below hydrodynamic minimum"
-            )
-
-        # Vibration
-        vib_dev = vib - 0.28
-        if vib_dev > 0.25:
-            pct = round(min(60.0, vib_dev / 0.01), 1)
-            evidence.append(EvidenceItem(
-                feature="Engine Vibration (g-RMS)",
-                contribution_pct=pct,
-                direction="increases_risk",
-                observed_value=round(vib, 3),
-                nominal_value=0.28,
-                residual=round(vib_dev, 3),
-                unit="g-RMS"
-            ))
-            affected.append("MECHANICAL")
-            pct_above = round((vib / 0.28 - 1) * 100)
-            reasons.append(
-                f"Vibration {vib:.3f} g-RMS — {pct_above}% above nominal structural baseline (0.28 g-RMS)"
-            )
+            affected.append(subsystem)
+            reasons.append(f"{feature} {obs:.2f} {unit} vs golden-twin nominal {nom[key]:.2f} {unit} (residual {dev:+.2f})")
 
         # Degradation rate
         if degradation_rate > self.T.DEGRADATION_RATE_WARN:
@@ -184,7 +141,7 @@ class MaintenanceAdvisorEngine:
             )
 
         # Diagnosed fault
-        if diagnosed_fault not in ["none", "NOMINAL", "NOMINAL_OPERATION", "healthy"]:
+        if diagnosed_fault not in ["none", "NONE", "NOMINAL", "NOMINAL_OPERATION", "healthy"]:
             readable = diagnosed_fault.replace("_", " ").title()
             reasons.append(f"Active fault classification: {readable}")
 
@@ -203,29 +160,26 @@ class MaintenanceAdvisorEngine:
         # Sort evidence by contribution
         evidence.sort(key=lambda x: x.contribution_pct, reverse=True)
 
-        # Add attributions from SHAP (top 4 after telemetry evidence)
-        for attr in feature_attributions[:4]:
-            feat = getattr(attr, "feature", str(attr.get("feature", ""))) if isinstance(attr, dict) else attr.feature
-            imp = getattr(attr, "importance_pct", 0.0) if not isinstance(attr, dict) else attr.get("importance_pct", 0.0)
-            dir_ = getattr(attr, "direction", "increases_risk") if not isinstance(attr, dict) else attr.get("direction", "increases_risk")
-            if not any(e.feature == feat for e in evidence):
-                evidence.append(EvidenceItem(
-                    feature=feat,
-                    contribution_pct=round(float(imp), 1),
-                    direction=dir_,
-                    unit=""
-                ))
+        # TreeSHAP attributions are returned separately (feature_attributions); the evidence
+        # table only lists measured residuals so every row has observed and nominal values.
 
         # ------------------------------------------------------------------
         # 2. Determine Advisory Action via State Machine
         # ------------------------------------------------------------------
-        action, priority = self._determine_action(
-            edi=edi,
-            rul_hours=rul_hours,
-            mission_demand_hours=mission_demand_hours,
-            degradation_trend=degradation_trend,
-            severity_level=severity_level,
-        )
+        if diagnosed_fault in ("SENSOR_DRIFT", "SENSOR_FAILURE"):
+            # Instrumentation fault: the engine is not degraded — inspect/recalibrate the sensor
+            action, priority = "INSPECTION", "MEDIUM"
+            affected = ["SENSORS"]
+            reasons.insert(0, f"{diagnosed_fault.replace('_', ' ').title()}: {suspect_sensor or 'sensor'} — reading inconsistent "
+                              f"with physically coupled channels; engine parameters otherwise consistent with the golden twin")
+        else:
+            action, priority = self._determine_action(
+                edi=edi,
+                rul_hours=rul_hours,
+                mission_demand_hours=mission_demand_hours,
+                degradation_trend=degradation_trend,
+                severity_level=severity_level,
+            )
 
         # ------------------------------------------------------------------
         # 3. Mission Impact String

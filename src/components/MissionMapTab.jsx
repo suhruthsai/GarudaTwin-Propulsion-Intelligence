@@ -1,8 +1,15 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { gatewayFetch } from '../api/gateway';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Polygon, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useTelemetry } from '../context/TelemetryContext';
+import { TotalEnergyControlSystem } from '../flight_controller/TotalEnergyControlSystem';
+
+// Glide model shared with the flight controller: still-air range = height x (L/D)max of the airframe
+const LD_MAX = TotalEnergyControlSystem.bestGlideSpeed(1.0).LD_max;
+// Decision rules shared with the planner service and the gateway fallback (one definition)
+import { classifyVehicle, rtbAction, RTB_PROFILES, RTB_RULES, RTB_ACTION_LABEL } from '../planner/rtbRules';
 import { 
   Navigation, 
   MapPin, 
@@ -355,70 +362,49 @@ export const MissionMapTab = () => {
     if (uavId === 'Vahak-1') {
       const h = aiPrognostics?.engine_health_index ?? telemetry.health?.index ?? 100.0;
       const r = aiPrognostics?.rul_hours_mean ?? 751.4;
-      const af = telemetry.health?.activeFault ?? 'NONE';
-      const isCrit = h < 40 || r < 2.0 || af === 'CYL3_INJECTOR' || af === 'OIL_PUMP_CAVITATION';
-      const isDeg = !isCrit && (h < 75 || r < 20.0 || af !== 'NONE');
+      // Decisions use the AI diagnosis (or the L1 threshold monitor when the AI is offline) —
+      // never the injected scenario label, which is ground truth for evaluation only.
+      const aiOk = aiPrognostics?.aiOnline;
+      const af = aiOk ? (aiPrognostics?.diagnosed_fault ?? 'NONE') : 'NONE';
+      const l1 = telemetry.health?.status;
+      const fuel = telemetry.mission?.fuel_remaining_liters ?? null;   // only Vahak-1 has a fuel model
+      const cls = classifyVehicle({ health: h, rul: r, fault: af, fuel, aiOk, l1 });
       return {
+        fuel, aiOk: !!aiOk, l1,
         health: Number(h.toFixed(1)),
         rul: Number(r.toFixed(1)),
         altitude: telemetry.mission?.altitudeFt ?? 14500,
         speed: telemetry.mission?.airspeedKts ?? 115,
         fault: af,
-        status: isCrit ? 'CRITICAL' : isDeg ? 'DEGRADED' : 'NOMINAL',
-        statusColor: isCrit ? 'text-red-400 font-bold' : isDeg ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold',
-        desc: 'Lead Tactical Testbed'
-      };
-    }
-    
-    if (uavId === 'Vahak-2') {
-      return {
-        health: 96.2,
-        rul: 785.0,
-        altitude: 15200,
-        speed: 118,
-        fault: 'NONE',
-        status: 'NOMINAL',
-        statusColor: 'text-emerald-400 font-bold',
-        desc: 'Escort Lead'
+        status: cls.status,
+        reasons: cls.reasons,
+        statusColor: cls.status === 'CRITICAL' ? 'text-red-400 font-bold' : cls.status === 'DEGRADED' ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold',
+        desc: 'Lead testbed (6-DOF flight model)'
       };
     }
 
-    if (uavId === 'Vahak-3') {
+    // Fleet vehicles: live engine simulator + AI session on the gateway (server/fleet.js)
+    const m = (telemetry.fleetState || []).find(u => u.id === uavId);
+    if (!m || !m.airborne) {
       return {
-        health: 99.1,
-        rul: 1120.0,
-        altitude: 18000,
-        speed: 125,
-        fault: 'NONE',
-        status: 'NOMINAL',
-        statusColor: 'text-emerald-400 font-bold',
-        desc: 'Relay Orbit'
+        health: null, rul: null, altitude: m?.station?.altitudeFt ?? 500, speed: 0, fault: 'NONE',
+        status: 'GROUNDED', reasons: ['on the ground, engine not running'], statusColor: 'text-slate-400 font-bold',
+        desc: m?.role ?? 'Grounded'
       };
     }
-
-    if (uavId === 'Vahak-4') {
-      return {
-        health: 84.5,
-        rul: 420.0,
-        altitude: 12000,
-        speed: 98,
-        fault: 'PRGB_DEGRADATION',
-        status: 'DEGRADED',
-        statusColor: 'text-amber-400 font-bold',
-        desc: 'Perimeter Patrol'
-      };
-    }
-
-    // Vahak-5 (AFS Uttarlai Hangar Reserve)
+    const fh = m.ai?.health ?? null, fr = m.ai?.rulHours ?? null, ff = m.ai?.diagnosis ?? 'NONE';
+    const cls = classifyVehicle({ health: fh, rul: fr, fault: ff, fuel: null, aiOk: !!m.ai, l1: m.l1?.status });
     return {
-      health: 72.0,
-      rul: 120.0,
-      altitude: 500,
-      speed: 0,
-      fault: 'OIL_PUMP_CAVITATION',
-      status: 'CRITICAL',
-      statusColor: 'text-red-400 font-bold',
-      desc: 'AFS Uttarlai Hangar (Grounded)'
+      fuel: null, aiOk: !!m.ai, l1: m.l1?.status ?? null,
+      health: fh == null ? null : Number(fh.toFixed(1)),
+      rul: fr == null ? null : Number(fr.toFixed(1)),
+      altitude: m.station.altitudeFt,
+      speed: m.station.airspeedKts,
+      fault: ff,
+      status: cls.status,
+      reasons: cls.reasons,
+      statusColor: cls.status === 'CRITICAL' ? 'text-red-400 font-bold' : cls.status === 'DEGRADED' ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold',
+      desc: m.role
     };
   }, [telemetry, aiPrognostics]);
 
@@ -441,67 +427,50 @@ export const MissionMapTab = () => {
   const unitAltitude = currentStats.altitude;
   const unitAirspeed = currentStats.speed;
   const activeFault = currentStats.fault;
-  const isGrounded = selectedUnit === 'Vahak-5';
+  const isGrounded = currentStats.status === 'GROUNDED';
   const isCritical = currentStats.status === 'CRITICAL' && !isGrounded;
   const isDegraded = currentStats.status === 'DEGRADED';
   const isSimulating = replanMode === 'FORCE_SIMULATION';
   const isPreview = replanMode === 'CONTINGENCY_PREVIEW';
 
-  // Whether RL Replanner Active Route Should Render
+  // Whether the contingency route should render
   const isReplannerActive = isCritical || isDegraded || isSimulating || isPreview || isDerateEngaged || selectedAirfieldId !== 'AUTO';
 
-  // Asynchronous RL Replan Solver connecting to Python FastAPI / Node Gateway
+  // Rule-based RTB planner service (/api/rl-replan on the AI service; URL kept for compatibility)
   const solveRlReplan = useCallback(async () => {
     if (isGrounded) return;
     setIsSolving(true);
     try {
       const uavPos = unitGeo.coords;
-      const liveFuelLiters = (telemetry.mission?.fuel_kg ? (telemetry.mission.fuel_kg / 0.72) : null)
-        ?? (telemetry.mission?.fuel_remaining_liters)
-        ?? (telemetry.mission?.missionTime ? Math.max(10, (200 - telemetry.mission.missionTime * 0.0072) / 0.72) : 84.0);
-
+      const unitEngine = selectedUnit === 'Vahak-1' ? telemetry.engine : (telemetry.fleetState || []).find(u => u.id === selectedUnit)?.engineState;
       const payload = {
         uav_id: selectedUnit,
         current_lat: uavPos[0],
         current_lng: uavPos[1],
         altitude_ft: unitAltitude,
-        fuel_remaining_liters: Number(liveFuelLiters.toFixed(1)),
+        fuel_remaining_liters: currentStats.fuel,          // null = not monitored (escorts)
         engine_health_index: unitHealth,
         rul_hours: unitRul,
+        diagnosed_fault: currentStats.fault ?? 'NONE',
+        ai_online: currentStats.aiOk,
+        l1_status: currentStats.l1,
+        current_throttle_pct: unitEngine?.throttlePct ?? null,
+        current_rpm: unitEngine?.rpm ?? null,
+        current_airspeed_kts: unitAirspeed,
         target_field_id: selectedAirfieldId,
         mode: replanMode
       };
 
-      const primaryHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-        ? `http://${window.location.hostname}:8001`
-        : '/ai';
-      const gatewayHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-        ? `http://${window.location.hostname}:5002`
-        : '';
-
+      // Via the gateway (the AI service is not reachable from browsers)
       let res = null;
       try {
-        res = await fetch(`${primaryHost}/api/rl-replan`, {
+        res = await gatewayFetch('/api/rl-replan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        if (!res.ok) {
-          throw new Error(`Primary host HTTP ${res.status}`);
-        }
-      } catch {
-        try {
-          res = await fetch(`${gatewayHost}/api/rl-replan`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-          if (!res.ok) {
-            throw new Error(`Gateway host HTTP ${res.status}`);
-          }
-        } catch (gateErr) {
-          console.warn('[RL Replanner] Backend query fallback failed:', gateErr);
-        }
+      } catch (gateErr) {
+        console.warn('[RTB Replanner] Gateway request failed:', gateErr);
       }
 
       if (res && res.ok) {
@@ -509,7 +478,7 @@ export const MissionMapTab = () => {
         setBackendRlSolution({ ...data, uavId: selectedUnit });
       }
     } catch (err) {
-      console.warn('[RL Replanner] Backend query failed:', err);
+      console.warn('[RTB planner] Backend query failed:', err);
     } finally {
       setIsSolving(false);
       setLastReplanTime(Date.now());
@@ -523,9 +492,12 @@ export const MissionMapTab = () => {
     selectedAirfieldId,
     replanMode,
     selectedUnit,
-    telemetry.mission?.fuel_kg,
-    telemetry.mission?.fuel_remaining_liters,
-    telemetry.mission?.missionTime
+    currentStats.fuel,
+    currentStats.fault,
+    currentStats.aiOk,
+    currentStats.l1,
+    telemetry.engine,
+    telemetry.fleetState
   ]);
 
   // Automatically trigger asynchronous solve when relevant parameters change
@@ -534,10 +506,10 @@ export const MissionMapTab = () => {
       solveRlReplan();
     }, 120);
     return () => clearTimeout(t);
-  }, [selectedUnit, replanMode, selectedAirfieldId, isCritical, isDegraded]);
+  }, [selectedUnit, replanMode, selectedAirfieldId, currentStats.status, currentStats.fault]);
 
   // -------------------------------------------------------------
-  // PPO Reinforcement Learning Policy Evaluation
+  // Rule-based RTB contingency planning (deterministic rules, haversine distances, TECS glide model)
   // -------------------------------------------------------------
   const rlSolution = useMemo(() => {
     const uavPos = unitGeo.coords;
@@ -568,9 +540,7 @@ export const MissionMapTab = () => {
         waypoints: [],
         routePolyline: [],
         metrics: {
-          survivabilityPct: 100.0,
-          cyclePreservationPct: 100.0,
-          glideConeRadiusNm: 0.0,
+glideConeRadiusNm: 0.0,
           glideMarginNm: 0.0
         }
       };
@@ -582,65 +552,31 @@ export const MissionMapTab = () => {
       distNm: Number(calcDistNm(uavPos[0], uavPos[1], f.coords[0], f.coords[1]).toFixed(1))
     }));
 
-    // 2. Select Optimal Destination based on unit sector and aeromechanics
-    let chosenField = null;
-    if (selectedAirfieldId !== 'AUTO') {
-      chosenField = candidateDistances.find(f => f.id === selectedAirfieldId) || candidateDistances[0];
-    } else {
-      if (isCritical || isSimulating) {
-        // Nearest runway with immediate glide reach
-        const sortedByDist = [...candidateDistances].sort((a, b) => a.distNm - b.distNm);
-        chosenField = sortedByDist[0];
-      } else if (isDegraded) {
-        // Degraded power: prioritize nearest base with full recovery facilities
-        const sortedByDist = [...candidateDistances].sort((a, b) => a.distNm - b.distNm);
-        chosenField = sortedByDist[0]; // Nearest runway for degraded divert
-      } else {
-        // Nominal & Contingency Preview: Default to Primary Base AFS Uttarlai (Full depot, 9000ft runway)
-        chosenField = candidateDistances.find(f => f.id === 'AFS_UTTARLAI') || candidateDistances[0];
-      }
-    }
-
-    // 3. Recommended Power & Descent Profile based on RL Policy
-    let recommendedThrottle = selectedUnit === 'Vahak-3' ? 82.5 : selectedUnit === 'Vahak-2' ? 80.0 : 78.5;
-    let recommendedRpm = selectedUnit === 'Vahak-3' ? 5100 : selectedUnit === 'Vahak-2' ? 4950 : 4850;
-    let recommendedClimbFpm = 0;
-    let commandedSpeedKts = unitAirspeed;
-    let policyAction = 'NOMINAL_CRUISE';
-    let policyLabel = 'NOMINAL MISSION PATROL ORBIT';
-
-    const isEngagedOrDivert = isCritical || isSimulating || isDegraded || isPreview || isDerateEngaged;
-
-    if (isCritical || isSimulating) {
-      policyAction = 'EMERGENCY_DIVERT_RTB';
-      policyLabel = 'AUTONOMOUS EMERGENCY RTB ENGAGED';
-      recommendedThrottle = 58.0; // Minimum cruise power
-      recommendedRpm = 4200;
-      recommendedClimbFpm = -350; // Glide descent slope
-      commandedSpeedKts = 95.0;
-    } else if (isDegraded) {
-      policyAction = 'DERATE_AND_DIVERT';
-      policyLabel = 'ADAPTIVE POWER DERATE COMMANDED';
-      recommendedThrottle = 68.0; // Derated power to spare PRGB clutch
-      recommendedRpm = 4400;
-      recommendedClimbFpm = -200; // Controlled glide descent
-      commandedSpeedKts = 105.0;
-    } else if (isDerateEngaged || isPreview) {
-      policyAction = isDerateEngaged ? 'DERATE_ACTIVE' : 'CONTINGENCY_PREVIEW';
-      policyLabel = isDerateEngaged ? 'CLOSED-LOOP DERATE APPLIED TO FADEC' : 'CONTINGENCY ENVELOPE PREVIEW — AFS UTTARLAI RTB';
-      recommendedThrottle = 68.0;
-      recommendedRpm = 4600;
-      recommendedClimbFpm = -200;
-      commandedSpeedKts = 105.0;
-    }
+    // 2-3. Shared rules: action, destination and power profile
+    const localAction = rtbAction(currentStats.status, replanMode);
+    const profile = RTB_PROFILES[localAction];
+    const sortedByDist = [...candidateDistances].sort((a, b) => a.distNm - b.distNm);
+    const chosenField = selectedAirfieldId !== 'AUTO'
+      ? (candidateDistances.find(f => f.id === selectedAirfieldId) || sortedByDist[0])
+      : profile.field === 'NEAREST'
+      ? sortedByDist[0]
+      : (candidateDistances.find(f => f.id === 'AFS_UTTARLAI') || sortedByDist[0]);
+    const unitEngine = selectedUnit === 'Vahak-1' ? telemetry.engine : (telemetry.fleetState || []).find(u => u.id === selectedUnit)?.engineState;
+    const recommendedThrottle = profile.throttle ?? Number((unitEngine?.throttlePct ?? 78.0).toFixed(1));
+    const recommendedRpm = profile.rpm ?? Math.round(unitEngine?.rpm ?? 4850);
+    const recommendedClimbFpm = profile.climbFpm;
+    const commandedSpeedKts = profile.speedKts ?? unitAirspeed;
+    const policyAction = localAction;
+    const policyLabel = RTB_ACTION_LABEL[localAction] + (isDerateEngaged ? ' — ENGAGED' : '');
+    const isEngagedOrDivert = localAction !== 'CONTINUE_MISSION' || isDerateEngaged;
 
     // 4. Calculate Flight Time & Safety Margin
     const effectiveSpeed = commandedSpeedKts > 0 ? commandedSpeedKts : 110.0;
     const flightTimeMin = Math.max(0.5, (chosenField.distNm / effectiveSpeed) * 60.0);
     const flightTimeHrs = flightTimeMin / 60.0;
-    const safetyMarginRatio = Number((unitRul / flightTimeHrs).toFixed(1));
+    const safetyMarginRatio = unitRul == null ? null : Number((unitRul / flightTimeHrs).toFixed(1));
 
-    // 5. Generate Multi-Waypoint RL Flight Plan
+    // 5. Straight-line RTB waypoints
     const waypoints = [];
     const numSteps = 4;
     for (let i = 0; i <= numSteps; i++) {
@@ -668,13 +604,11 @@ export const MissionMapTab = () => {
       });
     }
 
-    // 6. RL Reward & Performance Metrics
-    const survivabilityPct = isCritical ? 98.6 : isDegraded ? 99.4 : 99.9;
-    const cyclePreservationPct = isCritical ? 52.4 : isDegraded ? 38.0 : 15.0;
-    const glideConeRadiusNm = Number(((unitAltitude / 6076.12) * 12.0).toFixed(1)); // 12:1 glide ratio in NM
+    // 6. Glide reach: height above the destination field x (L/D)max of the airframe (same model as the FCS)
+    const glideConeRadiusNm = Number((Math.max(0, unitAltitude - (chosenField.altFt ?? 0)) * LD_MAX / 6076.12).toFixed(1));
     const glideMarginNm = Number((glideConeRadiusNm - chosenField.distNm).toFixed(1));
 
-    // Merge backend RL policy solution if available and matches selected unit & non-grounded state
+    // Use the planner service's route when available (same rules, computed server-side)
     if (backendRlSolution && backendRlSolution.uavId === selectedUnit && backendRlSolution.optimized_rtb_flight_plan && !isGrounded) {
       const backendCmds = backendRlSolution.rl_control_commands || {};
       const backendWps = backendRlSolution.optimized_rtb_flight_plan.map((w, idx) => ({
@@ -691,11 +625,10 @@ export const MissionMapTab = () => {
 
       return {
         action: backendRlSolution.action,
-        label: backendRlSolution.action === 'EMERGENCY_DIVERT_RTB'
-          ? 'AUTONOMOUS EMERGENCY RTB ENGAGED (RL OPTIMAL)'
-          : backendRlSolution.action === 'CONTINGENCY_RTB_PREVIEW'
-          ? 'CONTINGENCY ENVELOPE PREVIEW — AFS UTTARLAI RTB'
-          : (isDerateEngaged ? 'CLOSED-LOOP DERATE APPLIED TO FADEC' : policyLabel),
+        label: (RTB_ACTION_LABEL[backendRlSolution.action] ?? backendRlSolution.action) + (isDerateEngaged ? ' — ENGAGED' : ''),
+        source: backendRlSolution.source === 'gateway-fallback' ? 'gateway fallback' : 'planner service',
+        parityOk: backendRlSolution.action === localAction,
+        serviceReasons: backendRlSolution.reasons || [],
         destination: {
           ...matchedDest,
           distNm: backendRlSolution.distance_to_field_nm
@@ -712,8 +645,6 @@ export const MissionMapTab = () => {
         waypoints: backendWps,
         routePolyline: backendWps.map(w => w.coords),
         metrics: {
-          survivabilityPct,
-          cyclePreservationPct,
           glideConeRadiusNm,
           glideMarginNm: Number((glideConeRadiusNm - backendRlSolution.distance_to_field_nm).toFixed(1))
         }
@@ -723,6 +654,9 @@ export const MissionMapTab = () => {
     return {
       action: policyAction,
       label: policyLabel,
+      source: 'GCS rules (planner service not reached)',
+      parityOk: true,
+      serviceReasons: currentStats.reasons || [],
       destination: chosenField,
       allFields: candidateDistances,
       distNm: chosenField.distNm,
@@ -736,8 +670,6 @@ export const MissionMapTab = () => {
       waypoints: waypoints,
       routePolyline: waypoints.map(w => w.coords),
       metrics: {
-        survivabilityPct,
-        cyclePreservationPct,
         glideConeRadiusNm,
         glideMarginNm
       }
@@ -768,10 +700,10 @@ export const MissionMapTab = () => {
 
   // Engage Derate Trigger - Transmit closed-loop commands to FCS Autopilot and Engine FADEC
   const handleEngageDerate = () => {
-    if (isGrounded) return;
+    if (isGrounded || selectedUnit !== 'Vahak-1') return;   // only Vahak-1 has an autopilot + engine twin
     setIsDerateEngaged(true);
 
-    // 1. Transform RL flight plan waypoints to local ENU for 6-DOF Autopilot
+    // 1. Transform the RTB waypoints to local ENU for the 6-DOF autopilot
     if (rlSolution.waypoints && rlSolution.waypoints.length > 0) {
       const fcsWps = rlSolution.waypoints.map(wp => ({
         north: (wp.coords[0] - 26.4500) * 111320,
@@ -818,7 +750,7 @@ export const MissionMapTab = () => {
             {/* Title Badge */}
             <div className="px-3 py-1 bg-white/95 border border-slate-200 rounded-md text-xs font-mono text-sky-700 flex items-center gap-2 backdrop-blur shadow-xs">
               <Navigation className="w-3.5 h-3.5 text-sky-600 animate-pulse" />
-              <span className="font-bold tracking-wider">RL AUTONOMOUS REPLANNER</span>
+              <span className="font-bold tracking-wider">RTB CONTINGENCY PLANNER (RULE-BASED)</span>
             </div>
 
             {/* Decision Status Badge */}
@@ -830,7 +762,7 @@ export const MissionMapTab = () => {
                 : 'bg-emerald-50 border-emerald-200 text-emerald-700'
             }`}>
               <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
-              <span>RL DECISION: {rlSolution.label}</span>
+              <span>PLANNER DECISION: {rlSolution.label}</span>
             </div>
           </div>
 
@@ -945,7 +877,7 @@ export const MissionMapTab = () => {
               </>
             )}
 
-            {/* RL Autonomous Recalculated Flight Plan (High-Visibility Amber / Red Dotted) */}
+            {/* Recalculated RTB route (amber / red dotted) */}
             {isReplannerActive && (
               <>
                 {/* Contrast underlay halo for tactical daylight visibility */}
@@ -1078,7 +1010,7 @@ export const MissionMapTab = () => {
                         {isSelected && <span className="text-[9px] bg-sky-600 text-white px-1.5 py-0.2 rounded font-bold">FOCUSED</span>}
                       </div>
                       <div className="text-slate-600 mt-1">Status: <span className={stats.statusColor}>{stats.status}</span> ({stats.desc})</div>
-                      <div>Health: <span className="font-bold text-slate-900">{stats.health}%</span> | RUL: <span className="font-bold text-slate-900">{stats.rul} hrs</span></div>
+                      <div>Health: <span className="font-bold text-slate-900">{stats.health == null ? '—' : `${stats.health}%`}</span> | RUL: <span className="font-bold text-slate-900">{stats.rul == null ? '—' : `${stats.rul} hrs`}</span></div>
                       <div>Altitude: <span className="font-bold text-slate-900">{stats.altitude.toLocaleString()} ft</span> | Speed: <span className="font-bold text-slate-900">{stats.speed} kts</span></div>
                       <div className="text-amber-700">Active Fault: {stats.fault}</div>
                       {!isSelected && (
@@ -1106,19 +1038,19 @@ export const MissionMapTab = () => {
             <span className="w-3 h-1 bg-sky-600 inline-block rounded"></span> Nominal Flight Path
           </div>
           <div className="flex items-center gap-1.5 text-slate-600 font-medium">
-            <span className="w-3 h-1 bg-amber-500 inline-block border-t border-dashed"></span> RL Recalculated RTB Route
+            <span className="w-3 h-1 bg-amber-500 inline-block border-t border-dashed"></span> Recalculated RTB route
           </div>
           <div className="flex items-center gap-1.5 text-slate-600 font-medium">
             <span className={`w-2.5 h-2.5 rounded-full border inline-block ${fcsState?.ap_mode === 'EMERGENCY_GLIDE' || fcsState?.engine_out ? 'border-red-500 bg-red-100' : 'border-emerald-600 bg-emerald-50'}`}></span> Glide Footprint ({fcsState?.glide_range_m && fcsState.glide_range_m > 0 ? (fcsState.glide_range_m / 1852).toFixed(1) : rlSolution.metrics.glideConeRadiusNm} NM)
           </div>
           <div className="flex items-center gap-1.5 text-slate-700 border-l border-slate-200 pl-3 font-semibold">
-            <span className="text-sky-700 font-bold">SWARM ASSETS:</span> 5 UNITS (4 PATROL · 1 HANGAR)
+            <span className="text-sky-700 font-bold">FLEET:</span> 5 UNITS (4 AIRBORNE · 1 IN HANGAR)
           </div>
         </div>
       </div>
 
       {/* ─────────────────────────────────────────────────────────────
-          2. RIGHT CONTROL PANEL: RL Policy Engine & Real-Time Commands
+          2. RIGHT CONTROL PANEL: rule-based RTB planner & commands
          ───────────────────────────────────────────────────────────── */}
       <div className="w-full lg:w-[420px] gcs-panel rounded-lg border border-slate-200 bg-white p-4 flex flex-col gap-4 overflow-y-auto custom-scrollbar shadow-xs">
         
@@ -1130,16 +1062,16 @@ export const MissionMapTab = () => {
             </div>
             <div>
               <h3 className="font-display font-bold text-sm tracking-wider text-slate-900 uppercase">
-                RL POLICY CONTROLLER
+                RTB DECISION RULES
               </h3>
-              <p className="text-[10px] font-mono text-slate-500 font-medium">PPO CL-TRAJECTORY OPTIMIZER v2.4</p>
+              <p className="text-[10px] font-mono text-slate-500 font-medium">Deterministic rules · haversine distance · TECS glide model (L/D {LD_MAX.toFixed(1)})</p>
             </div>
           </div>
           <button
             onClick={handleRecalculate}
             disabled={isSolving}
             className="px-2.5 py-1.5 rounded-md bg-white border border-slate-200 text-slate-700 hover:text-slate-900 hover:bg-slate-50 transition-colors flex items-center gap-1.5 text-xs font-mono font-bold shadow-xs"
-            title="Force RL policy re-solve"
+            title="Recompute the RTB plan"
           >
             <RefreshCw className={`w-3.5 h-3.5 text-sky-600 ${isSolving ? 'animate-spin' : ''}`} />
             SOLVE
@@ -1183,7 +1115,7 @@ export const MissionMapTab = () => {
               onChange={e => setSelectedAirfieldId(e.target.value)}
               className="bg-white border border-slate-200 rounded-md px-2.5 py-1.5 text-xs text-slate-900 font-mono font-medium focus:outline-none focus:border-sky-500 shadow-xs"
             >
-              <option value="AUTO">★ AUTO (RL Policy Optimal Selection)</option>
+              <option value="AUTO">★ AUTO (rule: nearest airfield if degraded/critical, else AFS Uttarlai)</option>
               {AIRFIELDS.map(f => (
                 <option key={f.id} value={f.id}>
                   {f.shortName} ({calcDistNm(unitGeo.coords[0], unitGeo.coords[1], f.coords[0], f.coords[1]).toFixed(1)} NM) · {f.type}
@@ -1216,7 +1148,7 @@ export const MissionMapTab = () => {
               <span className="font-bold text-slate-900">
                 {isGrounded 
                   ? '0.0% (ENGINE OFF)' 
-                  : `${rlSolution.recommendedThrottle.toFixed(1)}% ${isCritical || isSimulating ? '(DERATED CRUISE)' : isDegraded ? '(POWER DERATE)' : '(NOMINAL)'}`}
+                  : `${rlSolution.recommendedThrottle.toFixed(1)}% ${({ EMERGENCY_DIVERT_RTB: '(EMERGENCY PROFILE)', DERATE_AND_DIVERT: '(POWER DERATE)', CONTINGENCY_RTB_PREVIEW: '(PREVIEW PROFILE)', CONTINUE_MISSION: '(CURRENT SETTING)' })[rlSolution.action] ?? ''}`}
               </span>
             </div>
 
@@ -1253,10 +1185,10 @@ export const MissionMapTab = () => {
 
           {/* Action Button: Execute Derate */}
           <button
-            onClick={isGrounded ? undefined : handleEngageDerate}
-            disabled={isGrounded}
+            onClick={isGrounded || selectedUnit !== 'Vahak-1' || rlSolution.action === 'CONTINUE_MISSION' ? undefined : handleEngageDerate}
+            disabled={isGrounded || selectedUnit !== 'Vahak-1' || rlSolution.action === 'CONTINUE_MISSION'}
             className={`mt-2 py-2 px-3 rounded-md text-xs font-mono font-bold tracking-wider flex items-center justify-center gap-2 border transition-all ${
-              isGrounded
+              isGrounded || selectedUnit !== 'Vahak-1'
                 ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
                 : isDerateEngaged
                 ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs'
@@ -1267,13 +1199,17 @@ export const MissionMapTab = () => {
               <>
                 <ShieldAlert className="w-4 h-4 text-red-600" /> AIRCRAFT GROUNDED — ENGINE SHUTDOWN
               </>
+            ) : selectedUnit !== 'Vahak-1' ? (
+              <>Advisory only: {selectedUnit} has no flight model to command</>
+            ) : rlSolution.action === 'CONTINUE_MISSION' && !isDerateEngaged ? (
+              <>No action required: continue mission</>
             ) : isDerateEngaged ? (
               <>
                 <Check className="w-4 h-4" /> CLOSED-LOOP DERATE APPLIED TO FADEC
               </>
             ) : (
               <>
-                <Send className="w-4 h-4" /> TRANSMIT RL DERATE COMMAND TO FADEC
+                <Send className="w-4 h-4" /> ENGAGE DERATE & LOAD RTB ROUTE (AUTOPILOT + ENGINE TWIN)
               </>
             )}
           </button>
@@ -1285,7 +1221,7 @@ export const MissionMapTab = () => {
           )}
         </div>
 
-        {/* 3. Safety Margin & RL Policy Rewards */}
+        {/* 3. Safety margin, decision rules & glide reach */}
         <div className="bg-white p-3 rounded-lg border border-slate-200 flex flex-col gap-2.5 shadow-xs">
           <div className="flex items-center justify-between text-xs font-mono">
             <span className="text-slate-500 font-semibold">RUL / FLIGHT TIME MARGIN:</span>
@@ -1303,35 +1239,24 @@ export const MissionMapTab = () => {
             />
           </div>
 
-          {/* RL Policy Performance Badges */}
+          {/* Rules that produced this decision (text generated from src/planner/rtbRules.js) */}
+          <div className="text-[10px] font-mono bg-slate-50 border border-slate-200 rounded-md p-2 space-y-1">
+            <div className="font-bold text-slate-800">VEHICLE STATUS: {currentStats.status}{currentStats.reasons?.length ? ` (${currentStats.reasons.join('; ')})` : ''}</div>
+            <div className="text-slate-600">CRITICAL if AI health &lt; {RTB_RULES.CRITICAL_HEALTH_PCT} %, RUL &lt; {RTB_RULES.CRITICAL_RUL_H} h, diagnosis {RTB_RULES.CRITICAL_FAULTS.join(' / ')}, or fuel ≤ {RTB_RULES.BINGO_FUEL_L} L → {RTB_ACTION_LABEL.EMERGENCY_DIVERT_RTB.toLowerCase()} ({RTB_PROFILES.EMERGENCY_DIVERT_RTB.throttle} % throttle, {RTB_PROFILES.EMERGENCY_DIVERT_RTB.speedKts} kt, {RTB_PROFILES.EMERGENCY_DIVERT_RTB.climbFpm} fpm).</div>
+            <div className="text-slate-600">DEGRADED if AI health &lt; {RTB_RULES.DEGRADED_HEALTH_PCT} %, RUL &lt; {RTB_RULES.DEGRADED_RUL_H} h, any fault diagnosed, or fuel &lt; {RTB_RULES.LOW_FUEL_L} L → {RTB_ACTION_LABEL.DERATE_AND_DIVERT.toLowerCase()} ({RTB_PROFILES.DERATE_AND_DIVERT.throttle} % throttle, {RTB_PROFILES.DERATE_AND_DIVERT.speedKts} kt, {RTB_PROFILES.DERATE_AND_DIVERT.climbFpm} fpm).</div>
+            <div className="text-slate-600">Otherwise continue the mission at the current operating point (preview mode shows the RTB to AFS Uttarlai). AI offline → L1 threshold status is used. Fuel is modelled for Vahak-1 only.</div>
+            <div className={rlSolution.parityOk ? 'text-emerald-700' : 'text-red-700 font-bold'}>
+              Plan source: {rlSolution.source}. {rlSolution.parityOk ? 'Same decision as the GCS rules.' : `DISAGREEMENT: service says ${rlSolution.action}, GCS rules say otherwise.`}
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-2 text-[10px] mt-1">
-            <div className="bg-slate-50 p-2 rounded-md border border-slate-200 shadow-2xs">
-              <span className="text-slate-500 font-semibold block">{isGrounded ? 'IN-FLIGHT CRASH RISK:' : 'SURVIVABILITY:'}</span>
-              <span className="text-emerald-700 font-bold text-xs">
-                {isGrounded ? '0.0%' : `${rlSolution.metrics.survivabilityPct}%`}
-              </span>
-              <span className="text-[8.5px] block text-slate-500">
-                {isGrounded ? '(RAMP SECURED)' : rlSolution.metrics.survivabilityPct > 99.5 ? '(OPTIMAL ENVELOPE)' : '(CONTROLLED RECOVERY)'}
-              </span>
-            </div>
-
-            <div className="bg-slate-50 p-2 rounded-md border border-slate-200 shadow-2xs">
-              <span className="text-slate-500 font-semibold block">{isGrounded ? 'DEGRADATION RATE:' : 'CYCLE LIFE PRESERVED:'}</span>
-              <span className="text-sky-700 font-bold text-xs">
-                {isGrounded ? '0.0%/hr' : `+${rlSolution.metrics.cyclePreservationPct}%`}
-              </span>
-              <span className="text-[8.5px] block text-slate-500">
-                {isGrounded ? '(ENGINE SHUTDOWN)' : isCritical || isDegraded ? '(THERMAL STRESS REDUCED)' : '(NOMINAL EFFICIENCY)'}
-              </span>
-            </div>
-
             <div className="bg-slate-50 p-2 rounded-md border border-slate-200 shadow-2xs">
               <span className="text-slate-500 font-semibold block">GLIDE CONE REACH:</span>
               <span className={`font-bold text-xs ${isGrounded ? 'text-slate-400' : 'text-amber-700'}`}>
                 {isGrounded ? 'N/A' : `${rlSolution.metrics.glideConeRadiusNm} NM`}
               </span>
               <span className="text-[8.5px] block text-slate-500">
-                {isGrounded ? '(WHEELS CHOCKED)' : '(@ 12:1 GLIDE RATIO)'}
+                {isGrounded ? '(WHEELS CHOCKED)' : `(height above field × L/D ${LD_MAX.toFixed(1)})`}
               </span>
             </div>
 

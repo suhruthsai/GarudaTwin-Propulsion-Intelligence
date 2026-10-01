@@ -78,8 +78,8 @@ try {
   ap.arm();
   ap.setMode(FLIGHT_MODE.ALT_HOLD);
   
-  // Current altitude: 3000 m (~9842 ft). Step target: 3609.6 m (+2000 ft = 11842 ft)
-  const initialAlt_m = 3000;
+  // Start from the model's actual trimmed altitude (4419.6 m / 14,500 ft). Step target: +2000 ft
+  const initialAlt_m = -fcs.getState().x_d;
   const targetAlt_m  = initialAlt_m + 609.6; // +2000 ft
   ap.setAltitude(targetAlt_m);
   ap.setAirspeed(56.6); // 110 kts
@@ -88,8 +88,8 @@ try {
   let maxPitchDuringClimb = -999;
   let climbed = false;
 
-  // Simulate 100 seconds at 50 Hz (5000 steps) at realistic 6 m/s climb rate
-  for (let step = 0; step < 5000; step++) {
+  // Simulate 300 seconds at 50 Hz (15000 steps); TECS climbs at ~3 m/s
+  for (let step = 0; step < 15000; step++) {
     const s = fcs.getState();
     const d = fcs.derived;
     const fcsInput = {
@@ -129,7 +129,9 @@ try {
   console.log(`  ✓ Minimum IAS during climb: ${minIasDuringClimb.toFixed(1)} kts (Stall limit is 58 kts, margin > 20 kts)`);
   console.log(`  ✓ Peak climb pitch angle: ${maxPitchDuringClimb.toFixed(1)}°`);
 
-  if (minIasDuringClimb > 65.0 && climbed) {
+  const captureErr = Math.abs(finalAlt - targetAlt_m);
+  console.log(`  ✓ Altitude capture error: ${captureErr.toFixed(1)} m (limit 15 m)`);
+  if (minIasDuringClimb > 65.0 && climbed && captureErr < 15.0) {
     console.log('  ✓ TECS successfully injected energy without stalling or exceeding envelope.');
     passedTests++;
   } else {

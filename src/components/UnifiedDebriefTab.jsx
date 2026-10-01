@@ -39,14 +39,14 @@ export const UnifiedDebriefTab = () => {
   const [activePhaseIndex, setActivePhaseIndex] = useState(7);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
-  const [activePreset, setActivePreset] = useState('HIGH_ALT_FL280');
+  const [activePreset, setActivePreset] = useState('HIGH_ALT_FL220');
   const [showMoreScenarios, setShowMoreScenarios] = useState(false);
 
   // Layout View Modes: 'split' | 'replay_full' | 'copilot_full'
   const [viewMode, setViewMode] = useState('split');
 
   // Environmental sliders
-  const [altitudeFt, setAltitudeFt] = useState(28000);
+  const [altitudeFt, setAltitudeFt] = useState(22000);
   const [deltaIsaTempC, setDeltaIsaTempC] = useState(-28);
   const [payloadStr, setPayloadStr] = useState('85 kg (EO/IR + SAR)');
   const [headwindKts, setHeadwindKts] = useState(38);
@@ -55,7 +55,7 @@ export const UnifiedDebriefTab = () => {
   const [messages, setMessages] = useState([
     {
       sender: 'ai',
-      text: 'TELEMETRY REASONING KERNEL ONLINE // SENSORS SYNCED TO BLACK-BOX REPLAY. Ready to interrogate causal factors, calculate aerothermal margins, evaluate autoencoder anomaly scores, or compile an official DO-178C Level B airworthiness certification dossier.',
+      text: 'SCRIPTED DEBRIEF ASSISTANT (keyword-matched, pre-written answers about this hand-authored demo scenario; not an AI model and not recorded data). Ask about anomalies, thermal margins, oil, injectors or glide reach. For real recorded flights and AI results use the Data Source & Replay tab.',
       timestamp: '12:00:01'
     }
   ]);
@@ -168,7 +168,7 @@ export const UnifiedDebriefTab = () => {
     return base;
   }, [activePhaseIndex, currentPhase.name, activeTelemetry.cht, activeTelemetry.oilP]);
 
-  // Context-Aware Aerospace AI Copilot Reasoning Engine
+  // Scripted debrief assistant: keyword-matched, pre-written answers about the demo scenario
   const handleSendMessage = (textToSend) => {
     const query = textToSend || inputQuery;
     if (!query.trim()) return;
@@ -193,11 +193,11 @@ export const UnifiedDebriefTab = () => {
       } else if (qLower.includes('oil') || qLower.includes('pressure') || qLower.includes('viscosity')) {
         aiResponseText = `[LUBRICATION DYNAMICS - VOGEL-FULCHER AUDIT]:\n1. Oil Pressure: ${activeTelemetry.oilP} | Oil Temperature: ${activeTelemetry.oilT}.\n2. Fluid Dynamics: Operating under ${deltaIsaTempC}°C ambient. Dynamic viscosity ratio is ${deltaIsaTempC < 0 ? 'elevated (thick fluid, higher pump head pressure)' : 'thinned (hydrodynamic wedge boundary)'}.\n3. Minimum Equipment List (MEL): Minimum safe lubrication pressure threshold is 28.0 PSI. Current pressure offers a safe operating margin.`;
       } else if (qLower.includes('injector') || qLower.includes('fuel') || qLower.includes('orbit')) {
-        aiResponseText = `[FUEL INJECTION ANOMALY AUDIT - PHASE 3 ISR ORBIT]:\n1. Telemetry Indicator: Injector #2 fuel flow differential registered 0.08 Autoencoder MSE residual.\n2. Physical Mechanism: Fuel rail resonance micro-pulsation during steady-state station loiter (4800 RPM).\n3. Airworthiness Impact: Cylinder temperatures remain within safe limits; no uncommanded power loss observed. Clean injector nozzle with ultrasonic solvent at scheduled 50-hour inspection.`;
+        aiResponseText = `[FUEL INJECTION ANOMALY AUDIT - PHASE 3 ISR ORBIT]:\n1. Telemetry Indicator: Injector #2 fuel flow differential registered a 0.08 scenario anomaly score.\n2. Physical Mechanism: Fuel rail resonance micro-pulsation during steady-state station loiter (4800 RPM).\n3. Airworthiness Impact: Cylinder temperatures remain within safe limits; no uncommanded power loss observed. Clean injector nozzle with ultrasonic solvent at scheduled 50-hour inspection.`;
       } else if (qLower.includes('glide') || qLower.includes('range') || qLower.includes('rul')) {
-        aiResponseText = `[AUTONOMOUS FLIGHT ENVELOPE & GLIDE REACHABILITY]:\n1. Active Altitude: ${activeTelemetry.alt} (FL${Math.round(altitudeFt / 100)}).\n2. Aerodynamic Glide Ratio: 14:1 (Heron/Predator MALE UAV airframe).\n3. Dead-Stick Glide Reachability: ${(altitudeFt * 0.0023).toFixed(1)} Nautical Miles in zero-thrust glide configuration.\n4. Bi-LSTM Remaining Useful Life: ${activeTelemetry.rul} until 50% MEL overhaul limit. Clearance verified for continued mission profile.`;
+        aiResponseText = `[AUTONOMOUS FLIGHT ENVELOPE & GLIDE REACHABILITY]:\n1. Active Altitude: ${activeTelemetry.alt} (FL${Math.round(altitudeFt / 100)}).\n2. Assumed glide ratio for this demo: 14:1.\n3. Dead-Stick Glide Reachability: ${(altitudeFt * 0.0023).toFixed(1)} Nautical Miles in zero-thrust glide configuration.\n4. Scenario remaining useful life: ${activeTelemetry.rul} until 50% MEL overhaul limit.Clearance verified for continued mission profile.`;
       } else {
-        aiResponseText = `[GARUDATWIN REPLAY DIAGNOSTIC SUMMARY]:\n- Active Sortie Phase: ${currentPhase.name} (${currentPhase.time}) | Scenario: ${activePreset.replace(/_/g, ' ')}\n- Engine Speed: ${activeTelemetry.rpm} | Boost MAP: ${activeTelemetry.map}\n- Health Index: ${activeTelemetry.health} (Degradation Trajectory: Nominal to 50% MEL)\n- Autoencoder Anomaly MSE: ${activeTelemetry.anomalyScore} | Bi-LSTM RUL: ${activeTelemetry.rul}\n- Airworthiness Status: Asset is cleared for operational deployment with scheduled ground servicing.`;
+        aiResponseText = `[GARUDATWIN REPLAY DIAGNOSTIC SUMMARY]:\n- Active Sortie Phase: ${currentPhase.name} (${currentPhase.time}) | Scenario: ${activePreset.replace(/_/g, ' ')}\n- Engine Speed: ${activeTelemetry.rpm} | Boost MAP: ${activeTelemetry.map}\n- Health Index: ${activeTelemetry.health} (Degradation Trajectory: Nominal to 50% MEL)\n- Scenario anomaly score: ${activeTelemetry.anomalyScore} | Scenario RUL: ${activeTelemetry.rul}\n- Airworthiness Status: Asset is cleared for operational deployment with scheduled ground servicing.`;
       }
 
       setMessages(prev => [
@@ -211,7 +211,7 @@ export const UnifiedDebriefTab = () => {
     }, 350);
   };
 
-  // 1-Click Certified DO-178C PDF Airworthiness Report Exporter
+  // PDF export of the demo scenario debrief (not a certification document)
   const exportPdfReport = () => {
     setIsGeneratingPdf(true);
     try {
@@ -246,8 +246,8 @@ export const UnifiedDebriefTab = () => {
         head: [['Prognostic Parameter', 'Evaluated Value', 'Baseline Standard', 'Airworthiness Assessment']],
         body: [
           ['Overall Health Index', activeTelemetry.health, '100% Nominal', activeTelemetry.healthVal < 60 ? 'CRITICAL DECAY' : activeTelemetry.healthVal < 80 ? 'DEGRADED' : 'AIRWORTHY'],
-          ['Estimated RUL (Bi-LSTM)', activeTelemetry.rul, '> 400.0 Flight Hours', parseFloat(activeTelemetry.rul) < 50 ? 'EXPEDITED OVERHAUL' : 'MISSION READY'],
-          ['Autoencoder Anomaly MSE', activeTelemetry.anomalyScore, '< 0.08500 MSE', parseFloat(activeTelemetry.anomalyScore) > 0.25 ? 'ANOMALY CONFIRMED' : 'NOMINAL RESIDUALS'],
+          ['Estimated RUL (scenario model)', activeTelemetry.rul,'> 400.0 Flight Hours', parseFloat(activeTelemetry.rul) < 50 ? 'EXPEDITED OVERHAUL' : 'MISSION READY'],
+          ['Scenario anomaly score', activeTelemetry.anomalyScore,'< 0.08500 MSE', parseFloat(activeTelemetry.anomalyScore) > 0.25 ? 'ANOMALY CONFIRMED' : 'NOMINAL RESIDUALS'],
           ['Engine Speed / Propeller', `${activeTelemetry.rpm} (${activeTelemetry.rpmSub})`, '4800 / 1890 RPM', 'FADEC SYNCHRONIZED'],
           ['Structural Vibration', activeTelemetry.vib, '< 0.045 IPS', parseFloat(activeTelemetry.vib) > 0.06 ? 'EXCEEDANCE CAUTION' : 'VIBRATION NORMAL']
         ]
@@ -266,7 +266,7 @@ export const UnifiedDebriefTab = () => {
         bodyStyles: { fontSize: 7.5 },
         head: [['Telemetry Channel', 'Recorded Value', 'Engineering Sub-Value', 'Standard Operational Limits']],
         body: [
-          ['1. Altitude (MSL)', activeTelemetry.alt, activeTelemetry.flTag, 'Up to FL300 Service Ceiling'],
+          ['1. Altitude (MSL)', activeTelemetry.alt, activeTelemetry.flTag, 'Up to ~23,000 ft service ceiling'],
           ['2. Airspeed (IAS / TAS)', activeTelemetry.spd, activeTelemetry.spdSub, '60 - 165 KTS Safe Envelope'],
           ['3. Throttle Command', activeTelemetry.thr, activeTelemetry.thrSub, '0% Idle - 100% TOGA'],
           ['4. Engine Speed', activeTelemetry.rpm, activeTelemetry.rpmSub, '5800 RPM Redline Limit'],
@@ -278,8 +278,8 @@ export const UnifiedDebriefTab = () => {
           ['10. Vibration Severity', activeTelemetry.vib, 'Piezoelectric FFT', '< 0.080 IPS Caution Limit'],
           ['11. Manifold Absolute Press', activeTelemetry.map, 'Turbo Boost', '1.00 - 1.70 BAR MAP'],
           ['12. Health Degradation Index', activeTelemetry.health, 'Multi-Stress Fatigue', '50% Minimum Overhaul Limit'],
-          ['13. Anomaly Score (MSE)', activeTelemetry.anomalyScore, 'Autoencoder Residual', '< 0.25 Nominal Envelope'],
-          ['14. Estimated RUL (95% CI)', activeTelemetry.rul, 'Bi-LSTM Forecast', '> 20.0 HRS Safe Dispatch']
+          ['13. Anomaly Score', activeTelemetry.anomalyScore, 'Scenario model', '< 0.25 Nominal Envelope'],
+          ['14. Estimated RUL', activeTelemetry.rul, 'Scenario model', '> 20.0 HRS Safe Dispatch']
         ]
       });
 
@@ -316,7 +316,7 @@ export const UnifiedDebriefTab = () => {
 
       const directiveText = parseFloat(activeTelemetry.anomalyScore) > 0.25 || activeTelemetry.healthVal < 70
         ? `CONDITIONAL AIRWORTHINESS / INSPECTION DIRECTIVE REQUIRED:\nAsset exhibits elevated stress indicators during ${currentPhase.name} under ${activePreset.replace(/_/g, ' ')}. Action Work Order: (1) Boroscopic inspection of cylinder 3 & 4 exhaust valves; (2) Check PRGB drive gear teeth for micro-spalling; (3) Clean fuel injector nozzles with ultrasonic solvent. Cleared for auxiliary taxi trials following maintenance sign-off.`
-        : `CERTIFICATE OF AIRWORTHINESS (DO-178C / STANAG 4671 COMPLIANT):\nAll physical telemetry parameters, autoencoder reconstruction errors, and multi-stress health indices conform strictly to Rotax 915 iS operating envelope specifications. Asset is certified FULLY AIRWORTHY for immediate tactical mission redeployment.`;
+        : `SCENARIO SUMMARY (demo data; not a certification or airworthiness document):\nAll scenario telemetry parameters and health indices are within the modelled Rotax 915 iS operating envelope. Release decisions must follow the approved maintenance manual.`;
 
       doc.text(doc.splitTextToSize(directiveText, 182), 14, finalY3 + 6);
       doc.save(`GarudaTwin_Airworthiness_Dossier_${activePreset}_${currentPhase.name}_${Date.now()}.pdf`);
@@ -346,7 +346,7 @@ export const UnifiedDebriefTab = () => {
               </span>
             </div>
             <div className="text-xs text-slate-500 flex items-center gap-2 mt-0.5 font-medium">
-              <span className="text-slate-600">CAN 2.0B BLACK-BOX RECORDER</span>
+              <span className="text-slate-600">DEMO SCENARIO (HAND-AUTHORED, NOT RECORDED DATA)</span>
               <span className="text-slate-300">•</span>
               <span className="text-sky-700 font-mono font-semibold">LAT/LONG: 34.6644°N 118.0847°W</span>
               <span className="text-slate-300">•</span>
@@ -393,15 +393,15 @@ export const UnifiedDebriefTab = () => {
 
           {/* Primary Scenarios */}
           <button
-            onClick={() => handleSelectPreset('HIGH_ALT_FL280')}
+            onClick={() => handleSelectPreset('HIGH_ALT_FL220')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-1.5 ${
-              activePreset === 'HIGH_ALT_FL280'
+              activePreset === 'HIGH_ALT_FL220'
                 ? 'bg-sky-50 border-sky-400 text-sky-800 shadow-xs'
                 : 'bg-white border-slate-200 text-slate-700 hover:text-slate-900 hover:bg-slate-50'
             }`}
           >
             <Mountain className="w-3.5 h-3.5 text-sky-600" />
-            <span>FL280 BASELINE</span>
+            <span>FL220 BASELINE</span>
           </button>
 
           <button
@@ -480,16 +480,16 @@ export const UnifiedDebriefTab = () => {
           </button>
 
           <button
-            onClick={() => { handleSelectPreset('FL300_CEILING'); setShowMoreScenarios(false); }}
+            onClick={() => { handleSelectPreset('FL230_CEILING'); setShowMoreScenarios(false); }}
             className={`p-2.5 rounded-lg border text-left flex flex-col gap-1 transition-all ${
-              activePreset === 'FL300_CEILING' ? 'bg-indigo-50 border-indigo-400 text-indigo-800' : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+              activePreset === 'FL230_CEILING' ? 'bg-indigo-50 border-indigo-400 text-indigo-800' : 'bg-slate-50 border-slate-200 hover:border-slate-300'
             }`}
           >
             <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-700">
               <Zap className="w-4 h-4 text-indigo-600" />
-              <span>FL300 MAX CEILING</span>
+              <span>FL230 SERVICE CEILING</span>
             </div>
-            <span className="text-xs text-slate-500">30,000 FT Critical turbocharger PR limit</span>
+            <span className="text-xs text-slate-500">~23,000 FT Rotax 915 iS service ceiling</span>
           </button>
 
           <button
@@ -532,7 +532,7 @@ export const UnifiedDebriefTab = () => {
                   <Clock className="w-4 h-4 text-sky-600" />
                   <div>
                     <div className="text-xs sm:text-sm font-bold text-slate-900 uppercase tracking-wider">
-                      TACTICAL ISR MISSION REPLAY TIMELINE • 8-PHASE SORTIE (BLACK-BOX FADEC TRACE)
+                      DEMO SCENARIO TIMELINE • 8-PHASE SORTIE (HAND-AUTHORED; REAL RECORDINGS: DATA SOURCE &amp; REPLAY TAB)
                     </div>
                     <div className="text-xs text-slate-500 font-medium">
                       Synchronized FADEC recorder & physics twin • Scrub timeline to inspect telemetry and causal residuals
@@ -792,14 +792,14 @@ export const UnifiedDebriefTab = () => {
                   <div className={`text-lg font-bold font-mono ${parseFloat(activeTelemetry.anomalyScore) > 0.25 ? 'text-red-600' : 'text-emerald-700'}`}>
                     {activeTelemetry.anomalyScore}
                   </div>
-                  <div className="text-xs font-mono text-slate-500 font-medium">Autoencoder MSE</div>
+                  <div className="text-xs font-mono text-slate-500 font-medium">Scenario anomaly score</div>
                 </div>
 
                 {/* 14. ESTIMATED RUL */}
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex flex-col justify-between min-h-[80px]">
                   <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">14. ESTIMATED RUL</div>
                   <div className="text-lg font-bold font-mono text-sky-700 font-bold">{activeTelemetry.rul}</div>
-                  <div className="text-xs font-mono text-slate-500 font-medium">Bi-LSTM 95% CI</div>
+                  <div className="text-xs font-mono text-slate-500 font-medium">Scenario RUL</div>
                 </div>
               </div>
             </div>
@@ -982,7 +982,7 @@ export const UnifiedDebriefTab = () => {
                   <input 
                     type="range" 
                     min="0" 
-                    max="30000" 
+                    max="23000"
                     step="500"
                     value={altitudeFt}
                     onChange={(e) => setAltitudeFt(Number(e.target.value))}
@@ -991,7 +991,7 @@ export const UnifiedDebriefTab = () => {
                   <div className="flex justify-between text-xs font-mono text-slate-500 font-medium">
                     <span>0 FT (SL)</span>
                     <span>FL145</span>
-                    <span>FL300 (Ceiling)</span>
+                    <span>FL230 (ceiling)</span>
                   </div>
                 </div>
 
@@ -1099,7 +1099,7 @@ export const UnifiedDebriefTab = () => {
           </div>
         )}
 
-        {/* Right Column: GarudaTwin Copilot & 1-Click PDF Dossier */}
+        {/* Right Column: scripted debrief assistant & PDF export */}
         {viewMode !== 'replay_full' && (
           <div className={`flex flex-col gap-3.5 shrink-0 transition-all ${viewMode === 'copilot_full' ? 'w-full' : 'w-full lg:w-[35%]'}`}>
             {/* Copilot Chat Console */}
@@ -1113,10 +1113,10 @@ export const UnifiedDebriefTab = () => {
                     </div>
                     <div>
                       <h3 className="font-bold text-sm tracking-wider text-slate-900">
-                        TELEMETRY REASONING KERNEL
+                        SCRIPTED DEBRIEF ASSISTANT
                       </h3>
                       <span className="text-xs text-slate-500 font-medium font-mono">
-                        BLACK-BOX TELEMETRY INCIDENT &amp; ROOT-CAUSE REASONER
+                        PRE-WRITTEN ANSWERS ABOUT THE DEMO SCENARIO (NOT AN AI MODEL)
                       </span>
                     </div>
                   </div>
@@ -1145,7 +1145,7 @@ export const UnifiedDebriefTab = () => {
                       >
                         <div className="flex items-center gap-1.5 mb-1 text-xs text-slate-500">
                           {isAi ? <Bot className="w-3.5 h-3.5 text-sky-600" /> : <Terminal className="w-3.5 h-3.5 text-slate-500" />}
-                          <span className="font-bold text-slate-700">{isAi ? 'REASONING KERNEL' : 'GCS FLIGHT CONTROLLER'}</span>
+                          <span className="font-bold text-slate-700">{isAi ? 'SCRIPTED ASSISTANT' : 'OPERATOR'}</span>
                           <span className="text-xs font-mono text-slate-400">[{msg.timestamp}]</span>
                         </div>
                         <div
@@ -1200,11 +1200,11 @@ export const UnifiedDebriefTab = () => {
             <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col gap-3 shadow-xs">
               <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-slate-800 uppercase tracking-wider">
                 <FileText className="w-4 h-4 text-sky-600" />
-                <span>CERTIFIED AIRWORTHINESS DOSSIER (DO-178C LEVEL B)</span>
+                <span>DEMO SCENARIO DEBRIEF REPORT (PDF)</span>
               </div>
 
               <div className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-200 font-medium">
-                Compiles an official certified flight debrief containing full 14-parameter telemetry tables, ISA 1976 aerothermal derivations, autoencoder anomaly scores, and signed digital clearance for <span className="text-sky-700 font-bold font-mono">{activePreset.replace(/_/g, ' ')}</span>.
+                Exports the demo scenario's 14-parameter tables and ISA 1976 aerothermal derivations for <span className="text-sky-700 font-bold font-mono">{activePreset.replace(/_/g, ' ')}</span>. Not a certification document.
               </div>
 
               <button

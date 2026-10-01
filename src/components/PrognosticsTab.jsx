@@ -29,7 +29,8 @@ export const PrognosticsTab = () => {
   const { 
     telemetry, 
     aiPrognostics, 
-    missionDemandHours, 
+    fleetAi,
+missionDemandHours, 
     setMissionDemandHours 
   } = useTelemetry();
 
@@ -37,56 +38,22 @@ export const PrognosticsTab = () => {
   const [selectedUnit, setSelectedUnit] = useState('Vahak-1');
   const [isAuditDrawerOpen, setIsAuditDrawerOpen] = useState(false);
 
-  // Fleet Specifications & Metadata Registry
-  const FLEET_REGISTRY = {
-    'Vahak-1': {
-      callsign: 'Vahak-1 (ACTIVE TESTBED)',
-      engine: 'Rotax 915 iS (S/N: ENG-882-X)',
-      sn: 'ENG-882-X',
-      flightHours: 1248.6,
-      tboDueHours: 751.4,
-      role: 'Lead Tactical Testbed'
-    },
-    'Vahak-2': {
-      callsign: 'Vahak-2 (ESCORT LEAD)',
-      engine: 'Rotax 915 iS (S/N: RTX-0819)',
-      sn: 'RTX-0819',
-      flightHours: 415.0,
-      tboDueHours: 785.0,
-      role: 'Escort Lead'
-    },
-    'Vahak-3': {
-      callsign: 'Vahak-3 (RELAY ORBIT)',
-      engine: 'Rotax 916 iS (S/N: RTX-0902)',
-      sn: 'RTX-0902',
-      flightHours: 80.0,
-      tboDueHours: 1120.0,
-      role: 'Relay Orbit'
-    },
-    'Vahak-4': {
-      callsign: 'Vahak-4 (PERIMETER PATROL)',
-      engine: 'Rotax 915 iS (S/N: RTX-0754)',
-      sn: 'RTX-0754',
-      flightHours: 780.0,
-      tboDueHours: 420.0,
-      role: 'Perimeter Patrol'
-    },
-    'Vahak-5': {
-      callsign: 'Vahak-5 (HANGAR RESERVE)',
-      engine: 'Rotax 915 iS (S/N: RTX-0699)',
-      sn: 'RTX-0699',
-      flightHours: 1080.0,
-      tboDueHours: 120.0,
-      role: 'Hangar Reserve'
-    }
+  // Every vehicle comes from the gateway's live fleet: Vahak-1 from the selected data source,
+  // Vahak-2..4 from their own simulators + AI sessions, Vahak-5 grounded (no engine data).
+  const fleetMember = (telemetry.fleetState || []).find(u => u.id === selectedUnit);
+  const unitInfo = { callsign: fleetMember?.callsign ?? selectedUnit, flightHours: fleetMember?.flightHours ?? 0 };
+  const isLiveUnit = selectedUnit === 'Vahak-1';
+  const unitAi = isLiveUnit ? aiPrognostics : fleetAi?.[selectedUnit];
+  const unitTel = isLiveUnit ? telemetry : {
+    engine: fleetMember?.engineState,
+    health: { status: fleetMember?.l1?.status, index: fleetMember?.l1?.index, activeFault: fleetMember?.injectedFault },
+    source: { mode: 'SIM' },
   };
-
-  const unitInfo = FLEET_REGISTRY[selectedUnit] || FLEET_REGISTRY['Vahak-1'];
+  const hasLiveData = isLiveUnit || (fleetMember?.airborne && !!unitAi);
 
   // Fleet Multiplexer & Physics Computation
   let baseHealth = 100;
   let baseRul = 2000;
-  let activeUavStats = null;
   let degradationRate = 0.045;
   let combinedStress = 1.0;
   let stressBreakdown = { thermalStress: 1.0, mechanicalStress: 1.0, lubricationStress: 1.0, combustionStress: 1.0, operatingStress: 1.0, combinedStress: 1.0 };
@@ -109,58 +76,57 @@ export const PrognosticsTab = () => {
   let parameterEvidence = [];
   let degradationTrend = 'NOMINAL';
 
-  if (selectedUnit === 'Vahak-1') {
-    baseHealth = aiPrognostics?.engine_health_index ?? telemetry.health?.index ?? 100;
-    baseRul = aiPrognostics?.rul_hours_mean ?? 750;
-    degradationRate = aiPrognostics?.degradation_rate_pct_per_hour || 0.045;
-    stressBreakdown = aiPrognostics?.stressBreakdown || stressBreakdown;
+  if (hasLiveData) {
+    baseHealth = unitAi?.engine_health_index ?? unitTel.health?.index ?? 100;
+    baseRul = unitAi?.rul_hours_mean ?? 750;
+    degradationRate = unitAi?.degradation_rate_pct_per_hour || 0.045;
+    stressBreakdown = unitAi?.stressBreakdown || stressBreakdown;
     combinedStress = stressBreakdown.combinedStress || 1.0;
-    subsystemsDegradation = aiPrognostics?.subsystem_degradation || subsystemsDegradation;
+    subsystemsDegradation = unitAi?.subsystem_degradation || subsystemsDegradation;
 
-    // Normalize fault: treat nominal names cleanly as NONE
-    const rawDiag = aiPrognostics?.diagnosed_fault;
-    const telFault = telemetry.health?.activeFault;
-    const isNominal = (!rawDiag || ['NONE', 'none', 'NOMINAL', 'NOMINAL_OPERATION', 'NOMINAL BASELINE'].includes(rawDiag)) &&
-                      (!telFault || ['NONE', 'none', 'NOMINAL'].includes(telFault));
+    // Diagnosis comes from the AI model only. The injected simulator scenario
+    // (unitTel.health.activeFault) is ground truth and is shown separately, never used here.
+    const rawDiag = unitAi?.diagnosed_fault;
+    const isNominal = !rawDiag || ['NONE', 'none', 'NOMINAL', 'NOMINAL_OPERATION', 'NOMINAL BASELINE'].includes(rawDiag);
 
-    activeFault = isNominal ? 'NONE' : (telFault && telFault !== 'NONE' ? telFault : rawDiag);
+    activeFault = isNominal ? 'NONE' : rawDiag;
     probableFault = isNominal ? 'NOMINAL BASELINE' : activeFault.replace(/_/g, ' ');
-    faultConfidence = isNominal ? 75 : (aiPrognostics?.confidencePct || 92);
-    anomalyScore = aiPrognostics?.anomaly_score || 0.02;
-    degradationTrend = aiPrognostics?.degradationTrend || (baseHealth < 75 ? 'DEGRADING' : 'NOMINAL');
+    faultConfidence = unitAi?.diagnosis_confidence_pct ?? unitAi?.confidencePct ?? 90;
+    anomalyScore = unitAi?.anomaly_score || 0.02;
+    degradationTrend = unitAi?.degradationTrend || (baseHealth < 75 ? 'DEGRADING' : 'NOMINAL');
 
-    riskScore = aiPrognostics?.failureRiskScore || (baseHealth < 40 ? 0.75 : baseHealth < 75 ? 0.25 : 0.03);
+    riskScore = unitAi?.failureRiskScore || (baseHealth < 40 ? 0.75 : baseHealth < 75 ? 0.25 : 0.03);
     riskPct = Number((riskScore * 100).toFixed(1));
-    riskLevel = aiPrognostics?.failureRiskLevel || (riskScore > 0.6 ? 'CRITICAL' : riskScore > 0.3 ? 'HIGH' : riskScore > 0.15 ? 'MEDIUM' : 'LOW');
+    riskLevel = unitAi?.failureRiskLevel || (riskScore > 0.6 ? 'CRITICAL' : riskScore > 0.3 ? 'HIGH' : riskScore > 0.15 ? 'MEDIUM' : 'LOW');
     multiHorizonRisk = {
-      h1: Number((aiPrognostics?.multiHorizonRisk?.['1hr'] || (riskPct * 0.2)).toFixed(1)),
-      h4: Number((aiPrognostics?.multiHorizonRisk?.['4hr'] || (riskPct * 0.55)).toFixed(1)),
-      h8: Number((aiPrognostics?.multiHorizonRisk?.['8hr'] || (riskPct * 1.1)).toFixed(1)),
-      h24: Number((aiPrognostics?.multiHorizonRisk?.['24hr'] || Math.min(99, riskPct * 2.2)).toFixed(1))
+      h1: Number((unitAi?.multiHorizonRisk?.['1hr'] || (riskPct * 0.2)).toFixed(1)),
+      h4: Number((unitAi?.multiHorizonRisk?.['4hr'] || (riskPct * 0.55)).toFixed(1)),
+      h8: Number((unitAi?.multiHorizonRisk?.['8hr'] || (riskPct * 1.1)).toFixed(1)),
+      h24: Number((unitAi?.multiHorizonRisk?.['24hr'] || Math.min(99, riskPct * 2.2)).toFixed(1))
     };
 
-    whyReasoning = aiPrognostics?.maintenance?.reason?.[0] || 
+    whyReasoning = unitAi?.maintenance?.reason?.[0] || 
       (isNominal 
         ? 'All thermodynamic, vibrational, and combustion telemetry parameters track within ±1.5σ of the nominal Golden Twin baseline.'
         : `Physical telemetry deviations detected on ${activeFault.replace(/_/g, ' ')}. Component thermal and vibrational fatigue accelerates RUL consumption.`);
-    recommendationText = aiPrognostics?.pilot_advisory?.action_plan?.join(' ') || 
+    recommendationText = unitAi?.pilot_advisory?.action_plan?.join(' ') || 
       (isNominal 
         ? 'Continue standard flight operations. Perform routine 50-hour scheduled maintenance inspection.'
         : `Active fault mode [${activeFault}]. Reduce engine operating power and execute advisory checklist.`);
-    operationalWindow = aiPrognostics?.maintenance?.suggestedWindow || 
+    operationalWindow = unitAi?.maintenance?.suggestedWindow || 
       (isNominal ? 'Standard scheduled inspection at 50-hour interval.' : 'Immediate in-flight intervention required.');
     priority = isNominal ? 'LOW' : (baseHealth < 40 ? 'CRITICAL' : 'HIGH');
     urgencyLabel = isNominal ? 'ROUTINE MONITORING' : (baseHealth < 40 ? 'IMMEDIATE RTB' : 'DERATE & INSPECT');
     action = isNominal ? 'MONITOR' : 'INSPECTION';
 
-    // Parameter Evidence: use live mapped evidence from aiPrognostics if present
-    if (Array.isArray(aiPrognostics?.maintenance?.evidence) && aiPrognostics.maintenance.evidence.length > 0) {
-      parameterEvidence = aiPrognostics.maintenance.evidence;
+    // Parameter Evidence: use live mapped evidence from unitAi if present
+    if (Array.isArray(unitAi?.maintenance?.evidence) && unitAi.maintenance.evidence.length > 0) {
+      parameterEvidence = unitAi.maintenance.evidence;
     } else {
-      const egtSpread = Math.max(...(telemetry.engine?.egt || [840, 840, 840, 840])) - Math.min(...(telemetry.engine?.egt || [840, 840, 840, 840]));
-      const chtSpread = Math.max(...(telemetry.engine?.cht || [106, 106, 106, 106])) - Math.min(...(telemetry.engine?.cht || [106, 106, 106, 106]));
-      const oilP = telemetry.engine?.oilPressBar ?? 3.85;
-      const vib = telemetry.engine?.vibrationGrms ?? 0.28;
+      const egtSpread = Math.max(...(unitTel.engine?.egt || [840, 840, 840, 840])) - Math.min(...(unitTel.engine?.egt || [840, 840, 840, 840]));
+      const chtSpread = Math.max(...(unitTel.engine?.cht || [106, 106, 106, 106])) - Math.min(...(unitTel.engine?.cht || [106, 106, 106, 106]));
+      const oilP = unitTel.engine?.oilPressBar ?? 3.85;
+      const vib = unitTel.engine?.vibrationGrms ?? 0.28;
       parameterEvidence = [
         {
           parameter: 'Exhaust Gas Temp (EGT) Spread',
@@ -198,185 +164,19 @@ export const PrognosticsTab = () => {
     }
 
     // XAI Attributions
-    if (aiPrognostics?.feature_attributions && Object.keys(aiPrognostics.feature_attributions).length > 0) {
-      xaiAttributions = Object.entries(aiPrognostics.feature_attributions).map(([key, val]) => ({
+    if (unitAi?.feature_attributions && Object.keys(unitAi.feature_attributions).length > 0) {
+      xaiAttributions = Object.entries(unitAi.feature_attributions).map(([key, val]) => ({
         name: key.replace(/_/g, ' '),
         weight: `${typeof val === 'number' ? val.toFixed(1) : val}%`,
-        description: `Physics SHAP anomaly contribution for ${key.replace(/_/g, ' ')}.`,
+        description: `TreeSHAP contribution of ${key.replace(/_/g, ' ')}.`,
         status: val > 20 ? 'CRITICAL' : val > 10 ? 'ELEVATED' : 'NOMINAL'
       })).sort((a, b) => parseFloat(b.weight) - parseFloat(a.weight)).slice(0, 6);
-    }
-  } else {
-    // Vahak-2 through Vahak-5 physics models
-    activeUavStats = (telemetry.fleetState || []).find(u => u.id === selectedUnit);
-    if (!activeUavStats) {
-      const reg = {
-        'Vahak-2': { health: 96.2, rulHours: 785.0, status: 'ON STATION', flightHours: 415.0, subsystems: { combustion: 98, lubrication: 95, induction: 97, cooling: 96, vibration: 95 } },
-        'Vahak-3': { health: 99.1, rulHours: 1120.0, status: 'CLIMB TO CRUISE', flightHours: 80.0, subsystems: { combustion: 100, lubrication: 99, induction: 98, cooling: 99, vibration: 100 } },
-        'Vahak-4': { health: 84.5, rulHours: 420.0, status: 'DERATED CRUISE', flightHours: 780.0, subsystems: { combustion: 88, lubrication: 82, induction: 85, cooling: 86, vibration: 80 } },
-        'Vahak-5': { health: 72.0, rulHours: 120.0, status: 'GROUND MAINTENANCE', flightHours: 1080.0, subsystems: { combustion: 74, lubrication: 70, induction: 78, cooling: 65, vibration: 68 } },
-      };
-      activeUavStats = reg[selectedUnit] || reg['Vahak-2'];
-    }
-
-    baseHealth = activeUavStats.health;
-    baseRul = activeUavStats.rulHours; // Clean, non-negative RUL
-
-    const sub = activeUavStats.subsystems || {};
-    // Subsystem degradation index: 0 = nominal, 100 = degraded
-    subsystemsDegradation = {
-      thermal: Math.max(0, 100 - (sub.cooling || 95)),
-      mechanical: Math.max(0, 100 - (sub.vibration || 95)),
-      lubrication: Math.max(0, 100 - (sub.lubrication || 95)),
-      combustion: Math.max(0, 100 - (sub.combustion || 95)),
-      fuel: Math.max(0, 100 - (sub.induction || 95)),
-      electrical: selectedUnit === 'Vahak-5' ? 12 : 3
-    };
-
-    if (selectedUnit === 'Vahak-2') {
-      degradationRate = 0.052;
-      combinedStress = 1.22;
-      stressBreakdown = { thermalStress: 1.05, mechanicalStress: 1.08, lubricationStress: 1.06, combustionStress: 1.02, operatingStress: 1.0, combinedStress: 1.22 };
-      probableFault = 'NOMINAL BASELINE';
-      activeFault = 'NONE';
-      faultConfidence = 96;
-      anomalyScore = 0.03;
-      riskScore = 0.03;
-      riskPct = 3.2;
-      riskLevel = 'LOW';
-      multiHorizonRisk = { h1: 0.6, h4: 1.8, h8: 4.5, h24: 10.2 };
-      degradationTrend = 'NOMINAL';
-      whyReasoning = 'Rotax 915 iS engine operating well within certified envelope. Low thermal wear and minimal friction residuals detected across all 4 cylinders.';
-      recommendationText = 'Unit certified for standard flight operations. Continue routine scheduled 50-hour inspection interval.';
-      operationalWindow = 'Standard scheduled inspection at 50-hour interval.';
-      priority = 'LOW';
-      urgencyLabel = 'ROUTINE MONITORING';
-      action = 'MONITOR';
-
-      xaiAttributions = [
-        { name: 'Cylinder CHT Thermal Spread', weight: '18.2%', description: 'Nominal cylinder thermal balance across boxer cylinders.', status: 'NOMINAL' },
-        { name: 'Exhaust Gas Temp Disparity', weight: '16.5%', description: 'Turbine inlet temperature consistent with commanded throttle.', status: 'NOMINAL' },
-        { name: 'Engine Vibration RMS', weight: '15.4%', description: 'Smooth torsional balance at 4800 RPM cruise.', status: 'NOMINAL' },
-        { name: 'Hydrodynamic Oil Pressure', weight: '14.8%', description: 'Bearing lubrication film intact at 3.82 bar.', status: 'NOMINAL' },
-        { name: 'Manifold Absolute Pressure', weight: '12.0%', description: 'Turbo boost pressure matches FADEC MAP target.', status: 'NOMINAL' },
-        { name: 'Fuel Rail Flow Delta', weight: '11.5%', description: 'Equalized injector flow rate.', status: 'NOMINAL' }
-      ];
-
-      parameterEvidence = [
-        { parameter: 'Cylinder CHT Thermal Spread', goldenModel: '< 10.0 °C', liveTelemetry: '4.2 °C', residual: '-58%', diagnosticWeight: '88%', status: 'NOMINAL' },
-        { parameter: 'Exhaust Gas Temp Disparity', goldenModel: '< 18.0 °C', liveTelemetry: '7.8 °C', residual: '-56%', diagnosticWeight: '85%', status: 'NOMINAL' },
-        { parameter: 'Hydrodynamic Oil Pressure', goldenModel: '3.85 bar ± 0.35', liveTelemetry: '3.82 bar', residual: '-0.03 bar', diagnosticWeight: '82%', status: 'NOMINAL' },
-        { parameter: 'Engine Vibration (g-RMS)', goldenModel: '< 0.35 g-RMS', liveTelemetry: '0.29 g-RMS', residual: '-17%', diagnosticWeight: '80%', status: 'NOMINAL' }
-      ];
-    } else if (selectedUnit === 'Vahak-3') {
-      degradationRate = 0.041;
-      combinedStress = 1.02;
-      stressBreakdown = { thermalStress: 1.01, mechanicalStress: 1.01, lubricationStress: 1.01, combustionStress: 1.0, operatingStress: 1.0, combinedStress: 1.02 };
-      probableFault = 'PRISTINE BASELINE';
-      activeFault = 'NONE';
-      faultConfidence = 99;
-      anomalyScore = 0.01;
-      riskScore = 0.01;
-      riskPct = 1.1;
-      riskLevel = 'LOW';
-      multiHorizonRisk = { h1: 0.2, h4: 0.8, h8: 2.1, h24: 5.4 };
-      degradationTrend = 'NOMINAL';
-      whyReasoning = 'Rotax 916 iS factory-fresh powertrain with only 80 flight hours. Near-zero sensor residuals indicate pristine break-in conditions.';
-      recommendationText = 'Certified for maximum endurance mission loiter. Zero maintenance discrepancies or PHM interventions required.';
-      operationalWindow = 'Standard scheduled inspection at 50-hour interval.';
-      priority = 'LOW';
-      urgencyLabel = 'OPTIMAL STATUS';
-      action = 'MONITOR';
-
-      xaiAttributions = [
-        { name: 'Cylinder CHT Thermal Spread', weight: '17.1%', description: 'Near-zero temperature gradient across dual cylinder banks.', status: 'NOMINAL' },
-        { name: 'Exhaust Gas Temp Disparity', weight: '16.8%', description: 'Pristine lambda distribution and combustion balance.', status: 'NOMINAL' },
-        { name: 'Hydrodynamic Oil Pressure', weight: '15.9%', description: 'Optimal viscosity and high film wedge pressure (3.92 bar).', status: 'NOMINAL' },
-        { name: 'Engine Vibration RMS', weight: '14.2%', description: 'Minimum harmonic vibration at 0.24g RMS.', status: 'NOMINAL' },
-        { name: 'Manifold Absolute Pressure', weight: '13.0%', description: 'FADEC closed-loop wastegate tracking within 0.5%.', status: 'NOMINAL' },
-        { name: 'Alternator Bus Voltage', weight: '11.0%', description: 'Dual 28V generator buses operating at full capacity.', status: 'NOMINAL' }
-      ];
-
-      parameterEvidence = [
-        { parameter: 'Cylinder CHT Thermal Spread', goldenModel: '< 10.0 °C', liveTelemetry: '3.1 °C', residual: '-69%', diagnosticWeight: '90%', status: 'NOMINAL' },
-        { parameter: 'Exhaust Gas Temp Disparity', goldenModel: '< 18.0 °C', liveTelemetry: '5.4 °C', residual: '-70%', diagnosticWeight: '88%', status: 'NOMINAL' },
-        { parameter: 'Hydrodynamic Oil Pressure', goldenModel: '3.85 bar ± 0.35', liveTelemetry: '3.92 bar', residual: '+0.07 bar', diagnosticWeight: '85%', status: 'NOMINAL' },
-        { parameter: 'Engine Vibration (g-RMS)', goldenModel: '< 0.35 g-RMS', liveTelemetry: '0.24 g-RMS', residual: '-31%', diagnosticWeight: '82%', status: 'NOMINAL' }
-      ];
-    } else if (selectedUnit === 'Vahak-4') {
-      degradationRate = 0.082;
-      combinedStress = 2.89;
-      stressBreakdown = { thermalStress: 1.35, mechanicalStress: 1.42, lubricationStress: 1.25, combustionStress: 1.15, operatingStress: 1.10, combinedStress: 2.89 };
-      probableFault = 'PRGB BACKLASH & THERMAL ACCUMULATION';
-      activeFault = 'PRGB_DEGRADATION';
-      faultConfidence = 88;
-      anomalyScore = 0.28;
-      riskScore = 0.24;
-      riskPct = 24.0;
-      riskLevel = 'MEDIUM';
-      multiHorizonRisk = { h1: 3.8, h4: 11.2, h8: 24.5, h24: 48.0 };
-      degradationTrend = 'DEGRADING';
-      whyReasoning = 'Propeller Reduction Gearbox (PRGB) displays 2X torsional vibration harmonics, accompanied by +14°C elevated cylinder head thermal spread under sustained patrol duty.';
-      recommendationText = 'Derate continuous cruise throttle to max 72% MAP. Conduct borescope inspection of PRGB gears and inspect oil scavenge filter within 15 flight hours.';
-      operationalWindow = 'Schedule maintenance inspection within 15 operating hours.';
-      priority = 'HIGH';
-      urgencyLabel = 'INSPECTION ADVISED';
-      action = 'INSPECTION';
-
-      xaiAttributions = [
-        { name: 'Gearbox 2X Torsional Harmonic', weight: '38.5%', description: 'Vibration FFT energy spike at propeller reduction gearbox gearmesh frequency.', status: 'CRITICAL' },
-        { name: 'Cylinder CHT Thermal Spread', weight: '24.2%', description: 'Cooling airflow restriction elevating cylinder head thermal gradient.', status: 'ELEVATED' },
-        { name: 'Oil Filter Differential Pressure', weight: '18.4%', description: 'Early debris loading causing elevated pressure drop across filter.', status: 'ELEVATED' },
-        { name: 'Manifold Pressure Ripple', weight: '10.2%', description: 'Slight turbocharger boost hunting during power transitions.', status: 'NOMINAL' },
-        { name: 'Exhaust Gas Temp Disparity', weight: '8.7%', description: 'Moderate thermal delta across rear exhaust runners.', status: 'NOMINAL' }
-      ];
-
-      parameterEvidence = [
-        { parameter: 'Gearbox Vibration (g-RMS)', goldenModel: '< 0.35 g-RMS', liveTelemetry: '0.58 g-RMS', residual: '+0.23 g-RMS', diagnosticWeight: '92%', status: 'WARNING' },
-        { parameter: 'Cylinder CHT Thermal Spread', goldenModel: '< 10.0 °C', liveTelemetry: '16.8 °C', residual: '+6.8 °C', diagnosticWeight: '88%', status: 'WARNING' },
-        { parameter: 'Hydrodynamic Oil Pressure', goldenModel: '3.85 bar ± 0.35', liveTelemetry: '3.38 bar', residual: '-0.47 bar', diagnosticWeight: '84%', status: 'WARNING' },
-        { parameter: 'Exhaust Gas Temp Disparity', goldenModel: '< 18.0 °C', liveTelemetry: '24.2 °C', residual: '+6.2 °C', diagnosticWeight: '76%', status: 'WARNING' }
-      ];
-    } else { // Vahak-5
-      degradationRate = 0.183;
-      combinedStress = 8.45;
-      stressBreakdown = { thermalStress: 1.75, mechanicalStress: 1.60, lubricationStress: 1.82, combustionStress: 1.45, operatingStress: 1.15, combinedStress: 8.45 };
-      probableFault = 'OIL PUMP CAVITATION & COMPRESSION BLOW-BY';
-      activeFault = 'OIL_PUMP_CAVITATION';
-      faultConfidence = 97;
-      anomalyScore = 0.64;
-      riskScore = 0.68;
-      riskPct = 68.0;
-      riskLevel = 'CRITICAL';
-      multiHorizonRisk = { h1: 14.5, h4: 38.2, h8: 62.4, h24: 89.1 };
-      degradationTrend = 'RAPIDLY DEGRADING';
-      whyReasoning = 'Hydrodynamic oil film pressure has collapsed to 2.28 bar with cooling circuit thermal runaway. Hot blow-by gases pressurize crankcase, accelerating journal bearing fatigue.';
-      recommendationText = 'AIRCRAFT GROUNDED. Do NOT authorize dispatch for flight missions. Perform complete oil pump overhaul, cylinder compression leakdown test, and flush engine oil cooler circuit immediately.';
-      operationalWindow = 'Ground aircraft immediately — zero dispatch authorized.';
-      priority = 'CRITICAL';
-      urgencyLabel = 'REMOVE FROM SERVICE';
-      action = 'ENGINEERING_REVIEW';
-
-      xaiAttributions = [
-        { name: 'Oil Pressure Hydrodynamic Loss', weight: '44.2%', description: 'Oil pressure severely degraded (2.28 bar), compromising journal bearing lubrication.', status: 'CRITICAL' },
-        { name: 'Coolant Radiator Delta T', weight: '26.8%', description: 'Thermal rejection efficiency impaired; coolant core approaching boilover.', status: 'CRITICAL' },
-        { name: 'Crankcase Blow-by Pressure', weight: '16.5%', description: 'Piston ring sealing failure leaking combustion gas into oil sump.', status: 'ELEVATED' },
-        { name: 'Engine Block Vibration RMS', weight: '8.5%', description: 'High-frequency acoustic chatter from un-cushioned journal bearings.', status: 'ELEVATED' },
-        { name: 'Exhaust Gas Temp Disparity', weight: '4.0%', description: 'Uneven combustion from oil contamination in intake charge.', status: 'NOMINAL' }
-      ];
-
-      parameterEvidence = [
-        { parameter: 'Hydrodynamic Oil Pressure', goldenModel: '3.85 bar ± 0.35', liveTelemetry: '2.28 bar', residual: '-1.57 bar', diagnosticWeight: '98%', status: 'CRITICAL' },
-        { parameter: 'Coolant Radiator Temperature', goldenModel: '< 95.0 °C', liveTelemetry: '108.2 °C', residual: '+13.2 °C', diagnosticWeight: '95%', status: 'CRITICAL' },
-        { parameter: 'Engine Vibration (g-RMS)', goldenModel: '< 0.35 g-RMS', liveTelemetry: '0.74 g-RMS', residual: '+0.39 g-RMS', diagnosticWeight: '91%', status: 'CRITICAL' },
-        { parameter: 'Cylinder CHT Thermal Spread', goldenModel: '< 10.0 °C', liveTelemetry: '21.4 °C', residual: '+11.4 °C', diagnosticWeight: '89%', status: 'CRITICAL' }
-      ];
     }
   }
 
   // Trajectory Generation (Consistent physics envelope across all units)
-  const traj = (selectedUnit === 'Vahak-1' && aiPrognostics?.trajectory?.length > 0)
-    ? aiPrognostics.trajectory
+  const traj = (unitAi?.trajectory?.length > 0)
+    ? unitAi.trajectory
     : [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50].map((step) => {
         const wearDelta = degradationRate * step * (1.0 + step / 120.0);
         const predictedHealth = Number(Math.max(0.0, baseHealth - wearDelta).toFixed(1));
@@ -390,16 +190,16 @@ export const PrognosticsTab = () => {
         };
       });
 
-  const histHealthRaw = (selectedUnit === 'Vahak-1' && aiPrognostics?.historicalHealthPoints?.length > 0)
-    ? aiPrognostics.historicalHealthPoints
+  const histHealthRaw = (unitAi?.historicalHealthPoints?.length > 0)
+    ? unitAi.historicalHealthPoints
     : [
         { hoursOffset: -50, value: Math.min(100.0, baseHealth + degradationRate * 50) },
         { hoursOffset: -25, value: Math.min(100.0, baseHealth + degradationRate * 25) },
         { hoursOffset: 0,   value: baseHealth }
       ];
 
-  const histRulRaw = (selectedUnit === 'Vahak-1' && aiPrognostics?.historicalRulPoints?.length > 0)
-    ? aiPrognostics.historicalRulPoints
+  const histRulRaw = (unitAi?.historicalRulPoints?.length > 0)
+    ? unitAi.historicalRulPoints
     : [
         { hoursOffset: -50, value: baseRul + 50 * combinedStress },
         { hoursOffset: -25, value: baseRul + 25 * combinedStress },
@@ -408,14 +208,12 @@ export const PrognosticsTab = () => {
 
   // Dynamic Mission Margin
   const dynamicMissionMargin = Number((baseRul - missionDemandHours).toFixed(1));
-  const isMissionFeasible = selectedUnit === 'Vahak-5'
-    ? false
-    : (dynamicMissionMargin > 0 && baseHealth >= 75 && baseRul > missionDemandHours * 1.2);
+  const isMissionFeasible = dynamicMissionMargin > 0 && baseHealth >= 75 && baseRul > missionDemandHours * 1.2;
 
   const data = {
     health: { 
       index: baseHealth, 
-      status: selectedUnit === 'Vahak-1' ? (telemetry.health?.status || 'NOMINAL') : (activeUavStats?.status || 'NOMINAL'), 
+      status: unitTel.health?.status || 'NOMINAL', 
       probableFault: probableFault, 
       activeFault: activeFault, 
       faultConfidence: faultConfidence, 
@@ -430,8 +228,8 @@ export const PrognosticsTab = () => {
     },
     rul: { 
       hours: baseRul, 
-      lower95: selectedUnit === 'Vahak-1' ? (aiPrognostics?.rul_hours_lower_95 || Number((baseRul * 0.9).toFixed(1))) : Number((baseRul * 0.9).toFixed(1)), 
-      upper95: selectedUnit === 'Vahak-1' ? (aiPrognostics?.rul_hours_upper_95 || Number((baseRul * 1.1).toFixed(1))) : Number((baseRul * 1.1).toFixed(1)), 
+      lower95: unitAi?.rul_hours_lower_95 ?? baseRul,
+      upper95: unitAi?.rul_hours_upper_95 ?? baseRul, 
       confidencePct: faultConfidence, 
       melLimit: 50.0, 
       minDispatchRul: 20.0, 
@@ -461,16 +259,16 @@ export const PrognosticsTab = () => {
       isMissionFeasible: isMissionFeasible
     },
     dataQuality: { 
-      score: selectedUnit === 'Vahak-1' ? (aiPrognostics?.dataQuality?.quality_score_pct || 99) : (selectedUnit === 'Vahak-5' ? 92 : 98), 
-      sensorConfidence: selectedUnit === 'Vahak-1' ? (aiPrognostics?.dataQuality?.sensor_confidence_pct || 98) : (selectedUnit === 'Vahak-5' ? 89 : 97), 
-      telemetryAgeMs: selectedUnit === 'Vahak-1' ? (aiPrognostics?.dataQuality?.telemetry_age_ms || 12) : 15 
+      score: unitAi?.dataQuality?.quality_score_pct ?? null,
+      sensorConfidence: unitAi?.dataQuality?.sensor_confidence_pct ?? null,
+      telemetryAgeMs: unitAi?.dataQuality?.telemetry_age_ms ?? null 
     },
     xaiAttributions: xaiAttributions,
     modelMetadata: {
-      name: 'PINN Autoencoder + Multi-Stress Fatigue RUL',
-      version: '1.2.0',
-      dataset: 'Rotax 915/916-iS Hardware-in-the-Loop Telemetry & Physics Baseline',
-      featuresCount: 71,
+      name: unitAi?.modelMetadata?.model_name || 'Mahalanobisresidual detector + XGBoost (TreeSHAP)',
+      version: unitAi?.modelMetadata?.version || '2.0.0',
+      dataset: unitAi?.modelMetadata?.training_dataset || 'GarudaTwinengine simulator (synthetic)',
+      featuresCount: unitAi?.modelMetadata?.num_features || 41,
       tboHours: 2000,
       melThresholdPct: 50,
       disclaimer: 'AI-assisted prototype decision support only. Follow Rotax 915-iS AMM statutory procedures.'
@@ -564,6 +362,31 @@ export const PrognosticsTab = () => {
     };
   }, [data, plotW, plotH]);
 
+  if (!hasLiveData) {
+    return (
+      <div className="h-full overflow-y-auto custom-scrollbar flex flex-col gap-4 pb-12 pr-1 text-slate-900 font-mono">
+        <div className="gcs-panel rounded-lg border border-slate-200 p-4 shadow-xs bg-white">
+          <div className="flex flex-wrap items-center gap-1 text-[10px] font-mono mb-3">
+            <span className="text-slate-500 mr-1 font-semibold">ASSET:</span>
+            {['Vahak-1', 'Vahak-2', 'Vahak-3', 'Vahak-4', 'Vahak-5'].map(unit => (
+              <button key={unit} onClick={() => setSelectedUnit(unit)}
+                className={`px-2 py-1 rounded-md border text-xs font-mono ${selectedUnit === unit ? 'bg-sky-600 text-white font-bold border-sky-600' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
+                {unit}
+              </button>
+            ))}
+          </div>
+          <h2 className="font-bold text-sm text-slate-900">{unitInfo.callsign}</h2>
+          <p className="text-xs text-slate-600 mt-1.5">
+            {fleetMember?.airborne === false
+              ? (fleetMember.note || 'On the ground, engine not running: no live engine data, so no AI health or RUL estimate.')
+              : 'Waiting for this vehicle\'s first AI result (the fleet is scored once per second).'}
+          </p>
+          <p className="text-[11px] text-slate-500 mt-1">Engine hours: {unitInfo.flightHours} h</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full overflow-y-auto custom-scrollbar flex flex-col gap-4 pb-12 pr-1 text-slate-900 font-mono">
       
@@ -633,7 +456,7 @@ export const PrognosticsTab = () => {
             <span className="text-slate-500 mr-1 font-semibold">ASSET:</span>
             {['Vahak-1', 'Vahak-2', 'Vahak-3', 'Vahak-4', 'Vahak-5'].map((unit) => {
               const uStats = (telemetry.fleetState || []).find(u => u.id === unit);
-              const uHealth = unit === 'Vahak-1' ? data.health.index : (uStats?.health ?? (unit === 'Vahak-2' ? 96.2 : unit === 'Vahak-3' ? 99.1 : unit === 'Vahak-4' ? 84.5 : 72.0));
+              const uHealth = unit === 'Vahak-1' ? data.health.index : (uStats?.ai?.health ?? null);
               return (
                 <button
                   key={unit}
@@ -644,7 +467,7 @@ export const PrognosticsTab = () => {
                       : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'
                   }`}
                 >
-                  {unit} ({uHealth.toFixed(0)}%)
+                  {unit} ({uHealth == null ? (uStats?.airborne === false ? 'ground' : '—') : `${uHealth.toFixed(0)}%`})
                 </button>
               );
             })}
@@ -671,17 +494,30 @@ export const PrognosticsTab = () => {
           <span className="text-emerald-600 font-bold tabular-nums">{data.dataQuality.score}% COMPLIANT</span>
         </div>
         <div className="gcs-card p-2 rounded border border-slate-200 bg-white flex items-center justify-between shadow-xs">
-          <span className="text-slate-500 text-[10px] font-semibold">SENSOR CONFIDENCE:</span>
-          <span className="text-sky-600 font-bold tabular-nums">{data.dataQuality.sensorConfidence}% BAYESIAN</span>
+          <span className="text-slate-500 text-[10px] font-semibold" title="Data-quality score, reduced 20 % when an input is outside the training range">SENSOR CONFIDENCE:</span>
+          <span className="text-sky-600 font-bold tabular-nums">{data.dataQuality.sensorConfidence ?? '—'}% (DATA QUALITY)</span>
         </div>
         <div className="gcs-card p-2 rounded border border-slate-200 bg-white flex items-center justify-between shadow-xs">
-          <span className="text-slate-500 text-[10px] font-semibold">TELEMETRY FRESHNESS:</span>
-          <span className="text-slate-800 font-bold tabular-nums">LIVE — {data.dataQuality.telemetryAgeMs}ms</span>
+          <span className="text-slate-500 text-[10px] font-semibold">AI SAMPLE INTERVAL:</span>
+          <span className="text-slate-800 font-bold tabular-nums">{telemetry?.source?.mode ?? 'SIM'} — {data.dataQuality.telemetryAgeMs}ms</span>
         </div>
         <div className="gcs-card p-2 rounded border border-slate-200 bg-white flex items-center justify-between shadow-xs">
-          <span className="text-slate-500 text-[10px] font-semibold">ACTIVE FAULT:</span>
-          <span className={`font-bold ${data.health.activeFault === 'NONE' ? 'text-emerald-600' : data.health.activeFault === 'MODEL_DISAGREEMENT' ? 'text-amber-600' : 'text-red-600'}`}>
-            {data.health.activeFault}
+          <span className="text-slate-500 text-[10px] font-semibold">AI DIAGNOSIS:</span>
+          <span className="text-right">
+            <span className={`font-bold ${data.health.activeFault === 'NONE' ? 'text-emerald-600' : data.health.activeFault === 'UNCLASSIFIED_ANOMALY' ? 'text-amber-600' : 'text-red-600'}`}>
+              {data.health.activeFault}
+            </span>
+            {unitAi?.suspect_sensor && (
+              <span className="block text-[9px] text-amber-700 font-bold">
+                suspect sensor: {unitAi.suspect_sensor}
+              </span>
+            )}
+            {/* Ground truth exists only for the simulator (injected) and labelled recordings; live data has none */}
+            {unitTel.health?.activeFault != null && (
+              <span className="block text-[9px] text-slate-400 font-medium">
+                {unitTel.source?.mode === 'REPLAY' ? 'recording label' : 'injected scenario'}: {unitTel.health.activeFault}
+              </span>
+            )}
           </span>
         </div>
       </div>
@@ -783,7 +619,7 @@ export const PrognosticsTab = () => {
                 <span className="text-2xl font-mono font-bold text-slate-900 tabular-nums">
                   {data.rul.confidencePct}%
                 </span>
-                <span className="text-xs text-slate-500 font-mono font-medium">Bayesian 95%</span>
+                <span className="text-xs text-slate-500 font-mono font-medium">classifier posterior</span>
               </div>
 
               {/* Progress bar */}
@@ -883,7 +719,7 @@ export const PrognosticsTab = () => {
                     MEL LIMIT (50%)
                   </text>
 
-                  {/* 95% Bayesian Confidence Envelope */}
+                  {/* 95 % interval from the conformal quantile RUL model */}
                   {healthPoints.polygonPath && (
                     <path d={healthPoints.polygonPath} fill="#059669" fillOpacity="0.12" />
                   )}
@@ -931,7 +767,7 @@ export const PrognosticsTab = () => {
               <div className="flex flex-wrap items-center justify-between text-[10px] text-slate-600 mt-2 px-1">
                 <div className="flex items-center gap-1.5">
                   <span className="w-3 h-0.5 bg-[#0284c7]"></span>
-                  <span className="font-medium">Historical Flight Log</span>
+                  <span className="font-medium">Model backcast (not recorded history)</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="w-3 h-0.5 bg-[#059669]"></span>
@@ -939,7 +775,7 @@ export const PrognosticsTab = () => {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 bg-[#059669]/20 border border-[#059669]/40 rounded-sm"></span>
-                  <span className="font-medium">95% Bayesian Envelope</span>
+                  <span className="font-medium">95% conformal interval</span>
                 </div>
               </div>
             </div>
@@ -1061,7 +897,7 @@ export const PrognosticsTab = () => {
               <div className="flex flex-wrap items-center justify-between text-[10px] text-slate-600 mt-2 px-1">
                 <div className="flex items-center gap-1.5">
                   <span className="w-3 h-0.5 bg-[#0284c7]"></span>
-                  <span className="font-medium">Historical RUL Curve</span>
+                  <span className="font-medium">RUL backcast (model)</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="w-3 h-0.5 bg-[#059669]"></span>
@@ -1173,11 +1009,11 @@ export const PrognosticsTab = () => {
                   EXPLAINABLE AI (XAI) ANOMALY ATTRIBUTION
                 </h3>
                 <div className="text-[10px] font-mono text-slate-500 font-medium">
-                  SHAP-style neural weight contribution to current deviation score
+                  TreeSHAP contribution of each sensor group to the model output
                 </div>
               </div>
               <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 text-[10px] font-mono font-semibold">
-                PINN AUTOENCODER
+                XGBOOST TREESHAP
               </span>
             </div>
 
@@ -1278,12 +1114,12 @@ export const PrognosticsTab = () => {
               </div>
               <div className="w-full bg-slate-100 h-1.5 rounded mt-2.5 overflow-hidden border border-slate-200">
                 <div 
-                  className="h-full bg-emerald-500 transition-all duration-300"
+                  className={`h-full transition-all duration-300 ${data.health.overallAnomalyScore <= 0.15 ? 'bg-emerald-500' : 'bg-red-500'}`}
                   style={{ width: `${Math.min(100, data.health.overallAnomalyScore * 70)}%` }}
                 />
               </div>
               <div className="text-[10px] font-mono text-slate-500 mt-2 font-medium">
-                Within Nominal (≤0.15 σ)
+                {data.health.overallAnomalyScore <= 0.15 ? 'Within Nominal (≤0.15 σ)' : 'Exceeds Nominal (>0.15 σ)'}
               </div>
             </div>
 
@@ -1348,7 +1184,7 @@ export const PrognosticsTab = () => {
                 />
               </div>
               <div className="text-[10px] font-mono text-slate-500 mt-2 font-medium">
-                Physics Correlation: 100%
+                Anomaly score: {data.health.overallAnomalyScore.toFixed(2)}
               </div>
             </div>
 
@@ -1441,8 +1277,8 @@ export const PrognosticsTab = () => {
               </div>
 
               <div className="mt-4 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[10px] font-mono text-slate-500">
-                <span>Inference: Physics-Informed Neural Autoencoder (PINN)</span>
-                <span className="text-slate-700 font-semibold">Validated vs. Rotax 915-iS Dataset</span>
+                <span>Inference: XGBoost classifier + Mahalanobis residual detector</span>
+                <span className="text-slate-700 font-semibold">Trained on GarudaTwin simulator (synthetic)</span>
               </div>
             </div>
 

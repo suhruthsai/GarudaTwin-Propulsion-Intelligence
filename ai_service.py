@@ -1,17 +1,23 @@
 """
 GarudaTwin MALE UAV - AI & Physics Prognostics Microservice
 Rotax 915/916 iS Turbocharged Engine Digital Twin
-Built with FastAPI, PyTorch (Autoencoder Anomaly Detector + LSTM RUL Estimator),
-Analytical Physics Baseline Core, SHAP Feature Attribution, and RL Trajectory Replanner.
+Built with FastAPI, a trained PyTorch autoencoder (legacy single-frame endpoint), the
+ai_health_rul pipeline (IsolationForest + XGBoost, trained on simulator data), an analytical
+physics baseline, TreeSHAP attribution and a rule-based return-to-base replanner.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pathlib import Path
+import hmac
+import os
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import numpy as np
 import math
 import time
+import uuid
 
 # PyTorch Imports
 import torch
@@ -20,6 +26,9 @@ import torch.nn as nn
 # Migrated AI Health & RUL Module Imports
 from ai_health_rul.services.health_rul_service import HealthRulService
 from ai_health_rul.schemas.health_rul_schema import UnifiedHealthRulResponse, HealthPredictionResult, PrognosticsResult
+from ai_health_rul.inference.autoencoder import EngineAnomalyAutoencoder, AE_FEATURE_NAMES, normalise
+from ai_health_rul.config.config import MODEL_DIR, MODEL_CARD_FILE, AUTOENCODER_FILE
+import json
 
 app = FastAPI(
     title="GarudaTwin AI & Physics Microservice",
@@ -29,100 +38,72 @@ app = FastAPI(
 
 health_rul_service = HealthRulService()
 
+# ---------------------------------------------------------
+# 0. SERVICE SECURITY
+# ---------------------------------------------------------
+# Browsers never call this service directly: the authenticated gateway (server.js) proxies
+# requests and adds the shared X-Internal-Key. The service binds to 127.0.0.1 by default.
+DATA_DIR = Path(os.environ.get("GCS_DATA_DIR", Path(__file__).resolve().parent / "data"))
+PUBLIC_PATHS = {"/", "/health", "/docs", "/redoc", "/openapi.json"}
+_key_cache: Dict[str, Any] = {"mtime": None, "key": None}
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
+def _internal_key() -> Optional[str]:
+    """GCS_INTERNAL_KEY env, else internalKey from data/service.json (created by the gateway)."""
+    if os.environ.get("GCS_INTERNAL_KEY"):
+        return os.environ["GCS_INTERNAL_KEY"]
+    f = DATA_DIR / "service.json"
+    try:
+        mtime = f.stat().st_mtime
+        if _key_cache["mtime"] != mtime:
+            with open(f, encoding="utf-8") as fh:
+                _key_cache.update(mtime=mtime, key=json.load(fh).get("internalKey"))
+        return _key_cache["key"]
+    except (FileNotFoundError, ValueError):
+        return None
+
+
+@app.middleware("http")
+async def require_internal_key(request: Request, call_next):
+    if request.url.path in PUBLIC_PATHS or request.method == "OPTIONS":
+        return await call_next(request)
+    expected = _internal_key()
+    if not expected:
+        return JSONResponse({"detail": "service auth not configured: start the gateway once (creates data/service.json) "
+                                       "or set GCS_INTERNAL_KEY"}, status_code=503)
+    given = request.headers.get("x-internal-key", "")
+    if not hmac.compare_digest(given.encode(), expected.encode()):
+        return JSONResponse({"detail": "unauthorized"}, status_code=401)
+    return await call_next(request)
+
+
+# No wildcard CORS. Only origins listed in AI_ALLOWED_ORIGINS (none by default) may call from a browser.
+_ai_origins = [o.strip() for o in os.environ.get("AI_ALLOWED_ORIGINS", "").split(",") if o.strip()]
+if _ai_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_ai_origins,
+        allow_credentials=False,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Content-Type", "X-Internal-Key"],
+    )
 
 # ---------------------------------------------------------
-# 1. PYTORCH MODEL ARCHITECTURES
+# 1. TRAINED PYTORCH AUTOENCODER (legacy /detect-anomaly endpoint)
 # ---------------------------------------------------------
-
-class EngineAnomalyAutoencoder(nn.Module):
-    """
-    Deep Autoencoder for Engine Micro-Anomaly Detection.
-    Reconstructs normal CAN bus feature vectors.
-    High reconstruction MSE indicates unmodeled degradation or sensor fault.
-    """
-    def __init__(self, input_dim: int = 12, latent_dim: int = 4):
-        super(EngineAnomalyAutoencoder, self).__init__()
-        self.encoder = nn.Sequential(
-            nn.Linear(input_dim, 32),
-            nn.BatchNorm1d(32),
-            nn.LeakyReLU(0.1),
-            nn.Linear(32, 16),
-            nn.LeakyReLU(0.1),
-            nn.Linear(16, latent_dim)
-        )
-        self.decoder = nn.Sequential(
-            nn.Linear(latent_dim, 16),
-            nn.LeakyReLU(0.1),
-            nn.Linear(16, 32),
-            nn.LeakyReLU(0.1),
-            nn.Linear(32, input_dim)
-        )
-
-    def forward(self, x):
-        z = self.encoder(x)
-        x_recon = self.decoder(z)
-        return x_recon, z
-
-
-class EngineLstmPrognosticNet(nn.Module):
-    """
-    Bidirectional 2-Layer LSTM for Remaining Useful Life (RUL) Prediction.
-    Outputs expected flight hours remaining and epistemic variance for 95% CI.
-    """
-    def __init__(self, input_dim: int = 12, hidden_dim: int = 48, num_layers: int = 2):
-        super(EngineLstmPrognosticNet, self).__init__()
-        self.lstm = nn.LSTM(
-            input_size=input_dim,
-            hidden_size=hidden_dim,
-            num_layers=num_layers,
-            batch_first=True,
-            bidirectional=True
-        )
-        self.fc_rul = nn.Sequential(
-            nn.Linear(hidden_dim * 2, 32),
-            nn.ReLU(),
-            nn.Linear(32, 1) # Mean RUL (Hours)
-        )
-        self.fc_var = nn.Sequential(
-            nn.Linear(hidden_dim * 2, 32),
-            nn.ReLU(),
-            nn.Linear(32, 1),
-            nn.Softplus() # Variance strictly positive
-        )
-
-    def forward(self, x):
-        # x shape: (batch_size, seq_len, input_dim)
-        out, (hn, cn) = self.lstm(x)
-        last_step = out[:, -1, :] # Take last hidden state
-        rul_mean = self.fc_rul(last_step)
-        rul_var = self.fc_var(last_step)
-        return rul_mean, rul_var
-
-
-# Initialize and load pre-trained PyTorch weights
-torch.manual_seed(42)
-np.random.seed(42)
+# Trained on nominal simulator frames by training/train_models.py; threshold = 99.9th
+# percentile of nominal validation reconstruction error.
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 autoencoder = EngineAnomalyAutoencoder(input_dim=12, latent_dim=4).to(device)
-lstm_prognostics = EngineLstmPrognosticNet(input_dim=12, hidden_dim=48, num_layers=2).to(device)
-
-# Set models to evaluation mode
+AE_THRESHOLD = None
+try:
+    autoencoder.load_state_dict(torch.load(MODEL_DIR / AUTOENCODER_FILE, map_location=device))
+    with open(MODEL_DIR / MODEL_CARD_FILE) as _f:
+        AE_THRESHOLD = float(json.load(_f)["metrics"]["autoencoder_legacy_endpoint"]["threshold_mse"])
+except Exception as _e:
+    print(f"[ERROR] Autoencoder weights not loaded ({_e}); run training/train_models.py")
 autoencoder.eval()
-lstm_prognostics.eval()
-
-# Feature Normalization Means & Stds for Rotax 915 iS Engine Features
-# Features: [RPM, Throttle, EGT1, EGT2, EGT3, EGT4, CHT1, CHT2, CHT3, CHT4, MAP, OilPress]
-FEATURE_MEANS = np.array([4800.0, 78.0, 840.0, 840.0, 840.0, 840.0, 106.0, 106.0, 106.0, 106.0, 1.42, 3.85], dtype=np.float32)
-FEATURE_STDS = np.array([600.0, 15.0, 45.0, 45.0, 45.0, 45.0, 15.0, 15.0, 15.0, 15.0, 0.35, 0.85], dtype=np.float32)
-FEATURE_NAMES = ["RPM", "Throttle", "EGT_Cyl1", "EGT_Cyl2", "EGT_Cyl3", "EGT_Cyl4", "CHT_Cyl1", "CHT_Cyl2", "CHT_Cyl3", "CHT_Cyl4", "MAP", "Oil_Pressure"]
+FEATURE_NAMES = AE_FEATURE_NAMES
 
 
 # ---------------------------------------------------------
@@ -224,13 +205,70 @@ class RlReplanRequest(BaseModel):
     current_lat: float = Field(default=26.4500)
     current_lng: float = Field(default=70.5200)
     altitude_ft: float = Field(default=14500.0)
-    fuel_remaining_liters: float = Field(default=84.0)
-    engine_health_index: float = Field(default=98.0)
-    rul_hours: float = Field(default=850.0)
+    fuel_remaining_liters: Optional[float] = Field(default=None, description="None = fuel not monitored")
+    engine_health_index: Optional[float] = Field(default=None)
+    rul_hours: Optional[float] = Field(default=None)
+    diagnosed_fault: str = Field(default="NONE", description="AI diagnosis of the vehicle")
+    ai_online: bool = Field(default=True)
+    l1_status: Optional[str] = Field(default=None, description="L1 threshold monitor status (used when the AI is offline)")
+    current_throttle_pct: Optional[float] = Field(default=None)
+    current_rpm: Optional[float] = Field(default=None)
+    current_airspeed_kts: Optional[float] = Field(default=None)
     wind_heading_deg: float = Field(default=240.0)
     wind_speed_kts: float = Field(default=18.0)
     target_field_id: Optional[str] = Field(default=None)
-    mode: Optional[str] = Field(default="AUTO")
+    mode: Optional[str] = Field(default="AUTO_EVENT")
+
+
+# Rule-based RTB contingency rules — mirror of src/planner/rtbRules.js (parity-tested in test_fleet.mjs).
+RTB_RULES = {
+    "CRITICAL_HEALTH_PCT": 40.0, "CRITICAL_RUL_H": 2.0, "BINGO_FUEL_L": 22.0,
+    "CRITICAL_FAULTS": ("CYL3_INJECTOR", "OIL_PUMP_CAVITATION"),
+    "DEGRADED_HEALTH_PCT": 75.0, "DEGRADED_RUL_H": 20.0, "LOW_FUEL_L": 35.0,
+}
+RTB_PROFILES = {
+    "EMERGENCY_DIVERT_RTB": {"throttle": 58.0, "rpm": 4200, "climb_fpm": -350, "speed_kts": 95.0, "field": "NEAREST"},
+    "DERATE_AND_DIVERT": {"throttle": 68.0, "rpm": 4400, "climb_fpm": -200, "speed_kts": 105.0, "field": "NEAREST"},
+    "CONTINGENCY_RTB_PREVIEW": {"throttle": 68.0, "rpm": 4600, "climb_fpm": -200, "speed_kts": 105.0, "field": "PRIMARY"},
+    "CONTINUE_MISSION": {"throttle": None, "rpm": None, "climb_fpm": 0, "speed_kts": None, "field": "PRIMARY"},
+}
+
+
+def rtb_classify(health, rul, fault, fuel, ai_ok=True, l1=None):
+    R = RTB_RULES
+    crit, deg = [], []
+    if health is not None and health < R["CRITICAL_HEALTH_PCT"]:
+        crit.append(f"health {health:.1f} % < {R['CRITICAL_HEALTH_PCT']:.0f} %")
+    if rul is not None and rul < R["CRITICAL_RUL_H"]:
+        crit.append(f"RUL {rul:.1f} h < {R['CRITICAL_RUL_H']:.0f} h")
+    if fault in R["CRITICAL_FAULTS"]:
+        crit.append(f"diagnosis {fault}")
+    if fuel is not None and fuel <= R["BINGO_FUEL_L"]:
+        crit.append(f"fuel {fuel:.1f} L <= {R['BINGO_FUEL_L']:.0f} L (bingo)")
+    if not ai_ok and l1 == "CRITICAL":
+        crit.append("L1 threshold monitor CRITICAL (AI offline)")
+    if health is not None and health < R["DEGRADED_HEALTH_PCT"]:
+        deg.append(f"health {health:.1f} % < {R['DEGRADED_HEALTH_PCT']:.0f} %")
+    if rul is not None and rul < R["DEGRADED_RUL_H"]:
+        deg.append(f"RUL {rul:.1f} h < {R['DEGRADED_RUL_H']:.0f} h")
+    if fault and fault != "NONE":
+        deg.append(f"diagnosis {fault}")
+    if fuel is not None and fuel < R["LOW_FUEL_L"]:
+        deg.append(f"fuel {fuel:.1f} L < {R['LOW_FUEL_L']:.0f} L")
+    if not ai_ok and l1 == "DEGRADED":
+        deg.append("L1 threshold monitor DEGRADED (AI offline)")
+    status = "CRITICAL" if crit else "DEGRADED" if deg else "NOMINAL"
+    return status, (crit or deg)
+
+
+def rtb_action(status, mode):
+    if status == "CRITICAL" or mode == "FORCE_SIMULATION":
+        return "EMERGENCY_DIVERT_RTB"
+    if status == "DEGRADED":
+        return "DERATE_AND_DIVERT"
+    if mode == "CONTINGENCY_PREVIEW":
+        return "CONTINGENCY_RTB_PREVIEW"
+    return "CONTINUE_MISSION"
 
 
 # ---------------------------------------------------------
@@ -265,8 +303,9 @@ def get_service_health():
         "service": "GarudaTwin AI Prognostics & Physics Microservice",
         "pytorch_device": str(device),
         "models": {
-            "autoencoder": "Loaded (12->32->16->4->16->32->12)",
-            "lstm_prognostics": "Loaded (Bi-LSTM 2-Layer hidden=48)",
+            "autoencoder": ("LEGACY /detect-anomaly only, not used by the GCS (single-frame recall 14% on held-out simulator data)"
+                            if AE_THRESHOLD else "NOT LOADED"),
+            "health_rul_pipeline": "Loaded" if health_rul_service.health_predictor.models_loaded else "NOT LOADED",
             "physics_core": "Rotax 915/916 iS Analytical First-Principles"
         },
         "timestamp": time.time()
@@ -276,8 +315,9 @@ def get_service_health():
 @app.post("/detect-anomaly", response_model=AnomalyResponse)
 def detect_anomaly(telemetry: TelemetryInput):
     """
-    Runs Autoencoder MSE reconstruction loss and Physics Residual Analysis
-    to detect micro-anomalies and classify root-cause fault modes.
+    LEGACY single-frame endpoint (PyTorch autoencoder on 12 raw inputs). Kept for compatibility only:
+    the GCS uses /api/health-rul/predict. Held-out recall is 14 % (see model_card.json); do not use
+    it for decisions.
     """
     # 1. Physics Baseline Evaluation
     physics = PhysicsBaselineEngine.compute_nominal_states(
@@ -306,7 +346,7 @@ def detect_anomaly(telemetry: TelemetryInput):
     ], dtype=np.float32)
 
     # Standardize vector
-    norm_vector = (raw_vector - FEATURE_MEANS) / FEATURE_STDS
+    norm_vector = normalise(raw_vector)
     tensor_in = torch.tensor(norm_vector).unsqueeze(0).to(device)
 
     with torch.no_grad():
@@ -327,8 +367,10 @@ def detect_anomaly(telemetry: TelemetryInput):
     if abs(vib_res) > 0.3:
         attributions["Vibration_gRMS"] = round(min(80.0, abs(vib_res) * 45.0), 2)
 
-    # Anomaly Thresholds
-    threshold = 0.085
+    # Anomaly threshold calibrated on nominal validation data during training
+    if AE_THRESHOLD is None:
+        raise HTTPException(status_code=503, detail="Autoencoder not trained — run training/train_models.py")
+    threshold = AE_THRESHOLD
     is_anomaly = recon_mse > threshold or max(abs(r) for r in egt_res) > 55.0 or abs(vib_res) > 0.45 or telemetry.oil_press_bar < 1.8
 
     # Diagnostic Rule Matrix & Classification
@@ -355,14 +397,14 @@ def detect_anomaly(telemetry: TelemetryInput):
             diagnosed_fault = "MULTI_PARAMETER_MECHANICAL_DEGRADATION"
             severity_level = "ELEVATED"
 
-    anomaly_score = min(1.0, recon_mse / 0.35)
+    anomaly_score = min(1.0, recon_mse / (2.0 * threshold))
 
     return AnomalyResponse(
         is_anomaly=is_anomaly,
         anomaly_score=round(anomaly_score, 4),
         reconstruction_mse=round(recon_mse, 6),
-        threshold=threshold,
-        confidence_pct=round(min(99.8, max(75.0, 100.0 - recon_mse * 20.0)), 1),
+        threshold=round(threshold, 6),
+        confidence_pct=round(min(99.8, max(50.0, 100.0 * abs(recon_mse - threshold) / max(recon_mse, threshold))), 1),
         residuals={
             "egt_residuals": egt_res,
             "cht_residuals": cht_res,
@@ -379,54 +421,31 @@ def detect_anomaly(telemetry: TelemetryInput):
 @app.post("/predict-rul", response_model=PrognosticsResponse)
 def predict_rul(telemetry: TelemetryInput):
     """
-    Predicts Remaining Useful Life (RUL in Flight Hours) using Bi-LSTM network.
+    Single-frame RUL estimate from the trained XGBoost quantile model (ai_health_rul pipeline).
+    Uses a fresh, discarded session so single-frame calls never share state.
     """
-    raw_vector = np.array([
-        telemetry.rpm, telemetry.throttle_pct,
-        telemetry.egt[0], telemetry.egt[1], telemetry.egt[2], telemetry.egt[3],
-        telemetry.cht[0], telemetry.cht[1], telemetry.cht[2], telemetry.cht[3],
-        telemetry.map_bar, telemetry.oil_press_bar
-    ], dtype=np.float32)
-
-    norm_vector = (raw_vector - FEATURE_MEANS) / FEATURE_STDS
-
-    # Synthesize sequence buffer for LSTM (batch=1, seq_len=15, feat_dim=12)
-    seq = np.repeat(norm_vector[np.newaxis, :], 15, axis=0)
-    # Add slight historical slope to sequence
-    for i in range(15):
-        seq[i] = seq[i] * (0.96 + 0.04 * (i / 15.0))
-
-    tensor_seq = torch.tensor(seq, dtype=torch.float32).unsqueeze(0).to(device)
-
-    with torch.no_grad():
-        rul_mean_raw, rul_var_raw = lstm_prognostics(tensor_seq)
-        
-        # Base healthy Rotax 915 TBO is 1200 hours
-        base_healthy_hours = 842.0 
-        
-        # Penalty from physical stress
-        max_egt_excess = max(0.0, max(telemetry.egt) - 880.0)
-        vib_excess = max(0.0, telemetry.vibration_grms - 0.45)
-        oil_loss = max(0.0, 2.5 - telemetry.oil_press_bar)
-
-        deg_factor = 1.0 + (max_egt_excess * 0.04) + (vib_excess * 4.5) + (oil_loss * 3.2)
-        
-        predicted_rul = max(0.4, base_healthy_hours / deg_factor)
-        
-        # Compute 95% Confidence Interval (1.96 * sigma)
-        sigma = math.sqrt(max(0.05, float(rul_var_raw.cpu().numpy().squeeze())) + (predicted_rul * 0.08))
-        ci_95 = 1.96 * sigma
-
-        health_idx = min(100.0, max(10.0, (predicted_rul / 842.0) * 100.0))
-
+    sid = f"legacy-{uuid.uuid4()}"
+    try:
+        res = health_rul_service.predict({
+            "uav_id": sid, "rpm": telemetry.rpm, "throttle": telemetry.throttle_pct,
+            "egt": telemetry.egt, "cht": telemetry.cht, "map_bar": telemetry.map_bar,
+            "oil_pressure": telemetry.oil_press_bar, "oil_temp": telemetry.oil_temp_c,
+            "vibration": telemetry.vibration_grms,
+        }, persistence=False)  # single-frame request: no 2-sample confirmation possible
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    finally:
+        health_rul_service.reset_history(sid)
+    r = res.rul
+    to_mel_h = max(0.0, (r.healthIndexScore - 50.0) / max(1e-6, r.degradationRatePercentPerHour))
     return PrognosticsResponse(
-        rul_hours_mean=round(predicted_rul, 1),
-        rul_hours_lower_95=round(max(0.1, predicted_rul - ci_95), 1),
-        rul_hours_upper_95=round(predicted_rul + ci_95, 1),
-        engine_health_index=round(health_idx, 1),
-        degradation_rate_pct_per_hour=round(float(deg_factor * 0.12), 3),
-        remaining_mission_reachability_pct=round(min(100.0, (predicted_rul / 8.0) * 100.0), 1),
-        estimated_time_to_critical_minutes=round(predicted_rul * 60.0 * 0.4, 0)
+        rul_hours_mean=r.rulHours,
+        rul_hours_lower_95=r.rulHoursLower95,
+        rul_hours_upper_95=r.rulHoursUpper95,
+        engine_health_index=r.healthIndexScore,
+        degradation_rate_pct_per_hour=r.degradationRatePercentPerHour,
+        remaining_mission_reachability_pct=round(min(100.0, (r.rulHours / 8.0) * 100.0), 1),
+        estimated_time_to_critical_minutes=round(min(to_mel_h, r.rulHours) * 60.0, 0),
     )
 
 
@@ -473,8 +492,9 @@ def explain_shap(telemetry: TelemetryInput):
 @app.post("/api/rl-replan")
 def rl_mission_replan(req: RlReplanRequest):
     """
-    Closed-Loop Reinforcement Learning Policy for Autonomous Return-to-Base (RTB)
-    and Engine Stress Derating Optimization.
+    Rule-based Return-to-Base (RTB) contingency planner (not reinforcement learning; the URL and the
+    `rl_control_commands` field name are kept for API compatibility). Deterministic rules on RUL,
+    health and fuel; haversine distances to candidate airfields; straight-line descent waypoints.
     """
     # Candidate Recovery Airfields (Indo-Pak Border Western Theater)
     airfields = [
@@ -500,51 +520,27 @@ def rl_mission_replan(req: RlReplanRequest):
     # Sort candidate fields by distance from current UAV position
     by_dist = sorted(candidates, key=lambda x: x["dist_nm"])
 
-    # RL Policy Decision Trigger
-    is_sim = req.mode == "FORCE_SIMULATION"
-    is_preview = req.mode == "CONTINGENCY_PREVIEW"
-    is_bingo = req.fuel_remaining_liters <= 22.0  # Fuel reserve critical threshold (~15.8 kg)
-    is_crit = req.rul_hours < 2.0 or req.engine_health_index < 40.0 or is_bingo
-    requires_emergency_divert = is_crit or is_sim
-    is_degraded = (not requires_emergency_divert) and (req.engine_health_index < 75.0 or req.rul_hours < 50.0 or req.fuel_remaining_liters < 35.0)
+    # Decision rules (shared with the GCS, see RTB_RULES)
+    status, reasons = rtb_classify(req.engine_health_index, req.rul_hours, req.diagnosed_fault or "NONE",
+                                   req.fuel_remaining_liters, req.ai_online, req.l1_status)
+    action = rtb_action(status, req.mode)
+    profile = RTB_PROFILES[action]
+    requires_emergency_divert = action == "EMERGENCY_DIVERT_RTB"
 
-    # Airfield Selection Strategy
+    # Airfield: operator choice, else nearest for divert actions, else the primary base
     if req.target_field_id and req.target_field_id != "AUTO":
         target_destination = next((f for f in candidates if f["id"] == req.target_field_id), by_dist[0])
-    elif requires_emergency_divert or is_degraded:
-        # Emergency or Degraded: Divert to nearest reachable runway immediately
+    elif profile["field"] == "NEAREST":
         target_destination = by_dist[0]
     else:
-        # Nominal & Contingency Preview: Full primary base Return-to-Base (RTB) recovery to AFS Uttarlai
         target_destination = next((f for f in candidates if f["id"] == "AFS_UTTARLAI"), by_dist[0])
-
     target_dist_nm = target_destination["dist_nm"]
 
-    # Recommended closed-loop FADEC throttle derate & descent profiles
-    if requires_emergency_divert:
-        action = "EMERGENCY_DIVERT_RTB"
-        recommended_throttle_pct = 58.0  # Minimum cruise power to sustain level/glide speed
-        recommended_rpm = 4200
-        recommended_climb_fpm = -350      # Gliding descent slope
-        commanded_speed = 95.0
-    elif is_degraded:
-        action = "DERATE_AND_CONTINUE_MISSION"
-        recommended_throttle_pct = 68.0  # Engine stress derate (protect turbo & valves)
-        recommended_rpm = 4600
-        recommended_climb_fpm = -200      # Controlled descent
-        commanded_speed = 105.0
-    elif is_preview:
-        action = "CONTINGENCY_RTB_PREVIEW"
-        recommended_throttle_pct = 68.0  # Standard conservative RTB descent profile
-        recommended_rpm = 4600
-        recommended_climb_fpm = -200
-        commanded_speed = 105.0
-    else:
-        action = "DERATE_AND_CONTINUE_MISSION"
-        recommended_throttle_pct = 78.0  # Nominal cruise power
-        recommended_rpm = 4850
-        recommended_climb_fpm = 0
-        commanded_speed = 115.0
+    # Fixed rule outputs; CONTINUE_MISSION keeps the vehicle's current operating point
+    recommended_throttle_pct = profile["throttle"] if profile["throttle"] is not None else (req.current_throttle_pct or 78.0)
+    recommended_rpm = profile["rpm"] if profile["rpm"] is not None else (req.current_rpm or 4850)
+    recommended_climb_fpm = profile["climb_fpm"]
+    commanded_speed = profile["speed_kts"] if profile["speed_kts"] is not None else (req.current_airspeed_kts or 115.0)
 
     # Compute optimal trajectory waypoints
     num_wp = 4
@@ -568,11 +564,13 @@ def rl_mission_replan(req: RlReplanRequest):
         })
 
     flight_time_hrs = flight_time_min / 60.0
-    safety_margin = round(max(0.0, req.rul_hours) / max(0.01, flight_time_hrs), 2)
+    safety_margin = round(max(0.0, req.rul_hours) / max(0.01, flight_time_hrs), 2) if req.rul_hours is not None else None
 
     return {
         "uav_id": req.uav_id,
         "action": action,
+        "status": status,
+        "reasons": reasons,
         "target_recovery_field": target_destination["name"],
         "target_field_id": target_destination["id"],
         "distance_to_field_nm": round(target_dist_nm, 1),
@@ -597,12 +595,22 @@ def rl_mission_replan(req: RlReplanRequest):
 @app.post("/api/health-rul/predict", response_model=UnifiedHealthRulResponse)
 def api_predict_health_rul(telemetry: Dict[str, Any]):
     """
-    Unified AI Health & Remaining Useful Life (RUL) prediction pipeline.
-    Combines Isolation Forest anomaly detection, Fault Classifier, RUL Regressor,
-    TreeSHAP explainability, and Adaptive Pilot Advisories.
+    Unified AI Health & Remaining Useful Life (RUL) prediction pipeline: physics-residual features,
+    Mahalanobis anomaly detector, XGBoost fault classifier / severity / quantile RUL, TreeSHAP,
+    maintenance advisory. Optional `total_flight_hours` (0-20000) sets the engine's hours for the
+    scheduled-TBO remaining life used when no fault is diagnosed.
     """
     try:
-        return health_rul_service.predict(telemetry)
+        hours = telemetry.get("total_flight_hours", 450.0)
+        try:
+            hours = float(hours)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="total_flight_hours must be a number")
+        if not math.isfinite(hours) or not 0.0 <= hours <= 20000.0:
+            raise HTTPException(status_code=400, detail="total_flight_hours must be within 0-20000")
+        return health_rul_service.predict(telemetry, total_flight_hours=hours)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
     except ValueError as e:
         if "OUT_OF_DISTRIBUTION" in str(e):
             raise HTTPException(status_code=400, detail={"error": "OUT_OF_DISTRIBUTION", "message": str(e)})
@@ -651,7 +659,19 @@ def api_advisory(telemetry: Dict[str, Any]):
     return res.advisory
 
 
+class SessionResetRequest(BaseModel):
+    uav_id: str = Field(..., max_length=64)
+
+
+@app.post("/api/health-rul/reset")
+def api_reset_session(req: SessionResetRequest):
+    """Clears one vehicle's inference session (called by the gateway on simulation reset)."""
+    health_rul_service.reset_history(req.uav_id)
+    return {"success": True}
+
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    # Loopback only by default: the gateway is the sole client. Override with AI_HOST if needed.
+    uvicorn.run(app, host=os.environ.get("AI_HOST", "127.0.0.1"), port=int(os.environ.get("AI_PORT", "8001")))
 

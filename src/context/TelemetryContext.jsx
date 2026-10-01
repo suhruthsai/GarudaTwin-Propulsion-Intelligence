@@ -3,6 +3,7 @@ import { io } from 'socket.io-client';
 import { PrognosticsPipeline } from '../prognostics/prognostics_pipeline';
 import { globalReplayEngine } from '../replay/ReplayEngine';
 import { flightRecorder } from '../replay/FlightDataRecorder';
+import { GATEWAY_URL, gatewayFetch } from '../api/gateway';
 
 /**
  * Box-Muller transform for explicit Gaussian measurement noise (Physics-Grounded)
@@ -16,14 +17,83 @@ function generateGaussianNoise(mean = 0, stdDev = 1) {
 
 const TelemetryContext = createContext(null);
 
+
+/** Map one AI-service result into the UI's prognostics shape (used for Vahak-1 and every fleet vehicle). */
+export function mapAiResult(mlData, prev = {}) {
+  // Map Python evidence items to UI format
+  let mappedEvidence = [];
+  if (Array.isArray(mlData.maintenance?.evidence)) {
+    mappedEvidence = mlData.maintenance.evidence.map(ev => ({
+      parameter: ev.feature || ev.parameter || 'Sensor Channel',
+      goldenModel: ev.nominal_value != null ? `${ev.nominal_value} ${ev.unit || ''}` : 'Nominal',
+      liveTelemetry: ev.observed_value != null ? `${ev.observed_value} ${ev.unit || ''}` : 'In Spec',
+      residual: ev.residual != null ? `${ev.residual > 0 ? '+' : ''}${ev.residual} ${ev.unit || ''}` : '0.0',
+      diagnosticWeight: ev.contribution_pct != null ? `${ev.contribution_pct}%` : '—',
+      status: ev.contribution_pct > 35 ? 'CRITICAL' : ev.contribution_pct > 15 ? 'WARNING' : 'NOMINAL'
+    }));
+  }
+
+  const rawFault = mlData.health?.diagnosed_fault;
+  const normFault = (!rawFault || ['none', 'NONE', 'NOMINAL', 'NOMINAL_OPERATION', 'NOMINAL BASELINE'].includes(rawFault))
+    ? 'NONE'
+    : rawFault;
+
+  return {
+    ...prev,
+    aiOnline: true,
+    rul_hours_mean: mlData.rul.rulHours,
+    rul_hours_lower_95: mlData.rul.rulHoursLower95,
+    rul_hours_upper_95: mlData.rul.rulHoursUpper95,
+    engine_health_index: mlData.rul.healthIndexScore,
+    degradation_rate_pct_per_hour: mlData.rul.degradationRatePercentPerHour,
+    subsystem_degradation: mlData.rul.subsystemDegradation || prev.subsystem_degradation,
+    anomaly_score: mlData.health.anomaly_score,
+    is_anomaly: mlData.health.is_anomaly,
+    diagnosed_fault: normFault,
+    severity_level: mlData.health.severity_level,
+    diagnosis_confidence_pct: mlData.health.confidence_pct,
+    suspect_sensor: mlData.health.suspect_sensor || null,
+    failed_sensors: mlData.data_quality?.failed_sensors || [],
+    class_probabilities: mlData.health.class_probabilities,
+    dominant_root_cause_feature: mlData.feature_attributions?.[0]?.feature || 'None',
+    modelMetadata: mlData.model_metadata || prev.modelMetadata,
+    model_features: mlData.model_features || prev.model_features,
+    trajectory: (mlData.rul.trajectory && mlData.rul.trajectory.length > 0) ? mlData.rul.trajectory : prev.trajectory,
+    historicalHealthPoints: (mlData.rul.historicalHealthPoints && mlData.rul.historicalHealthPoints.length > 0) ? mlData.rul.historicalHealthPoints : prev.historicalHealthPoints,
+    historicalRulPoints: (mlData.rul.historicalRulPoints && mlData.rul.historicalRulPoints.length > 0) ? mlData.rul.historicalRulPoints : prev.historicalRulPoints,
+    stressBreakdown: mlData.rul.stressBreakdown || prev.stressBreakdown,
+    dataQuality: mlData.data_quality || prev.dataQuality,
+    degradationTrend: mlData.rul.degradationTrend || prev.degradationTrend,
+    confidencePct: mlData.rul.confidencePct || prev.confidencePct,
+    failureRiskScore: mlData.rul.failureRiskScore,
+    failureRiskLevel: mlData.rul.failureRiskLevel,
+    multiHorizonRisk: mlData.rul.multiHorizonRisk,
+    pilot_advisory: mlData.advisory,
+    maintenance: {
+      ...(mlData.maintenance || {}),
+      evidence: mappedEvidence
+    },
+    feature_attributions: Array.isArray(mlData.feature_attributions) ? mlData.feature_attributions.reduce((acc, curr) => {
+      acc[curr.feature] = curr.importance_pct;
+      return acc;
+    }, {}) : prev.feature_attributions
+  };
+}
+
 export const TelemetryProvider = ({ children }) => {
+  const [commandError, setCommandError] = useState(null);
+  const clearCommandError = useCallback(() => setCommandError(null), []);
   const [isConnected, setIsConnected] = useState(false);
   const [socketError, setSocketError] = useState(null);
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [missionDemandHours, setMissionDemandHours] = useState(6.0);
+  const missionDemandHoursRef = useRef(6.0);
+  useEffect(() => { missionDemandHoursRef.current = missionDemandHours; }, [missionDemandHours]);
 
   // Mission Replay & Black-Box State
   const [isReplayMode, setIsReplayMode] = useState(false);
+  // Full AI results of the escort fleet (Vahak-2..4), mapped like Vahak-1's
+  const [fleetAi, setFleetAi] = useState({});
   const [replaySortie, setReplaySortie] = useState(null);
   const [replayPlaybackState, setReplayPlaybackState] = useState({
     isPlaying: false,
@@ -51,7 +121,7 @@ export const TelemetryProvider = ({ children }) => {
               reconstruction_mse: event.frame.ai.mse ?? prev.reconstruction_mse,
               anomaly_score: event.frame.ai.anomalyScore ?? prev.anomaly_score,
               engine_health_index: event.frame.health?.index ?? prev.engine_health_index,
-              diagnosed_fault: event.frame.health?.activeFault ?? prev.diagnosed_fault,
+              // The recorded injected label is ground truth, never shown as the AI diagnosis
               severity_level: event.frame.health?.status ?? prev.severity_level
             }));
           }
@@ -112,52 +182,7 @@ export const TelemetryProvider = ({ children }) => {
       genCurrentA: 45.2,
       coolantTempC: 88.5
     },
-    fleetState: [
-      {
-        id: 'Vahak-2',
-        callsign: 'Vahak-2 (ESCORT LEAD)',
-        engine: 'Rotax 915 iS (S/N: RTX-0819)',
-        status: 'ON STATION',
-        health: 96.2,
-        rulHours: 785.0,
-        flightHours: 415.0,
-        tboDueHours: 785.0,
-        subsystems: { combustion: 98, lubrication: 95, induction: 97, cooling: 96, vibration: 95 }
-      },
-      {
-        id: 'Vahak-3',
-        callsign: 'Vahak-3 (RELAY ORBIT)',
-        engine: 'Rotax 916 iS (S/N: RTX-0902)',
-        status: 'CLIMB TO CRUISE',
-        health: 99.1,
-        rulHours: 1120.0,
-        flightHours: 80.0,
-        tboDueHours: 1120.0,
-        subsystems: { combustion: 100, lubrication: 99, induction: 98, cooling: 99, vibration: 100 }
-      },
-      {
-        id: 'Vahak-4',
-        callsign: 'Vahak-4 (PERIMETER PATROL)',
-        engine: 'Rotax 915 iS (S/N: RTX-0754)',
-        status: 'DERATED CRUISE',
-        health: 84.5,
-        rulHours: 420.0,
-        flightHours: 780.0,
-        tboDueHours: 420.0,
-        subsystems: { combustion: 88, lubrication: 82, induction: 85, cooling: 86, vibration: 80 }
-      },
-      {
-        id: 'Vahak-5',
-        callsign: 'Vahak-5 (HANGAR RESERVE)',
-        engine: 'Rotax 915 iS (S/N: RTX-0699)',
-        status: 'MAINTENANCE HOLD',
-        health: 38.0,
-        rulHours: 120.0,
-        flightHours: 1080.0,
-        tboDueHours: 120.0,
-        subsystems: { combustion: 42, lubrication: 35, induction: 50, cooling: 45, vibration: 30 }
-      }
-    ],
+    fleetState: [],   // filled by the gateway: every vehicle's live engine, twin and AI summary
     residuals: {
       egtResiduals: [2.0, -0.5, 4.0, 1.2],
       chtResiduals: [0.2, 1.5, -0.2, 2.1],
@@ -339,6 +364,9 @@ export const TelemetryProvider = ({ children }) => {
 
   // AI Microservice Prognostics & Anomaly Prediction State
   const [aiPrognostics, setAiPrognostics] = useState(initialPrognostics);
+  // Socket handler is registered once; read latest prognostics through a ref to avoid a stale closure
+  const aiPrognosticsRef = useRef(initialPrognostics);
+  useEffect(() => { aiPrognosticsRef.current = aiPrognostics; }, [aiPrognostics]);
 
   // Rolling Time-Series Telemetry Buffers (Length 60 for 60-point live charts)
   const [historyBuffer, setHistoryBuffer] = useState({
@@ -363,7 +391,7 @@ export const TelemetryProvider = ({ children }) => {
   const audioCtxRef = useRef(null);
   const lastAlertStatusRef = useRef('NOMINAL');
   const lastMlFetchRef = useRef(0);
-  const isFetchingMlRef = useRef(false);
+  const lastAiAtRef = useRef(Date.now());
   const lastHistoryUpdateRef = useRef(0);
 
   // Synthesize Web Audio Tactical Alert Sound
@@ -407,20 +435,87 @@ export const TelemetryProvider = ({ children }) => {
 
 
 
-  // Connect to Node.js CAN Telemetry Server & Fallback Simulator
-  useEffect(() => {
-    // Connect to backend server. If served via Vite proxy or direct, prioritize window.location or localhost:5002
-    const socketUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-      ? `http://${window.location.hostname}:5002`
-      : undefined;
+  // Map an AI result broadcast by the gateway (server-side 1 Hz inference) into UI state
+  const applyMlData = useCallback((mlData) => {
+    if (mlData && mlData.rul) setAiPrognostics(prev => mapAiResult(mlData, prev));
+  }, []);
 
-    const socket = io(socketUrl, {
+  // Local first-principles fallback used only while the gateway AI stream is unavailable
+  const applyLocalFallback = useCallback((data) => {
+    // Physics-only estimate while the AI service is offline. The injected simulator fault is
+    // hidden from it, so it cannot present the scenario label as a diagnosis.
+    try {
+      const localResult = PrognosticsPipeline.evaluate({
+        telemetry: { ...data, health: { ...data.health, activeFault: 'NONE' } },
+        missionDemandHours: missionDemandHoursRef.current,
+        unitId: 'Vahak-1'
+      });
+      if (localResult) {
+        setAiPrognostics(prev => ({
+          ...prev,
+          rul_hours_mean: localResult.rul.hours,
+          rul_hours_lower_95: localResult.rul.lower95,
+          rul_hours_upper_95: localResult.rul.upper95,
+          engine_health_index: localResult.health.index,
+          degradation_rate_pct_per_hour: localResult.degradation.ratePerHour,
+          subsystem_degradation: localResult.degradation.subsystems,
+          anomaly_score: localResult.health.overallAnomalyScore,
+          is_anomaly: localResult.health.status !== 'NOMINAL',
+          diagnosed_fault: 'AI_OFFLINE',
+          severity_level: data.health?.status || 'NOMINAL',
+          aiOnline: false,
+          dominant_root_cause_feature: localResult.xaiAttributions?.[0]?.name || 'None',
+          feature_attributions: localResult.xaiAttributions.reduce((acc, curr) => {
+            acc[curr.name] = parseFloat(curr.weight) || 10;
+            return acc;
+          }, {}),
+          trajectory: localResult.rul.trajectory,
+          historicalHealthPoints: localResult.rul.historicalHealth,
+          historicalRulPoints: localResult.rul.historicalRul,
+          stressBreakdown: localResult.degradation.stressBreakdown,
+          dataQuality: {
+            quality_score_pct: localResult.dataQuality.score,
+            sensor_confidence: localResult.dataQuality.sensorConfidence,
+            telemetry_age_ms: localResult.dataQuality.telemetryAgeMs
+          },
+          degradationTrend: localResult.degradation.trend,
+          confidencePct: localResult.rul.confidencePct,
+          failureRiskScore: localResult.risk.score,
+          failureRiskLevel: localResult.risk.level,
+          multiHorizonRisk: localResult.risk.multiHorizon,
+          pilot_advisory: localResult.advisory,
+          maintenance: localResult.advisory,
+          modelMetadata: localResult.modelMetadata
+        }));
+      }
+    } catch (err) {
+      console.warn('Local prognostics fallback evaluation error:', err);
+    }
+  }, []);
+
+  // Connect to the gateway: telemetry + server-side AI stream
+  useEffect(() => {
+    const socket = io(GATEWAY_URL || undefined, {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 10,
       timeout: 5000
     });
 
     socketRef.current = socket;
+
+    socket.on('ai_prognostics', (mlData) => {
+      if (isReplayModeRef.current) return;
+      lastAiAtRef.current = Date.now();
+      applyMlData(mlData);
+    });
+    socket.on('command_rejected', ({ event, error }) => setCommandError(`${event}: ${error}`));
+    socket.on('fleet_ai', (results) => {
+      setFleetAi(prev => {
+        const next = { ...prev };
+        for (const [id, ml] of Object.entries(results || {})) if (ml?.rul) next[id] = mapAiResult(ml, prev[id] || {});
+        return next;
+      });
+    });
 
     socket.on('connect', () => {
       console.log(' Tactical Web Client Connected to CAN Bus Socket');
@@ -431,7 +526,7 @@ export const TelemetryProvider = ({ children }) => {
     socket.on('telemetry_frame', (data) => {
       // Feed live frames to Black-Box Flight Data Recorder if recording
       if (flightRecorder.isRecording) {
-        flightRecorder.recordFrame(data, aiPrognostics);
+        flightRecorder.recordFrame(data, aiPrognosticsRef.current);
       }
 
       // If Mission Replay is active, do not allow live frames to overwrite replay playhead
@@ -452,160 +547,14 @@ export const TelemetryProvider = ({ children }) => {
         lastAlertStatusRef.current = data.health.status;
       }
 
-      // Update AI Prognostics by explicitly fetching from Python Microservice (Single Source of Truth)
-
       const now = Date.now();
 
-      // Async fetch real ML Health + RUL prediction from migrated ai_health_rul microservice (throttled to 1 Hz)
-      if (now - lastMlFetchRef.current >= 1000 && !isFetchingMlRef.current) {
+      // Gateway AI stream silent for >3 s: evaluate the local physics fallback at 1 Hz.
+      // Simulator only: a paused replay or a silent live feed has no new samples to score,
+      // which is not an AI outage (the last AI result stays on screen).
+      if ((data.source?.mode ?? 'SIM') === 'SIM' && now - lastAiAtRef.current > 3000 && now - lastMlFetchRef.current >= 1000) {
         lastMlFetchRef.current = now;
-        isFetchingMlRef.current = true;
-        const primaryHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-          ? `http://${window.location.hostname}:8001`
-          : '/ai';
-        const gatewayHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-          ? `http://${window.location.hostname}:5002`
-          : '';
-
-        const payload = JSON.stringify({
-          timestamp_s: data.timestamp / 1000,
-          rpm: data.engine.rpm,
-          true_cht: data.engine.cht[2],
-          sensor_cht: data.engine.cht[2],
-          egt: data.engine.egt[2],
-          oil_pressure: data.engine.oilPressBar,
-          oil_temp: data.engine.oilTempC,
-          fuel_flow: data.engine.fuelFlowLph,
-          vibration: data.engine.vibrationGrms,
-          battery_voltage: data.engine.genVoltageV,
-          injection_timing: 18.5,
-          health_index: data.health.index / 100.0,
-          altitude: data.mission.altitudeFt,
-          ambient_temp: data.mission.ambientTempC,
-          throttle: data.engine.throttlePct
-        });
-
-        // Try primary port 8001, then fallback to port 5002 gateway
-        fetch(`${primaryHost}/api/health-rul/predict`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: payload
-        })
-        .catch(() => fetch(`${gatewayHost}/api/health-rul/predict`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: payload
-        }))
-        .then(res => {
-          if (!res.ok) throw new Error(`AI service returned HTTP ${res.status}`);
-          return res.json();
-        })
-        .then(mlData => {
-          if (mlData && mlData.rul) {
-            // Map Python evidence items to UI format
-            let mappedEvidence = [];
-            if (Array.isArray(mlData.maintenance?.evidence)) {
-              mappedEvidence = mlData.maintenance.evidence.map(ev => ({
-                parameter: ev.feature || ev.parameter || 'Sensor Channel',
-                goldenModel: ev.nominal_value !== undefined ? `< ${ev.nominal_value} ${ev.unit || ''}` : (ev.goldenModel || 'Nominal'),
-                liveTelemetry: ev.observed_value !== undefined ? `${ev.observed_value} ${ev.unit || ''}` : (ev.liveTelemetry || 'In Spec'),
-                residual: ev.residual !== undefined ? `${ev.residual > 0 ? '+' : ''}${ev.residual} ${ev.unit || ''}` : (ev.residual || '0.0'),
-                diagnosticWeight: ev.contribution_pct !== undefined ? `${ev.contribution_pct}%` : (ev.diagnosticWeight || '85%'),
-                status: ev.contribution_pct > 35 ? 'CRITICAL' : ev.contribution_pct > 15 ? 'WARNING' : 'NOMINAL'
-              }));
-            }
-
-            const rawFault = mlData.health?.diagnosed_fault;
-            const normFault = (!rawFault || ['none', 'NONE', 'NOMINAL', 'NOMINAL_OPERATION', 'NOMINAL BASELINE'].includes(rawFault))
-              ? 'NONE'
-              : rawFault;
-
-            setAiPrognostics(prev => ({
-              ...prev,
-              rul_hours_mean: mlData.rul.rulHours,
-              rul_hours_lower_95: mlData.rul.rulHoursLower95,
-              rul_hours_upper_95: mlData.rul.rulHoursUpper95,
-              engine_health_index: mlData.rul.healthIndexScore,
-              degradation_rate_pct_per_hour: mlData.rul.degradationRatePercentPerHour,
-              subsystem_degradation: mlData.rul.subsystemDegradation || prev.subsystem_degradation,
-              anomaly_score: mlData.health.anomaly_score,
-              is_anomaly: mlData.health.is_anomaly,
-              diagnosed_fault: normFault,
-              severity_level: mlData.health.severity_level,
-              trajectory: (mlData.rul.trajectory && mlData.rul.trajectory.length > 0) ? mlData.rul.trajectory : prev.trajectory,
-              historicalHealthPoints: (mlData.rul.historicalHealthPoints && mlData.rul.historicalHealthPoints.length > 0) ? mlData.rul.historicalHealthPoints : prev.historicalHealthPoints,
-              historicalRulPoints: (mlData.rul.historicalRulPoints && mlData.rul.historicalRulPoints.length > 0) ? mlData.rul.historicalRulPoints : prev.historicalRulPoints,
-              stressBreakdown: mlData.rul.stressBreakdown || prev.stressBreakdown,
-              dataQuality: mlData.data_quality || prev.dataQuality,
-              degradationTrend: mlData.rul.degradationTrend || prev.degradationTrend,
-              confidencePct: mlData.rul.confidencePct || prev.confidencePct,
-              failureRiskScore: mlData.rul.failureRiskScore,
-              failureRiskLevel: mlData.rul.failureRiskLevel,
-              multiHorizonRisk: mlData.rul.multiHorizonRisk,
-              pilot_advisory: mlData.advisory,
-              maintenance: {
-                ...(mlData.maintenance || {}),
-                evidence: mappedEvidence.length > 0 ? mappedEvidence : (prev.maintenance?.evidence || [])
-              },
-              feature_attributions: Array.isArray(mlData.feature_attributions) ? mlData.feature_attributions.reduce((acc, curr) => {
-                acc[curr.feature] = curr.importance_pct;
-                return acc;
-              }, {}) : prev.feature_attributions
-            }));
-          }
-        })
-        .catch(() => {
-          // Seamless fallback to local first-principles physics prognostics pipeline
-          try {
-            const localResult = PrognosticsPipeline.evaluate({
-              telemetry: data,
-              missionDemandHours: missionDemandHours,
-              unitId: 'Vahak-1'
-            });
-            if (localResult) {
-              setAiPrognostics(prev => ({
-                ...prev,
-                rul_hours_mean: localResult.rul.hours,
-                rul_hours_lower_95: localResult.rul.lower95,
-                rul_hours_upper_95: localResult.rul.upper95,
-                engine_health_index: localResult.health.index,
-                degradation_rate_pct_per_hour: localResult.degradation.ratePerHour,
-                subsystem_degradation: localResult.degradation.subsystems,
-                anomaly_score: localResult.health.overallAnomalyScore,
-                is_anomaly: localResult.health.status !== 'NOMINAL',
-                diagnosed_fault: localResult.health.activeFault,
-                severity_level: localResult.health.status,
-                dominant_root_cause_feature: localResult.xaiAttributions?.[0]?.name || 'None',
-                feature_attributions: localResult.xaiAttributions.reduce((acc, curr) => {
-                  acc[curr.name] = parseFloat(curr.weight) || 10;
-                  return acc;
-                }, {}),
-                trajectory: localResult.rul.trajectory,
-                historicalHealthPoints: localResult.rul.historicalHealth,
-                historicalRulPoints: localResult.rul.historicalRul,
-                stressBreakdown: localResult.degradation.stressBreakdown,
-                dataQuality: {
-                  quality_score_pct: localResult.dataQuality.score,
-                  sensor_confidence: localResult.dataQuality.sensorConfidence,
-                  telemetry_age_ms: localResult.dataQuality.telemetryAgeMs
-                },
-                degradationTrend: localResult.degradation.trend,
-                confidencePct: localResult.rul.confidencePct,
-                failureRiskScore: localResult.risk.score,
-                failureRiskLevel: localResult.risk.level,
-                multiHorizonRisk: localResult.risk.multiHorizon,
-                pilot_advisory: localResult.advisory,
-                maintenance: localResult.advisory,
-                modelMetadata: localResult.modelMetadata
-              }));
-            }
-          } catch (err) {
-            console.warn('Local prognostics fallback evaluation error:', err);
-          }
-        })
-        .finally(() => {
-          isFetchingMlRef.current = false;
-        });
+        applyLocalFallback(data);
       }
 
       // Append to Rolling History Buffer (strictly downsampled to 1 Hz to preserve memory)
@@ -639,7 +588,7 @@ export const TelemetryProvider = ({ children }) => {
     });
 
     socket.on('connect_error', (err) => {
-      console.error('[Socket.io] Connection error to http://localhost:5002:', err);
+      console.error('[Socket.io] Gateway connection error:', err);
       setSocketError(`Direct CAN Socket offline (${err.message || 'error'}). Active internal simulation bridge fallback engaged.`);
       setIsConnected(false);
     });
@@ -647,10 +596,14 @@ export const TelemetryProvider = ({ children }) => {
     return () => {
       socket.disconnect();
     };
-  }, [playAlertTone]);
+  }, [playAlertTone, applyMlData, applyLocalFallback]);
 
   // Inject Fault helper
-  const injectFault = useCallback((faultType, severity = 0.85) => {
+  const injectFault = useCallback((faultType, severity = 0.85, uavId = 'Vahak-1') => {
+    if (uavId !== 'Vahak-1') {
+      socketRef.current?.emit('inject_fault', { faultType, severity, uavId });
+      return;
+    }
     if (socketRef.current && socketRef.current.connected) {
       socketRef.current.emit('inject_fault', { faultType, severity });
     } else {
@@ -666,7 +619,12 @@ export const TelemetryProvider = ({ children }) => {
   }, []);
 
   // Clear Fault helper
-  const clearFault = useCallback(() => {
+  const clearFault = useCallback((uavId = 'Vahak-1') => {
+    if (typeof uavId !== 'string') uavId = 'Vahak-1';   // tolerate onClick={clearFault}
+    if (uavId !== 'Vahak-1') {
+      socketRef.current?.emit('clear_fault', { uavId });
+      return;
+    }
     if (socketRef.current && socketRef.current.connected) {
       socketRef.current.emit('clear_fault');
     } else {
@@ -688,36 +646,30 @@ export const TelemetryProvider = ({ children }) => {
     }
   }, []);
 
-  // ── FCS Autopilot Control Helpers (WebSocket + REST Fallback) ──
+  // ── FCS Autopilot Control Helpers ──
+  // Exactly one channel per command: the socket when connected, else REST.
+  const REST_FCS = {
+    fcs_set_mode: '/api/fcs/mode', fcs_set_altitude: '/api/fcs/altitude', fcs_set_airspeed: '/api/fcs/airspeed',
+    fcs_set_heading: '/api/fcs/heading', fcs_arm: '/api/fcs/arm', fcs_disarm: '/api/fcs/disarm',
+    fcs_load_waypoints: '/api/fcs/waypoints', fcs_reset: '/api/fcs/reset',
+  };
   const _emitFcs = (event, data) => {
     if (socketRef.current && socketRef.current.connected) {
       socketRef.current.emit(event, data ?? {});
+    } else if (REST_FCS[event]) {
+      gatewayFetch(REST_FCS[event], {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data ?? {})
+      }).then(async (r) => {
+        if (!r.ok) setCommandError(`${event}: ${(await r.json().catch(() => ({}))).error || `HTTP ${r.status}`}`);
+      }).catch(() => {});
     }
-    const host = window.location.hostname ? `http://${window.location.hostname}:5002` : 'http://localhost:5002';
-    if (event === 'fcs_set_mode') {
-      fetch(`${host}/api/fcs/mode`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).catch(() => {});
-      setFcsState(prev => ({ ...prev, ap_mode: data.mode }));
-    } else if (event === 'fcs_set_altitude') {
-      fetch(`${host}/api/fcs/altitude`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).catch(() => {});
-      setFcsState(prev => ({ ...prev, alt_sp_ft: data.alt_ft, ap_armed: true }));
-    } else if (event === 'fcs_set_airspeed') {
-      fetch(`${host}/api/fcs/airspeed`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).catch(() => {});
-      setFcsState(prev => ({ ...prev, ias_sp_kts: data.ias_kts, ap_armed: true }));
-    } else if (event === 'fcs_set_heading') {
-      fetch(`${host}/api/fcs/heading`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).catch(() => {});
-      setFcsState(prev => ({ ...prev, heading_sp_deg: data.heading_deg, ap_armed: true }));
-    } else if (event === 'fcs_arm') {
-      fetch(`${host}/api/fcs/arm`, { method: 'POST' }).catch(() => {});
-      setFcsState(prev => ({ ...prev, ap_armed: true }));
-    } else if (event === 'fcs_disarm') {
-      fetch(`${host}/api/fcs/disarm`, { method: 'POST' }).catch(() => {});
-      setFcsState(prev => ({ ...prev, ap_armed: false, ap_mode: 'MANUAL_FBW' }));
-    } else if (event === 'fcs_load_waypoints') {
-      fetch(`${host}/api/fcs/waypoints`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).catch(() => {});
-      setFcsState(prev => ({ ...prev, ap_mode: 'AUTO_MISSION', ap_armed: true }));
-    } else if (event === 'fcs_reset') {
-      fetch(`${host}/api/fcs/reset`, { method: 'POST' }).catch(() => {});
-    }
+    if (event === 'fcs_set_mode') setFcsState(prev => ({ ...prev, ap_mode: data.mode }));
+    else if (event === 'fcs_set_altitude') setFcsState(prev => ({ ...prev, alt_sp_ft: data.alt_ft, ap_armed: true }));
+    else if (event === 'fcs_set_airspeed') setFcsState(prev => ({ ...prev, ias_sp_kts: data.ias_kts, ap_armed: true }));
+    else if (event === 'fcs_set_heading') setFcsState(prev => ({ ...prev, heading_sp_deg: data.heading_deg, ap_armed: true }));
+    else if (event === 'fcs_arm') setFcsState(prev => ({ ...prev, ap_armed: true }));
+    else if (event === 'fcs_disarm') setFcsState(prev => ({ ...prev, ap_armed: false, ap_mode: 'MANUAL_FBW' }));
+    else if (event === 'fcs_load_waypoints') setFcsState(prev => ({ ...prev, ap_mode: 'AUTO_MISSION', ap_armed: true }));
   };
 
   const setFcsMode      = useCallback((mode) => _emitFcs('fcs_set_mode', { mode }), []);
@@ -792,6 +744,7 @@ export const TelemetryProvider = ({ children }) => {
         setAudioEnabled,
         injectFault,
         clearFault,
+        fleetAi,
         updateManualConditions,
         // Mission Replay & Black Box Engine
         isReplayMode,
@@ -813,6 +766,8 @@ export const TelemetryProvider = ({ children }) => {
         fcsDisarm,
         fcsFbwInput,
         fcsReset,
+        commandError,
+        clearCommandError,
       }}
     >
       {children}

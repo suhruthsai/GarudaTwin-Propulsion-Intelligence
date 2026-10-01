@@ -8,12 +8,15 @@
     "build": "vite build",
     "preview": "vite preview",
     "server": "node server.js",
-    "ai": "./ai_venv/bin/python ai_service.py",
+    "ai": "node scripts/start.mjs ai",
     "backend": "node server.js",
     "start": "node server.js",
-    "start:all": "bash start_services.sh",
-    "restart": "bash start_services.sh --restart",
-    "stop": "kill -9 $(lsof -t -iTCP:8001,5002,5173 -sTCP:LISTEN 2>/dev/null) || true"
+    "start:all": "node scripts/start.mjs all",
+    "restart": "node scripts/start.mjs stop && node scripts/start.mjs all",
+    "stop": "node scripts/start.mjs stop",
+    "test:security": "node test_gateway_security.mjs",
+    "test:data": "node test_data_source.mjs",
+    "test:fleet": "node test_fleet.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^9.106.0",

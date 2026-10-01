@@ -12,33 +12,33 @@ export const FeaturesInspectorModal = ({ isOpen, onClose }) => {
   const eng = telemetry.engine || {};
   const res = telemetry.residuals || {};
 
-  // 14 Canonical Raw Sensor Inputs
+  // Raw sensor channels sent to the AI service (no health score or fault label is an input)
+  const egt = eng.egt || [];
+  const cht = eng.cht || [];
   const rawSensors = [
-    { key: 'rpm', name: 'Engine RPM', value: eng.rpm, unit: 'RPM', nominal: '4800.0 RPM' },
-    { key: 'true_cht', name: 'True Cylinder Head Temp (CHT)', value: eng.cht ? eng.cht[2] : 106.0, unit: '°C', nominal: '106.0 °C' },
-    { key: 'sensor_cht', name: 'Measured Sensor CHT', value: eng.cht ? eng.cht[2] : 106.0, unit: '°C', nominal: '106.0 °C' },
-    { key: 'egt', name: 'Exhaust Gas Temperature (EGT)', value: eng.egt ? eng.egt[2] : 840.0, unit: '°C', nominal: '840.0 °C' },
-    { key: 'oil_pressure', name: 'Hydrodynamic Oil Pressure', value: eng.oilPressBar, unit: 'bar', nominal: '3.85 bar' },
-    { key: 'oil_temp', name: 'Sump Oil Temperature', value: eng.oilTempC, unit: '°C', nominal: '98.0 °C' },
-    { key: 'fuel_flow', name: 'Fuel Flow Rate', value: eng.fuelFlowLph, unit: 'L/h', nominal: '26.0 L/h' },
-    { key: 'vibration', name: 'Engine Block Vibration', value: eng.vibrationGrms, unit: 'g-RMS', nominal: '0.28 g-RMS' },
-    { key: 'battery_voltage', name: 'FADEC Bus Voltage', value: eng.genVoltageV, unit: 'V', nominal: '28.4 V' },
-    { key: 'injection_timing', name: 'Injection Timing BTDC', value: 18.5, unit: '°', nominal: '18.5° BTDC' },
-    { key: 'health_index', name: 'Health Index (0.0 - 1.0)', value: (telemetry.health ? telemetry.health.index / 100.0 : 0.98), unit: 'norm', nominal: '0.98 norm' },
-    { key: 'altitude', name: 'Flight Altitude', value: telemetry.mission ? telemetry.mission.altitudeFt : 14500.0, unit: 'ft', nominal: '14,500 ft' },
-    { key: 'ambient_temp', name: 'Ambient Temperature', value: telemetry.mission ? telemetry.mission.ambientTempC : -12.5, unit: '°C', nominal: '-12.5 °C' },
-    { key: 'throttle', name: 'Commanded Throttle Position', value: eng.throttlePct, unit: '%', nominal: '78.5 %' }
+    { key: 'rpm', name: 'Engine RPM', value: eng.rpm, unit: 'RPM' },
+    { key: 'throttle', name: 'Throttle Position', value: eng.throttlePct, unit: '%' },
+    ...egt.map((v, i) => ({ key: `egt[${i}]`, name: `EGT Cylinder ${i + 1}`, value: v, unit: '°C' })),
+    ...cht.map((v, i) => ({ key: `cht[${i}]`, name: `CHT Cylinder ${i + 1}`, value: v, unit: '°C' })),
+    { key: 'map_bar', name: 'Manifold Absolute Pressure', value: eng.mapBar, unit: 'bar' },
+    { key: 'oil_pressure', name: 'Oil Pressure', value: eng.oilPressBar, unit: 'bar' },
+    { key: 'oil_temp', name: 'Oil Temperature', value: eng.oilTempC, unit: '°C' },
+    { key: 'vibration', name: 'Engine Vibration', value: eng.vibrationGrms, unit: 'g-RMS' },
+    { key: 'fuel_flow', name: 'Fuel Flow', value: eng.fuelFlowLph, unit: 'L/h' },
+    { key: 'lambda', name: 'Lambda', value: eng.lambda, unit: '' },
+    { key: 'gen_voltage', name: 'Generator Voltage', value: eng.genVoltageV, unit: 'V' },
+    { key: 'gen_current', name: 'Generator Current', value: eng.genCurrentA, unit: 'A' },
+    { key: 'coolant_temp', name: 'Coolant Temperature', value: eng.coolantTempC, unit: '°C' },
   ];
 
-  // Synthesize 71 Rolling Window Features
-  const featureCols = [];
-  rawSensors.forEach(s => {
-    featureCols.push({ name: s.key, value: s.value, type: 'raw', unit: s.unit });
-    featureCols.push({ name: `${s.key}_rmean30`, value: s.value, type: '30s Mean', unit: s.unit });
-    featureCols.push({ name: `${s.key}_rstd30`, value: (s.value * 0.015).toFixed(3), type: '30s StdDev', unit: s.unit });
-    featureCols.push({ name: `${s.key}_rmean60`, value: s.value, type: '60s Mean', unit: s.unit });
-    featureCols.push({ name: `${s.key}_rstd60`, value: (s.value * 0.02).toFixed(3), type: '60s StdDev', unit: s.unit });
-  });
+  // Actual engineered feature vector scored by the model (returned by the AI service)
+  const featureCols = Object.entries(aiPrognostics.model_features || {}).map(([name, value]) => ({
+    name,
+    value: Number(value).toFixed(4),
+    type: name.endsWith('_rmean') ? 'Rolling mean (8 samples)' : name.endsWith('_rstd') ? 'Rolling std (8 samples)' : 'Golden-twin residual',
+    unit: ''
+  }));
+  const meta = aiPrognostics.modelMetadata || {};
 
   const filteredFeatures = featureCols.filter(f => 
     f.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -98,7 +98,7 @@ export const FeaturesInspectorModal = ({ isOpen, onClose }) => {
           <div className="p-2.5 rounded-lg border border-slate-200 bg-white shadow-2xs">
             <span className="text-slate-500 text-[10px] font-bold">TOTAL FEATURE SPACE:</span>
             <div className="font-bold text-sm text-sky-600 tabular-nums mt-0.5">
-              71 FEATURES
+              {featureCols.length || meta.num_features || 32} FEATURES
             </div>
           </div>
         </div>
@@ -106,8 +106,8 @@ export const FeaturesInspectorModal = ({ isOpen, onClose }) => {
         {/* Modal Navigation Tabs */}
         <div className="bg-slate-50 border-b border-slate-200 px-6 py-1.5 flex gap-1.5 overflow-x-auto">
           {[
-            { id: 'RAW_SENSORS', label: 'RAW SENSOR INPUTS (14)', icon: Activity },
-            { id: 'ALL_FEATURES', label: 'ALL 71 FEATURES', icon: Layers },
+            { id: 'RAW_SENSORS', label: `RAW SENSOR INPUTS (${rawSensors.length})`, icon: Activity },
+            { id: 'ALL_FEATURES', label: `ALL ${featureCols.length} FEATURES`, icon: Layers },
             { id: 'SHAP_ATTRIBUTION', label: 'TREESHAP EXPLAINABILITY', icon: BarChart2 },
             { id: 'MODEL_ARTIFACTS', label: 'TRAINED ML MODELS', icon: Cpu }
           ].map(tab => {
@@ -146,14 +146,13 @@ export const FeaturesInspectorModal = ({ isOpen, onClose }) => {
                     <span className="text-lg font-bold text-slate-900 tabular-nums">
                       {typeof s.value === 'number' ? s.value.toFixed(2) : s.value} <span className="text-xs text-slate-500">{s.unit}</span>
                     </span>
-                    <span className="text-[10px] text-slate-500 font-medium">Nominal: {s.nominal}</span>
                   </div>
                 </div>
               ))}
             </div>
           )}
 
-          {/* TAB 2: ALL 71 ENGINEERED FEATURES */}
+          {/* TAB 2: ENGINEERED FEATURES (live values scored by the model) */}
           {activeTab === 'ALL_FEATURES' && (
             <div className="flex flex-col gap-4 font-mono">
               {/* Search Bar */}
@@ -161,12 +160,12 @@ export const FeaturesInspectorModal = ({ isOpen, onClose }) => {
                 <Search className="w-4 h-4 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Filter feature by name (e.g., egt, rmean30, rstd60, vibration)..."
+                  placeholder="Filter feature by name (e.g., egt, rmean, rstd, oil)..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="bg-transparent border-none outline-none text-xs text-slate-800 w-full placeholder:text-slate-400 font-mono"
                 />
-                <span className="text-xs text-sky-700 whitespace-nowrap font-bold tabular-nums">{filteredFeatures.length} / 70 features</span>
+                <span className="text-xs text-sky-700 whitespace-nowrap font-bold tabular-nums">{filteredFeatures.length} / {featureCols.length} features</span>
               </div>
 
               {/* Feature Grid Table */}
@@ -218,45 +217,39 @@ export const FeaturesInspectorModal = ({ isOpen, onClose }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs">
               <div className="p-4 rounded-lg border border-slate-200 bg-slate-50 flex flex-col gap-2.5 shadow-xs">
                 <div className="font-bold text-slate-800 uppercase">LOADED MODEL ARTIFACTS</div>
-                <div className="flex justify-between py-1.5 border-b border-slate-200">
-                  <span className="text-slate-600">isolation_forest.pkl</span>
-                  <span className="text-emerald-700 font-bold tabular-nums">LOADED (4.7 MB)</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-200">
-                  <span className="text-slate-600">scaler_anomaly.pkl</span>
-                  <span className="text-emerald-700 font-bold tabular-nums">LOADED (2.1 KB)</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-200">
-                  <span className="text-slate-600">fault_classifier.pkl</span>
-                  <span className="text-emerald-700 font-bold tabular-nums">LOADED (2.5 MB)</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-200">
-                  <span className="text-slate-600">label_encoder.pkl</span>
-                  <span className="text-emerald-700 font-bold tabular-nums">LOADED (322 B)</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-200">
-                  <span className="text-slate-600">rul_regressor.pkl</span>
-                  <span className="text-emerald-700 font-bold tabular-nums">LOADED (677 KB)</span>
-                </div>
+                {[
+                  ['anomaly_detector.npz', 'Mahalanobis residual detector (nominal-only)'],
+                  ['fault_classifier.json', 'XGBoost, 8 classes'],
+                  ['severity_regressor.json', 'XGBoost → health index'],
+                  ['rul_quantile_regressor.json', 'XGBoost 2.5/50/97.5 % + conformal'],
+                  ['model_card.json', 'metrics & calibration'],
+                ].map(([file, desc]) => (
+                  <div key={file} className="flex justify-between py-1.5 border-b border-slate-200">
+                    <span className="text-slate-600">{file}</span>
+                    <span className="text-slate-800 font-bold">{desc}</span>
+                  </div>
+                ))}
               </div>
 
               <div className="p-4 rounded-lg border border-slate-200 bg-slate-50 flex flex-col gap-2.5 shadow-xs">
-                <div className="font-bold text-slate-800 uppercase">VERIFICATION TEST SUITE</div>
+                <div className="font-bold text-slate-800 uppercase">HELD-OUT TEST METRICS (SIMULATOR DATA)</div>
                 <div className="flex justify-between py-1.5 border-b border-slate-200">
-                  <span className="text-slate-600">Unit Tests:</span>
-                  <span className="text-emerald-700 font-bold tabular-nums">PASS (6/6)</span>
+                  <span className="text-slate-600">Detection precision / recall:</span>
+                  <span className="text-slate-800 font-bold tabular-nums">
+                    {((meta.anomaly_precision ?? 0) * 100).toFixed(1)}% / {((meta.anomaly_recall ?? 0) * 100).toFixed(1)}%
+                  </span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-slate-200">
-                  <span className="text-slate-600">Regression Tests:</span>
-                  <span className="text-emerald-700 font-bold tabular-nums">PASS (0.0% divergence)</span>
+                  <span className="text-slate-600">RUL MAE:</span>
+                  <span className="text-slate-800 font-bold tabular-nums">{(meta.validation_mae_hours ?? 0).toFixed(1)} h</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-slate-200">
+                  <span className="text-slate-600">Training data:</span>
+                  <span className="text-slate-800 font-bold">{meta.training_dataset || '—'}</span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-slate-200">
                   <span className="text-slate-600">REST API Endpoint:</span>
                   <span className="text-sky-700 font-mono font-bold">POST /api/health-rul/predict</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-200">
-                  <span className="text-slate-600">Python Environment:</span>
-                  <span className="text-slate-800 font-bold">Python 3.11 (venv311)</span>
                 </div>
               </div>
             </div>
@@ -268,7 +261,7 @@ export const FeaturesInspectorModal = ({ isOpen, onClose }) => {
         <div className="bg-slate-50 border-t border-slate-200 px-6 py-3 flex items-center justify-between text-xs font-mono">
           <div className="text-slate-600 flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            <span>AI HEALTH & RUL MODULE VERIFIED IN SUHRUTH MALE UAV(P)</span>
+            <span>Full metrics: ai_health_rul/models/model_card.json</span>
           </div>
 
           <button

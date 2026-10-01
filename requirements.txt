@@ -7,10 +7,13 @@ pydantic>=2.7.0
 requests>=2.32.0
 python-multipart>=0.0.9
 pandas>=2.2.0
+# Training only (LedoitWolf covariance, metrics); inference loads no scikit-learn objects
 scikit-learn>=1.4.0
+# Models are saved as XGBoost JSON; TreeSHAP attributions come from xgboost pred_contribs
 xgboost==2.0.3
-shap>=0.45.0
-joblib>=1.4.0
 httpx>=0.27.0
 psutil>=5.9.0
 pytest>=8.0.0
+# CAN bridge (tools/can): bus access + DBC decoding; the gateway itself does not need these
+python-can>=4.3,<5
+cantools>=39,<41

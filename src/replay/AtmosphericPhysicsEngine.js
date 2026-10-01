@@ -21,12 +21,12 @@ export class AtmosphericPhysicsEngine {
   // 9 Aerospace-Grade Environmental Mission Scenarios
   static SCENARIO_PRESETS = [
     {
-      id: 'HIGH_ALT_FL280',
-      aliases: ['HIGH_ALT', 'HIGH_ALT_FL280'],
-      label: 'HIGH-ALT FL280',
-      shortLabel: 'FL280 HIGH-ALT',
+      id: 'HIGH_ALT_FL220',
+      aliases: ['HIGH_ALT', 'HIGH_ALT_FL220', 'HIGH_ALT_FL280'],
+      label: 'HIGH-ALT FL220',
+      shortLabel: 'FL220 HIGH-ALT',
       icon: 'Mountain',
-      altFt: 28000,
+      altFt: 22000,
       tempC: -28,
       payload: '85 kg (EO/IR + SAR)',
       headwindKts: 38,
@@ -99,17 +99,17 @@ export class AtmosphericPhysicsEngine {
       description: 'Heavy tropical convection with high moisture displacement of air density.'
     },
     {
-      id: 'FL300_CEILING',
-      aliases: ['FL300_CEILING'],
-      label: 'FL300 CEILING',
-      shortLabel: 'FL300 CEILING',
+      id: 'FL230_CEILING',
+      aliases: ['FL230_CEILING', 'FL300_CEILING'],
+      label: 'FL230 SERVICE CEILING',
+      shortLabel: 'FL230 CEILING',
       icon: 'Zap',
-      altFt: 30000,
-      tempC: -44,
+      altFt: 23000,
+      tempC: -31,
       payload: '65 kg (Minimal Standoff Pod)',
       headwindKts: 55,
       humidityPct: 8,
-      description: 'Maximum operational service ceiling dash with 100% turbo duty.'
+      description: 'Rotax 915 iS service ceiling (~23,000 ft) with maximum turbo duty.'
     },
     {
       id: 'TERRAIN_MASK',
@@ -204,7 +204,8 @@ export class AtmosphericPhysicsEngine {
     return {
       altitudeFt,
       ambientTempC,
-      deltaIsaC: ambientTempC,
+      // Deviation from ISA standard temperature at this altitude (T_isa = 15 - 6.5 °C/km)
+      deltaIsaC: Number((ambientTempC - (15.0 - this.LAPSE_RATE * hMeters)).toFixed(1)),
       atmosphericPressureHpa,
       airDensityKgM3,
       densityRatio,
@@ -293,10 +294,10 @@ export class AtmosphericPhysicsEngine {
         t.flTag = 'FL200';
         t.fuelFlow = '5.6 GPH';
       }
-    } else if (scenarioId === 'FL300_CEILING') {
+    } else if (scenarioId === 'FL230_CEILING') {
       if (activePhaseId >= 3 && activePhaseId <= 5) {
-        t.alt = '30000 FT';
-        t.flTag = 'FL300';
+        t.alt = '23000 FT';
+        t.flTag = 'FL230';
         t.map = '1.48 BAR';
       }
     } else if (scenarioId === 'ULTRA_LOITER') {

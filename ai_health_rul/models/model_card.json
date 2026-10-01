@@ -1,0 +1,969 @@
+{
+  "version": "2.0.0",
+  "trained_at": "2026-10-01T06:05:49",
+  "training_data": {
+    "source": "training/generate_dataset.mjs driving src/engine/EngineSimulator.js (same physics as the live gateway)",
+    "samples": 377877,
+    "episodes": 5400,
+    "split": "by episode, stratified by fault class: 70/15/15 train/val/test",
+    "profiles": [
+      "FIXED",
+      "LOITER",
+      "TRANSIENTS"
+    ],
+    "note": "Synthetic simulator data. Degradation-life priors are engineering assumptions. Metrics describe performance on this simulator, not on a real engine."
+  },
+  "leakage_controls": [
+    "No health score or fault label used as input; features are golden-twin physics residuals",
+    "Episode-level train/val/test split",
+    "Anomaly threshold calibrated on validation episodes; metrics on untouched test episodes",
+    "Per-UAV inference sessions (no shared state between vehicles or clients)"
+  ],
+  "features": [
+    "egt_res_mean",
+    "egt_spread",
+    "cht_res_mean",
+    "cht_spread",
+    "map_res",
+    "oil_press_res",
+    "oil_temp_res",
+    "vib_res",
+    "fuel_flow_res",
+    "lambda_res",
+    "gen_v_res",
+    "gen_i_res",
+    "coolant_res",
+    "egt_cold_spread",
+    "cht_cold_spread",
+    "rpm_step",
+    "egt_res_mean_rmean",
+    "egt_spread_rmean",
+    "cht_res_mean_rmean",
+    "cht_spread_rmean",
+    "map_res_rmean",
+    "oil_press_res_rmean",
+    "oil_temp_res_rmean",
+    "vib_res_rmean",
+    "fuel_flow_res_rmean",
+    "lambda_res_rmean",
+    "gen_v_res_rmean",
+    "gen_i_res_rmean",
+    "coolant_res_rmean",
+    "egt_cold_spread_rmean",
+    "cht_cold_spread_rmean",
+    "rpm_step_rmean",
+    "egt_spread_rstd",
+    "oil_press_res_rstd",
+    "vib_res_rstd",
+    "map_res_rstd",
+    "oil_temp_res_rstd",
+    "lambda_res_rstd",
+    "egt_res_mean_rstd",
+    "egt_cold_spread_rstd",
+    "rpm_step_rstd"
+  ],
+  "rolling_window_samples": 8,
+  "classes": [
+    "NONE",
+    "CYL3_INJECTOR",
+    "BLOW_BY",
+    "OIL_PUMP_CAVITATION",
+    "TURBO_WASTEGATE_STUCK",
+    "COOLING_DEGRADATION",
+    "GENERATOR_FAILURE",
+    "PRGB_DEGRADATION",
+    "MISFIRE",
+    "COMBUSTION_INSTABILITY",
+    "INJECTOR_COKING",
+    "SENSOR_DRIFT"
+  ],
+  "best_iterations": {
+    "classifier": 190,
+    "severity": 597,
+    "rul": 172
+  },
+  "anomaly_calibration": {
+    "method": "Mahalanobis distance, Ledoit-Wolf covariance",
+    "threshold": 26.424640655517578,
+    "nominal_median": 5.702767372131348,
+    "target_false_alarm_rate": 0.001,
+    "persistence_samples": 2
+  },
+  "rul_quantiles": [
+    0.025,
+    0.5,
+    0.975
+  ],
+  "rul_conformal_log_margin": 0.18581811817086233,
+  "feature_ranges": {
+    "low": [
+      -59.42790603637695,
+      0.0,
+      -6.353909015655518,
+      0.0,
+      -0.04213764891028404,
+      -2.7518508434295654,
+      -23.541492462158203,
+      -0.11003582179546356,
+      -2.1480000019073486,
+      -0.05400000140070915,
+      -4.599999904632568,
+      -31.67530059814453,
+      -16.399999618530273,
+      0.0,
+      0.0,
+      -1882.960693359375,
+      -55.76353073120117,
+      0.20000000298023224,
+      -6.313623905181885,
+      0.05000000074505806,
+      -0.015134487301111221,
+      -2.322014331817627,
+      -20.698890686035156,
+      -0.015853144228458405,
+      -2.1332530975341797,
+      -0.019874999299645424,
+      -4.546912670135498,
+      -30.837499618530273,
+      -15.82868766784668,
+      0.20000000298023224,
+      0.05000000074505806,
+      -303.17822265625,
+      0.699999988079071,
+      0.017999999225139618,
+      0.0071000000461936,
+      0.004600000102072954,
+      0.09300000220537186,
+      0.0027000000700354576,
+      0.6000000238418579,
+      0.6899999976158142,
+      5.519999980926514
+    ],
+    "high": [
+      37.7422981262207,
+      145.9499969482422,
+      32.857112884521484,
+      27.850000381469727,
+      0.5934876799583435,
+      0.9257519841194153,
+      33.945945739746094,
+      2.2414281368255615,
+      0.04800000041723251,
+      0.17900000512599945,
+      0.20000000298023224,
+      1.5,
+      33.5,
+      238.96295166015625,
+      25.5,
+      1917.4788818359375,
+      33.340476989746094,
+      139.5438995361328,
+      32.834720611572266,
+      27.435956954956055,
+      0.5506203770637512,
+      0.8356004953384399,
+      31.589139938354492,
+      2.1319639682769775,
+      0.04800000041723251,
+      0.17687499523162842,
+      0.10000000149011612,
+      1.5,
+      33.45000076293945,
+      226.0750732421875,
+      25.28125,
+      306.50384521484375,
+      54.062950134277344,
+      0.9149242043495178,
+      0.8477299213409424,
+      0.21268437802791595,
+      10.973563194274902,
+      0.07703134417533875,
+      24.132335662841797,
+      88.02775573730469,
+      824.2710571289062
+    ]
+  },
+  "golden_twin_parity_max_abs_diff": [
+    0.010315028541981519,
+    0.0034093884510468797,
+    0.0017236332480905503
+  ],
+  "metrics": {
+    "anomaly_detector": {
+      "precision": 1.0,
+      "recall": 0.8821,
+      "f1": 0.9374,
+      "roc_auc": 0.9965,
+      "nominal_false_alarm_rate": 0.0,
+      "raw_single_sample_recall": 0.9028,
+      "raw_single_sample_false_alarm_rate": 0.00069,
+      "note": "Fitted on nominal data only, so per-class recall is the unknown-fault detection rate. 2-sample persistence applied.",
+      "recall_by_class": {
+        "CYL3_INJECTOR": 0.9679,
+        "BLOW_BY": 0.9708,
+        "OIL_PUMP_CAVITATION": 0.9677,
+        "TURBO_WASTEGATE_STUCK": 0.8787,
+        "COOLING_DEGRADATION": 0.9588,
+        "GENERATOR_FAILURE": 0.8657,
+        "PRGB_DEGRADATION": 0.9693,
+        "MISFIRE": 0.9654,
+        "COMBUSTION_INSTABILITY": 0.6543,
+        "INJECTOR_COKING": 0.6701,
+        "SENSOR_DRIFT": 0.8113
+      },
+      "recall_by_severity": {
+        "0.05-0.15": 0.6721,
+        "0.15-0.30": 0.9123,
+        "0.30-0.60": 0.9611,
+        "0.60-1.00": 0.9612
+      }
+    },
+    "detection_end_to_end": {
+      "precision": 0.9999,
+      "recall": 0.964,
+      "f1": 0.9816,
+      "nominal_false_alarm_rate": 0.00019,
+      "false_alarms_per_hour_at_1hz": 0.68,
+      "nominal_false_alarm_rate_by_profile": {
+        "FIXED": 0.0,
+        "LOITER": 0.00048,
+        "TRANSIENTS": 0.0
+      },
+      "recall_by_severity": {
+        "0.05-0.15": 0.956,
+        "0.15-0.30": 0.963,
+        "0.30-0.60": 0.968,
+        "0.60-1.00": 0.9672
+      },
+      "median_detection_latency_s": 1.19,
+      "p90_detection_latency_s": 1.39
+    },
+    "fault_classifier": {
+      "macro_f1": 0.98,
+      "weighted_f1": 0.976,
+      "per_class": {
+        "NONE": {
+          "precision": 0.9326,
+          "recall": 0.9998,
+          "f1-score": 0.965,
+          "support": 15851.0
+        },
+        "CYL3_INJECTOR": {
+          "precision": 1.0,
+          "recall": 0.9682,
+          "f1-score": 0.9839,
+          "support": 2864.0
+        },
+        "BLOW_BY": {
+          "precision": 1.0,
+          "recall": 0.9698,
+          "f1-score": 0.9847,
+          "support": 3048.0
+        },
+        "OIL_PUMP_CAVITATION": {
+          "precision": 1.0,
+          "recall": 0.9677,
+          "f1-score": 0.9836,
+          "support": 2789.0
+        },
+        "TURBO_WASTEGATE_STUCK": {
+          "precision": 1.0,
+          "recall": 0.9706,
+          "f1-score": 0.9851,
+          "support": 3066.0
+        },
+        "COOLING_DEGRADATION": {
+          "precision": 1.0,
+          "recall": 0.9669,
+          "f1-score": 0.9832,
+          "support": 2813.0
+        },
+        "GENERATOR_FAILURE": {
+          "precision": 1.0,
+          "recall": 0.9717,
+          "f1-score": 0.9856,
+          "support": 3105.0
+        },
+        "PRGB_DEGRADATION": {
+          "precision": 1.0,
+          "recall": 0.9699,
+          "f1-score": 0.9847,
+          "support": 3058.0
+        },
+        "MISFIRE": {
+          "precision": 1.0,
+          "recall": 0.9658,
+          "f1-score": 0.9826,
+          "support": 2774.0
+        },
+        "COMBUSTION_INSTABILITY": {
+          "precision": 0.9992,
+          "recall": 0.9628,
+          "f1-score": 0.9807,
+          "support": 2745.0
+        },
+        "INJECTOR_COKING": {
+          "precision": 1.0,
+          "recall": 0.9701,
+          "f1-score": 0.9848,
+          "support": 2746.0
+        },
+        "SENSOR_DRIFT": {
+          "precision": 0.9988,
+          "recall": 0.9167,
+          "f1-score": 0.956,
+          "support": 2798.0
+        }
+      },
+      "accuracy_by_severity": {
+        "0.05-0.15": 0.9558,
+        "0.15-0.30": 0.963,
+        "0.30-0.60": 0.968,
+        "0.60-1.00": 0.9672
+      },
+      "confusion_matrix": {
+        "labels": [
+          "NONE",
+          "CYL3_INJECTOR",
+          "BLOW_BY",
+          "OIL_PUMP_CAVITATION",
+          "TURBO_WASTEGATE_STUCK",
+          "COOLING_DEGRADATION",
+          "GENERATOR_FAILURE",
+          "PRGB_DEGRADATION",
+          "MISFIRE",
+          "COMBUSTION_INSTABILITY",
+          "INJECTOR_COKING",
+          "SENSOR_DRIFT",
+          "UNCLASSIFIED_ANOMALY"
+        ],
+        "matrix": [
+          [
+            15848,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            3,
+            0
+          ],
+          [
+            91,
+            2773,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            92,
+            0,
+            2956,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            90,
+            0,
+            0,
+            2699,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            90,
+            0,
+            0,
+            0,
+            2976,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            93,
+            0,
+            0,
+            0,
+            0,
+            2720,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            88,
+            0,
+            0,
+            0,
+            0,
+            0,
+            3017,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            92,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2966,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            95,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2679,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            102,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2643,
+            0,
+            0,
+            0
+          ],
+          [
+            82,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2664,
+            0,
+            0
+          ],
+          [
+            231,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2,
+            0,
+            2565,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    "health_index": {
+      "health_index_mae_pct": 1.24,
+      "health_index_mae_pct_faults_only": 1.52,
+      "health_index_mean_during_sensor_drift": 99.57
+    },
+    "rul": {
+      "target": "hours to functional failure (severity = 1) under assumed degradation priors",
+      "mae_hours": 25.28,
+      "median_abs_error_hours": 11.94,
+      "median_abs_pct_error": 26.6,
+      "interval_95_coverage": 0.9554,
+      "mae_hours_by_class": {
+        "CYL3_INJECTOR": 16.64,
+        "BLOW_BY": 37.87,
+        "OIL_PUMP_CAVITATION": 7.27,
+        "TURBO_WASTEGATE_STUCK": 19.18,
+        "COOLING_DEGRADATION": 22.0,
+        "GENERATOR_FAILURE": 14.37,
+        "PRGB_DEGRADATION": 39.41,
+        "MISFIRE": 11.42,
+        "COMBUSTION_INSTABILITY": 13.21,
+        "INJECTOR_COKING": 71.42
+      }
+    },
+    "autoencoder_legacy_endpoint": {
+      "threshold_mse": 0.204239,
+      "inputs": "RPM, throttle, EGT1-4, CHT1-4, MAP, oil pressure (no vibration/voltage/oil temp)",
+      "nominal_false_alarm_rate": 0.00139,
+      "recall": 0.1396,
+      "recall_by_class": {
+        "CYL3_INJECTOR": 0.4571,
+        "BLOW_BY": 0.2457,
+        "OIL_PUMP_CAVITATION": 0.2305,
+        "TURBO_WASTEGATE_STUCK": 0.031,
+        "COOLING_DEGRADATION": 0.0011,
+        "GENERATOR_FAILURE": 0.0019,
+        "PRGB_DEGRADATION": 0.0003,
+        "MISFIRE": 0.5097,
+        "COMBUSTION_INSTABILITY": 0.0033,
+        "INJECTOR_COKING": 0.0011,
+        "SENSOR_DRIFT": 0.0743
+      }
+    }
+  },
+  "recovery_after_fault_cleared": {
+    "note": "recovery samples are evaluation-only (not used for training)",
+    "episodes": 215,
+    "median_seconds_to_nominal": 7.77,
+    "p90_seconds_to_nominal": 8.46,
+    "non_nominal_fraction_during_recovery": 0.1235
+  },
+  "stress_test_nuisance_offsets": {
+    "anomaly_detector": {
+      "precision": 0.6725,
+      "recall": 0.99,
+      "f1": 0.8009,
+      "roc_auc": 0.8937,
+      "nominal_false_alarm_rate": 0.96745,
+      "raw_single_sample_recall": 1.0,
+      "raw_single_sample_false_alarm_rate": 0.99874,
+      "note": "Fitted on nominal data only, so per-class recall is the unknown-fault detection rate. 2-sample persistence applied.",
+      "recall_by_class": {
+        "CYL3_INJECTOR": 0.9892,
+        "BLOW_BY": 0.9905,
+        "OIL_PUMP_CAVITATION": 0.9892,
+        "TURBO_WASTEGATE_STUCK": 0.9902,
+        "COOLING_DEGRADATION": 0.9879,
+        "GENERATOR_FAILURE": 0.9923,
+        "PRGB_DEGRADATION": 0.9902,
+        "MISFIRE": 0.9877,
+        "COMBUSTION_INSTABILITY": 0.9887,
+        "INJECTOR_COKING": 0.992,
+        "SENSOR_DRIFT": 0.9914
+      },
+      "recall_by_severity": {
+        "0.05-0.15": 0.9906,
+        "0.15-0.30": 0.9898,
+        "0.30-0.60": 0.9899,
+        "0.60-1.00": 0.9896
+      }
+    },
+    "detection_end_to_end": {
+      "precision": 0.6793,
+      "recall": 0.8783,
+      "f1": 0.7661,
+      "nominal_false_alarm_rate": 0.83187,
+      "false_alarms_per_hour_at_1hz": 2994.74,
+      "nominal_false_alarm_rate_by_profile": {
+        "FIXED": 0.83887,
+        "LOITER": 0.81212,
+        "TRANSIENTS": 0.85161
+      },
+      "recall_by_severity": {
+        "0.05-0.15": 0.853,
+        "0.15-0.30": 0.8563,
+        "0.30-0.60": 0.8979,
+        "0.60-1.00": 0.8946
+      },
+      "median_detection_latency_s": 0.99,
+      "p90_detection_latency_s": 1.35
+    },
+    "fault_classifier": {
+      "macro_f1": 0.5159,
+      "weighted_f1": 0.4376,
+      "per_class": {
+        "NONE": {
+          "precision": 0.4078,
+          "recall": 0.1681,
+          "f1-score": 0.2381,
+          "support": 15851.0
+        },
+        "CYL3_INJECTOR": {
+          "precision": 1.0,
+          "recall": 0.7877,
+          "f1-score": 0.8812,
+          "support": 2864.0
+        },
+        "BLOW_BY": {
+          "precision": 0.9573,
+          "recall": 0.6995,
+          "f1-score": 0.8083,
+          "support": 3048.0
+        },
+        "OIL_PUMP_CAVITATION": {
+          "precision": 0.6839,
+          "recall": 0.4374,
+          "f1-score": 0.5336,
+          "support": 2789.0
+        },
+        "TURBO_WASTEGATE_STUCK": {
+          "precision": 0.5049,
+          "recall": 0.4993,
+          "f1-score": 0.5021,
+          "support": 3066.0
+        },
+        "COOLING_DEGRADATION": {
+          "precision": 0.2943,
+          "recall": 0.6673,
+          "f1-score": 0.4084,
+          "support": 2813.0
+        },
+        "GENERATOR_FAILURE": {
+          "precision": 0.1846,
+          "recall": 0.9311,
+          "f1-score": 0.3082,
+          "support": 3105.0
+        },
+        "PRGB_DEGRADATION": {
+          "precision": 1.0,
+          "recall": 0.071,
+          "f1-score": 0.1325,
+          "support": 3058.0
+        },
+        "MISFIRE": {
+          "precision": 1.0,
+          "recall": 0.4265,
+          "f1-score": 0.5979,
+          "support": 2774.0
+        },
+        "COMBUSTION_INSTABILITY": {
+          "precision": 0.7813,
+          "recall": 0.5661,
+          "f1-score": 0.6565,
+          "support": 2745.0
+        },
+        "INJECTOR_COKING": {
+          "precision": 1.0,
+          "recall": 0.9359,
+          "f1-score": 0.9669,
+          "support": 2746.0
+        },
+        "SENSOR_DRIFT": {
+          "precision": 0.1499,
+          "recall": 0.1651,
+          "f1-score": 0.1571,
+          "support": 2798.0
+        }
+      },
+      "accuracy_by_severity": {
+        "0.05-0.15": 0.4379,
+        "0.15-0.30": 0.5712,
+        "0.30-0.60": 0.6019,
+        "0.60-1.00": 0.6238
+      },
+      "confusion_matrix": {
+        "labels": [
+          "NONE",
+          "CYL3_INJECTOR",
+          "BLOW_BY",
+          "OIL_PUMP_CAVITATION",
+          "TURBO_WASTEGATE_STUCK",
+          "COOLING_DEGRADATION",
+          "GENERATOR_FAILURE",
+          "PRGB_DEGRADATION",
+          "MISFIRE",
+          "COMBUSTION_INSTABILITY",
+          "INJECTOR_COKING",
+          "SENSOR_DRIFT",
+          "UNCLASSIFIED_ANOMALY"
+        ],
+        "matrix": [
+          [
+            2665,
+            0,
+            0,
+            337,
+            1030,
+            2035,
+            6716,
+            0,
+            0,
+            279,
+            0,
+            2476,
+            313
+          ],
+          [
+            266,
+            2256,
+            0,
+            0,
+            0,
+            206,
+            127,
+            0,
+            0,
+            0,
+            0,
+            0,
+            9
+          ],
+          [
+            448,
+            0,
+            2132,
+            0,
+            30,
+            156,
+            282,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            487,
+            0,
+            0,
+            1220,
+            35,
+            530,
+            502,
+            0,
+            0,
+            0,
+            0,
+            0,
+            15
+          ],
+          [
+            446,
+            0,
+            0,
+            0,
+            1531,
+            297,
+            771,
+            0,
+            0,
+            0,
+            0,
+            0,
+            21
+          ],
+          [
+            329,
+            0,
+            0,
+            4,
+            64,
+            1877,
+            403,
+            0,
+            0,
+            24,
+            0,
+            110,
+            2
+          ],
+          [
+            106,
+            0,
+            0,
+            0,
+            20,
+            85,
+            2891,
+            0,
+            0,
+            0,
+            0,
+            3,
+            0
+          ],
+          [
+            537,
+            0,
+            0,
+            205,
+            253,
+            345,
+            1317,
+            217,
+            0,
+            0,
+            0,
+            8,
+            176
+          ],
+          [
+            360,
+            0,
+            42,
+            0,
+            2,
+            46,
+            885,
+            0,
+            1183,
+            61,
+            0,
+            24,
+            171
+          ],
+          [
+            340,
+            0,
+            0,
+            16,
+            8,
+            226,
+            601,
+            0,
+            0,
+            1554,
+            0,
+            0,
+            0
+          ],
+          [
+            112,
+            0,
+            0,
+            0,
+            0,
+            4,
+            60,
+            0,
+            0,
+            0,
+            2570,
+            0,
+            0
+          ],
+          [
+            439,
+            0,
+            53,
+            2,
+            59,
+            571,
+            1103,
+            0,
+            0,
+            71,
+            0,
+            462,
+            38
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    "health_index": {
+      "health_index_mae_pct": 31.94,
+      "health_index_mae_pct_faults_only": 29.24,
+      "health_index_mean_during_sensor_drift": 59.96
+    },
+    "rul": {
+      "target": "hours to functional failure (severity = 1) under assumed degradation priors",
+      "mae_hours": 36.52,
+      "median_abs_error_hours": 16.96,
+      "median_abs_pct_error": 39.6,
+      "interval_95_coverage": 0.8832,
+      "mae_hours_by_class": {
+        "CYL3_INJECTOR": 20.3,
+        "BLOW_BY": 52.45,
+        "OIL_PUMP_CAVITATION": 8.04,
+        "TURBO_WASTEGATE_STUCK": 29.03,
+        "COOLING_DEGRADATION": 25.41,
+        "GENERATOR_FAILURE": 21.61,
+        "PRGB_DEGRADATION": 58.88,
+        "MISFIRE": 16.51,
+        "COMBUSTION_INSTABILITY": 18.8,
+        "INJECTOR_COKING": 114.28
+      }
+    },
+    "description": "Test episodes re-scored after adding constant per-episode offsets (ranges: {'gen_voltage': (-0.8, 0.3), 'gen_current': (-5.0, 5.0), 'cht_common': (-3.0, 12.0), 'egt_common': (-10.0, 15.0), 'oil_temp': (-3.0, 5.0), 'oil_pressure': (-0.2, 0.1), 'coolant_temp': (-3.0, 5.0), 'vibration': (-0.02, 0.08), 'map_bar': (-0.03, 0.03), 'lambda': (-0.02, 0.02)}) that the simulator never produces, e.g. bus-voltage sag and common-mode CHT/EGT shifts. Quantifies sensitivity to uncalibrated sensors; a deployed twin needs per-engine baseline calibration."
+  },
+  "library_versions": {
+    "xgboost": "2.0.3",
+    "scikit-learn": "1.9.1",
+    "torch": "2.14.1+cpu"
+  }
+}

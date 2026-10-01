@@ -1565,7 +1565,18 @@ const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, se
                 
               <button onClick={() => injectFault('GENERATOR_FAILURE', 0.9)}
                 className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${af==='GENERATOR_FAILURE' ? 'bg-yellow-600 text-white border-yellow-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-yellow-50 hover:border-yellow-300 hover:text-yellow-800'}`}>Gen Failure</button>
-                
+
+              {[
+                ['MISFIRE', 0.6, 'Misfire (Cyl 2)'],
+                ['COMBUSTION_INSTABILITY', 0.7, 'Combustion Instab.'],
+                ['INJECTOR_COKING', 0.8, 'Injector Coking'],
+                ['SENSOR_DRIFT', 0.8, 'Sensor Drift (CHT2)'],
+                ['SENSOR_FAILURE', 1.0, 'Sensor Stuck (Oil P)'],
+              ].map(([id, sev, label]) => (
+                <button key={id} onClick={() => injectFault(id, sev)}
+                  className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${af===id ? 'bg-rose-600 text-white border-rose-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-800'}`}>{label}</button>
+              ))}
+
               <button onClick={() => clearFault()}
                 className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${af==='NONE' ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs' : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'}`}>Clear All (Nominal)</button>
             </div>
@@ -1573,14 +1584,14 @@ const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, se
         ) : (
           <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-[9px] font-mono flex flex-col gap-1 shadow-2xs">
             <div className="text-slate-800 font-bold flex items-center justify-between">
-              <span>{selectedUav} SWARM TELEMETRY:</span>
+              <span>{selectedUav} ENGINE TELEMETRY:</span>
               <span className="text-slate-500 font-normal">S/N: {uavSpec?.sn || 'RTX-0915'}</span>
             </div>
             <div className="text-slate-600">ROLE: <span className="font-bold text-slate-900">{uavSpec?.role}</span></div>
-            <div className="text-slate-600">TOTAL AIRFRAME HOURS: <span className="font-bold text-slate-900">{uavSpec?.hours}</span></div>
-            <div className="text-slate-600">THEATER LOCATION: <span className="font-bold text-sky-700">{uavSpec?.location}</span></div>
+            <div className="text-slate-600">ENGINE HOURS: <span className="font-bold text-slate-900">{uavSpec?.hours}</span></div>
+            <div className="text-slate-600">ASSIGNED STATION: <span className="font-bold text-sky-700">{uavSpec?.location}</span></div>
             <div className="text-slate-400 text-[8.5px] mt-0.5 pt-1 border-t border-slate-200">
-              * Live physics telemetry streaming from Western Air Command swarm datalink bus.
+              * Engine data from this vehicle's own simulator; diagnosis from its own AI session. Inject faults for this vehicle in the Fleet Health tab.
             </div>
           </div>
         )}
@@ -1705,7 +1716,7 @@ const CAM_PRESETS = {
 // MAIN EXPORTED TAB COMPONENT
 // ─────────────────────────────────────────────────────────────
 export const UavBlueprintTab = () => {
-  const { telemetry, aiPrognostics, historyBuffer, injectFault, clearFault } = useTelemetry();
+  const { telemetry, aiPrognostics, fleetAi, historyBuffer, injectFault, clearFault } = useTelemetry();
 
   const [selectedUav, setSelectedUav] = useState('Vahak-1');
   const [sel,       setSel]       = useState('CYL_03');
@@ -1718,15 +1729,16 @@ export const UavBlueprintTab = () => {
   const ctrlRef      = useRef();
   const camTargetRef = useRef(null);
 
-  // Fleet Specifications & Roles
-  const FLEET_SPECS = {
-    'Vahak-1': { sn: 'ENG-882-X', hours: '342.5h', role: 'Active Tactical Testbed', location: 'Barmer Border Orbit' },
-    'Vahak-2': { sn: 'RTX-0819', hours: '415.0h', role: 'Escort Lead', location: 'Sector South' },
-    'Vahak-3': { sn: 'RTX-0902', hours: '80.0h', role: 'Relay Orbit', location: 'FL 180 Surveillance' },
-    'Vahak-4': { sn: 'RTX-0754', hours: '780.0h', role: 'Perimeter Patrol', location: 'Derated Desert Patrol' },
-    'Vahak-5': { sn: 'RTX-0699', hours: '1080.0h', role: 'Hangar Reserve', location: 'AFS Uttarlai Hangar' }
+  // Vehicle data from the gateway's live fleet (no hard-coded vehicles)
+  const fleetMember = (telemetry.fleetState || []).find(u => u.id === selectedUav);
+  const curSpec = {
+    sn: fleetMember?.serial ?? '—',
+    hours: fleetMember ? `${fleetMember.flightHours} h` : '—',
+    role: fleetMember?.role ?? '—',
+    location: fleetMember?.station?.lat != null
+      ? `${fleetMember.station.lat.toFixed(3)}°N ${fleetMember.station.lon.toFixed(3)}°E, ${fleetMember.station.altitudeFt} ft` : '—',
+    airborne: fleetMember?.airborne ?? true,
   };
-  const curSpec = FLEET_SPECS[selectedUav] || FLEET_SPECS['Vahak-1'];
 
   // Dynamic Fleet Telemetry & Prognostics Resolver
   const { activeTel, activeAiProg } = useMemo(() => {
@@ -1734,185 +1746,25 @@ export const UavBlueprintTab = () => {
       return { activeTel: telemetry, activeAiProg: aiPrognostics };
     }
 
-    if (selectedUav === 'Vahak-2') {
-      return {
-        activeTel: {
-          ...telemetry,
-          engine: {
-            ...telemetry.engine,
-            rpm: 4950,
-            throttlePct: 80.0,
-            egt: [838.0, 835.5, 840.2, 837.1],
-            cht: [104.2, 105.1, 103.8, 105.4],
-            mapBar: 1.44,
-            oilPressBar: 3.90,
-            oilTempC: 96.5,
-            vibrationGrms: 0.24,
-            coolantTempC: 86.2,
-            fuelFlowLph: 25.2
-          },
-          health: {
-            index: 96.2,
-            status: 'NOMINAL',
-            activeFault: 'NONE',
-            alertMessage: 'ALL SYSTEMS NOMINAL'
-          },
-          residuals: {
-            ...telemetry.residuals,
-            egtResiduals: [2.0, -1.5, 3.2, 0.1],
-            chtResiduals: [-1.8, -0.9, -2.2, -0.6],
-            oilPressResidual: 0.05,
-            oilTempResidual: -1.5,
-            vibrationResidual: -0.04,
-            mapResidual: 0.02
-          }
-        },
-        activeAiProg: {
-          ...aiPrognostics,
-          engine_health_index: 96.2,
-          rul_hours_mean: 785.0,
-          rul_hours_lower_95: 720.0,
-          rul_hours_upper_95: 850.0,
-          anomaly_score: 0.04,
-          dominant_root_cause_feature: 'NONE'
-        }
-      };
-    }
-
-    if (selectedUav === 'Vahak-3') {
-      return {
-        activeTel: {
-          ...telemetry,
-          engine: {
-            ...telemetry.engine,
-            rpm: 5100,
-            throttlePct: 82.5,
-            egt: [825.0, 822.4, 826.8, 824.2],
-            cht: [99.4, 100.2, 99.8, 101.1],
-            mapBar: 1.48,
-            oilPressBar: 4.10,
-            oilTempC: 94.0,
-            vibrationGrms: 0.18,
-            coolantTempC: 84.5,
-            fuelFlowLph: 26.0
-          },
-          health: {
-            index: 99.1,
-            status: 'NOMINAL',
-            activeFault: 'NONE',
-            alertMessage: 'OPTIMAL THERMAL EQUILIBRIUM'
-          },
-          residuals: {
-            ...telemetry.residuals,
-            egtResiduals: [-5.0, -7.6, -3.2, -5.8],
-            chtResiduals: [-6.6, -5.8, -6.2, -4.9],
-            oilPressResidual: 0.25,
-            oilTempResidual: -4.0,
-            vibrationResidual: -0.10,
-            mapResidual: 0.06
-          }
-        },
-        activeAiProg: {
-          ...aiPrognostics,
-          engine_health_index: 99.1,
-          rul_hours_mean: 1120.0,
-          rul_hours_lower_95: 1040.0,
-          rul_hours_upper_95: 1200.0,
-          anomaly_score: 0.01,
-          dominant_root_cause_feature: 'NONE'
-        }
-      };
-    }
-
-    if (selectedUav === 'Vahak-4') {
-      return {
-        activeTel: {
-          ...telemetry,
-          engine: {
-            ...telemetry.engine,
-            rpm: 4400, // Derated continuous cruise
-            throttlePct: 72.0,
-            egt: [858.0, 862.4, 855.0, 864.2],
-            cht: [112.5, 114.2, 111.8, 115.0],
-            mapBar: 1.35,
-            oilPressBar: 3.45,
-            oilTempC: 103.5,
-            vibrationGrms: 0.68, // Elevated PRGB vibration
-            coolantTempC: 94.0,
-            fuelFlowLph: 22.8
-          },
-          health: {
-            index: 84.5,
-            status: 'DEGRADED',
-            activeFault: 'PRGB_DEGRADATION',
-            alertMessage: 'PRGB GEARBOX CLUTCH WEAR DETECTED'
-          },
-          residuals: {
-            ...telemetry.residuals,
-            egtResiduals: [18.0, 22.4, 15.0, 24.2],
-            chtResiduals: [6.5, 8.2, 5.8, 9.0],
-            oilPressResidual: -0.40,
-            oilTempResidual: 5.5,
-            vibrationResidual: 0.40,
-            mapResidual: -0.07
-          }
-        },
-        activeAiProg: {
-          ...aiPrognostics,
-          engine_health_index: 84.5,
-          rul_hours_mean: 420.0,
-          rul_hours_lower_95: 360.0,
-          rul_hours_upper_95: 480.0,
-          anomaly_score: 0.38,
-          dominant_root_cause_feature: 'PRGB Torsional Harmonics (2X Gear Mesh)'
-        }
-      };
-    }
-
-    // Default Vahak-5 (Hangar Reserve - Ground Maintenance)
+    // Fleet vehicle: its own engine simulator, golden-twin residuals, L1 monitor and AI session
+    const m = fleetMember;
+    if (!m?.engineState) return { activeTel: telemetry, activeAiProg: aiPrognostics };   // not received yet
     return {
       activeTel: {
         ...telemetry,
-        engine: {
-          ...telemetry.engine,
-          rpm: 0, // Engine stopped on ground
-          throttlePct: 0.0,
-          egt: [32.0, 31.8, 32.5, 32.0],
-          cht: [34.0, 34.2, 33.8, 34.5],
-          mapBar: 1.01,
-          oilPressBar: 0.0,
-          oilTempC: 32.0,
-          vibrationGrms: 0.0,
-          coolantTempC: 32.0,
-          fuelFlowLph: 0.0
-        },
+        engine: m.engineState,
+        residuals: { ...telemetry.residuals, ...(m.residuals || {}) },
         health: {
-          index: 72.0,
-          status: 'CRITICAL',
-          activeFault: 'OIL_PUMP_CAVITATION',
-          alertMessage: 'AIRCRAFT GROUNDED - OIL CAVITATION OVERHAUL'
+          index: m.l1?.index ?? 0,
+          status: m.l1?.status ?? 'NOMINAL',
+          activeFault: m.injectedFault ?? 'NONE',     // injected scenario (ground truth), shown separately
+          alertMessage: m.l1?.exceedances?.length ? `Residual exceedance on [${m.l1.exceedances.join(', ')}]` : 'Within limits',
+          exceedances: m.l1?.exceedances ?? [],
         },
-        residuals: {
-          ...telemetry.residuals,
-          egtResiduals: [-800, -800, -800, -800],
-          chtResiduals: [-70, -70, -70, -70],
-          oilPressResidual: -3.85,
-          oilTempResidual: -66.0,
-          vibrationResidual: -0.28,
-          mapResidual: -0.41
-        }
       },
-      activeAiProg: {
-        ...aiPrognostics,
-        engine_health_index: 72.0,
-        rul_hours_mean: 120.0,
-        rul_hours_lower_95: 80.0,
-        rul_hours_upper_95: 160.0,
-        anomaly_score: 0.76,
-        dominant_root_cause_feature: 'Oil Pump Cavitation & Hydrodynamic Loss'
-      }
+      activeAiProg: fleetAi?.[selectedUav] ?? {},
     };
-  }, [selectedUav, telemetry, aiPrognostics]);
+  }, [selectedUav, telemetry, aiPrognostics, fleetAi, fleetMember]);
 
   const handleSel = useCallback((compId) => {
     setSel(compId);
@@ -1972,6 +1824,8 @@ export const UavBlueprintTab = () => {
               <button
                 key={u}
                 onClick={() => setSelectedUav(u)}
+                disabled={(telemetry.fleetState || []).find(x => x.id === u)?.airborne === false}
+                title={(telemetry.fleetState || []).find(x => x.id === u)?.airborne === false ? 'On the ground: engine not running, no engine data' : undefined}
                 className={`px-2.5 py-1 rounded-md transition-all font-mono font-bold ${
                   selectedUav === u
                     ? 'bg-sky-600 text-white shadow-xs'
@@ -1987,7 +1841,7 @@ export const UavBlueprintTab = () => {
             <span className="w-1.5 h-1.5 rounded-full bg-sky-600" />
             <span className="font-bold text-slate-900">{selectedUav}</span>
             <span className="text-slate-300">•</span>
-            <span className="text-slate-600">ROTAX 915 iS ({curSpec.sn})</span>
+            <span className="text-slate-600">{fleetMember?.engine ?? `ROTAX 915 iS (${curSpec.sn})`}</span>
           </div>
           
           <div className={`px-2.5 py-1 border rounded-lg text-[10px] font-mono font-bold backdrop-blur-md shadow-xs ${
@@ -1995,7 +1849,7 @@ export const UavBlueprintTab = () => {
             hStatus==='DEGRADED' ? 'border-amber-300 bg-amber-50 text-amber-800' : 
             'border-emerald-300 bg-emerald-50 text-emerald-800'
           }`}>
-            HEALTH: <span className="font-bold">{hIdx.toFixed(1)}%</span>
+            L1 HEALTH: <span className="font-bold">{hIdx.toFixed(1)}%</span>
           </div>
 
           {af !== 'NONE' && (

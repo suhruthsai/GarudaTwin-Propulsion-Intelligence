@@ -1,0 +1,250 @@
+{
+ "note": "Captured from the running gateway (server.js generateBinaryCanFrames) during a GENERATOR_FAILURE injection, 2026-10-01. Reference vectors for the DBC layout.",
+ "frames": [
+  {
+   "engine": {
+    "rpm": 4853.2806748685,
+    "throttlePct": 79.97751540512276,
+    "egt": [
+     843,
+     844.4,
+     844.4,
+     845
+    ],
+    "cht": [
+     106.4,
+     106.3,
+     106.1,
+     105.5
+    ],
+    "mapBar": 1.441,
+    "oilPressBar": 3.86,
+    "oilTempC": 98.1,
+    "vibrationGrms": 0.279,
+    "fuelFlowLph": 26.6,
+    "lambda": 0.94,
+    "genVoltageV": 23.5,
+    "genCurrentA": 10.9,
+    "coolantTempC": 88.2
+   },
+   "can": [
+    {
+     "canId": "0x100",
+     "rawHex": "12F51F3E0A6403AC"
+    },
+    {
+     "canId": "0x200",
+     "rawHex": "20EE20FC20FC2102"
+    },
+    {
+     "canId": "0x210",
+     "rawHex": "042804270425041F"
+    },
+    {
+     "canId": "0x300",
+     "rawHex": "05A10F1439DA0117"
+    },
+    {
+     "canId": "0x310",
+     "rawHex": "092E044235FC0000"
+    }
+   ]
+  },
+  {
+   "engine": {
+    "rpm": 4860.175999947083,
+    "throttlePct": 80.0431973428716,
+    "egt": [
+     843.4,
+     844.4,
+     842.5,
+     844.1
+    ],
+    "cht": [
+     106.7,
+     105.9,
+     106,
+     106
+    ],
+    "mapBar": 1.442,
+    "oilPressBar": 3.84,
+    "oilTempC": 98.1,
+    "vibrationGrms": 0.271,
+    "fuelFlowLph": 26.6,
+    "lambda": 0.933,
+    "genVoltageV": 23.5,
+    "genCurrentA": 11.8,
+    "coolantTempC": 88.1
+   },
+   "can": [
+    {
+     "canId": "0x100",
+     "rawHex": "12FC1F440A6403A5"
+    },
+    {
+     "canId": "0x200",
+     "rawHex": "20F220FC20E920F9"
+    },
+    {
+     "canId": "0x210",
+     "rawHex": "042B042304240424"
+    },
+    {
+     "canId": "0x300",
+     "rawHex": "05A20F0039DA010F"
+    },
+    {
+     "canId": "0x310",
+     "rawHex": "092E049C35F20000"
+    }
+   ]
+  },
+  {
+   "engine": {
+    "rpm": 4857.062243432706,
+    "throttlePct": 80.00387958140392,
+    "egt": [
+     843.4,
+     845.4,
+     845.6,
+     843.2
+    ],
+    "cht": [
+     105.7,
+     105.9,
+     106.2,
+     106.1
+    ],
+    "mapBar": 1.443,
+    "oilPressBar": 3.8,
+    "oilTempC": 98.2,
+    "vibrationGrms": 0.273,
+    "fuelFlowLph": 26.6,
+    "lambda": 0.946,
+    "genVoltageV": 23.5,
+    "genCurrentA": 12.9,
+    "coolantTempC": 88.3
+   },
+   "can": [
+    {
+     "canId": "0x100",
+     "rawHex": "12F91F400A6403B2"
+    },
+    {
+     "canId": "0x200",
+     "rawHex": "20F22106210820F0"
+    },
+    {
+     "canId": "0x210",
+     "rawHex": "0421042304260425"
+    },
+    {
+     "canId": "0x300",
+     "rawHex": "05A30ED839E40111"
+    },
+    {
+     "canId": "0x310",
+     "rawHex": "092E050A36060000"
+    }
+   ]
+  },
+  {
+   "engine": {
+    "rpm": 4858.812600275742,
+    "throttlePct": 79.98834184127114,
+    "egt": [
+     844.4,
+     843.9,
+     842.1,
+     843.9
+    ],
+    "cht": [
+     106.1,
+     106.2,
+     106.5,
+     106.5
+    ],
+    "mapBar": 1.441,
+    "oilPressBar": 3.87,
+    "oilTempC": 98,
+    "vibrationGrms": 0.277,
+    "fuelFlowLph": 26.6,
+    "lambda": 0.934,
+    "genVoltageV": 23.4,
+    "genCurrentA": 13.5,
+    "coolantTempC": 88.3
+   },
+   "can": [
+    {
+     "canId": "0x100",
+     "rawHex": "12FB1F3F0A6403A6"
+    },
+    {
+     "canId": "0x200",
+     "rawHex": "20FC20F720E520F7"
+    },
+    {
+     "canId": "0x210",
+     "rawHex": "0425042604290429"
+    },
+    {
+     "canId": "0x300",
+     "rawHex": "05A10F1E39D00115"
+    },
+    {
+     "canId": "0x310",
+     "rawHex": "0924054636060000"
+    }
+   ]
+  },
+  {
+   "engine": {
+    "rpm": 4866.253714189682,
+    "throttlePct": 80.06603328316093,
+    "egt": [
+     843.9,
+     844.7,
+     845,
+     843.2
+    ],
+    "cht": [
+     106.2,
+     105.8,
+     106.2,
+     106.2
+    ],
+    "mapBar": 1.445,
+    "oilPressBar": 3.9,
+    "oilTempC": 98,
+    "vibrationGrms": 0.282,
+    "fuelFlowLph": 26.6,
+    "lambda": 0.935,
+    "genVoltageV": 23.5,
+    "genCurrentA": 13.3,
+    "coolantTempC": 88.5
+   },
+   "can": [
+    {
+     "canId": "0x100",
+     "rawHex": "13021F470A6403A7"
+    },
+    {
+     "canId": "0x200",
+     "rawHex": "20F720FF210220F0"
+    },
+    {
+     "canId": "0x210",
+     "rawHex": "0426042204260426"
+    },
+    {
+     "canId": "0x300",
+     "rawHex": "05A50F3C39D0011A"
+    },
+    {
+     "canId": "0x310",
+     "rawHex": "092E0532361A0000"
+    }
+   ]
+  }
+ ]
+}

@@ -553,7 +553,7 @@ export const TACTICAL_ISR_8PHASE_SORTIE = {
   fadecSync: '100% PASS',
   totalDurationSeconds: 25200, // 7 Hours
   environmentalPresets: [
-    { id: 'HIGH_ALT', label: 'HIGH-ALT FL280', icon: 'Mountain', altFt: 28000, tempC: -28, payload: '85 kg (EO/IR + SAR)', headwindKts: 38 },
+    { id: 'HIGH_ALT', label: 'HIGH-ALT FL220', icon: 'Mountain', altFt: 22000,tempC: -28, payload: '85 kg (EO/IR + SAR)', headwindKts: 38 },
     { id: 'HOT_DESERT', label: 'HOT DESERT +48°C', icon: 'Sun', altFt: 2500, tempC: 48, payload: '95 kg (Dual EO/IR)', headwindKts: 18 },
     { id: 'MARITIME', label: 'MARITIME RELAY', icon: 'Waves', altFt: 1200, tempC: 18, payload: '75 kg (AIS + SATCOM)', headwindKts: 24 }
   ],

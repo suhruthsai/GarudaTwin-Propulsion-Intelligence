@@ -1,0 +1,43 @@
+VERSION "1.0"
+
+
+NS_ :
+
+BS_:
+
+BU_: ENGINE_ECU GCS_BRIDGE
+
+
+BO_ 256 ENGINE_PERF: 8 ENGINE_ECU
+ SG_ rpm : 7|16@0+ (1,0) [0|8000] "rpm" GCS_BRIDGE
+ SG_ throttle : 23|16@0+ (0.01,0) [0|100] "%" GCS_BRIDGE
+ SG_ fuel_flow : 39|16@0+ (0.01,0) [0|200] "L/h" GCS_BRIDGE
+ SG_ lambda : 55|16@0+ (0.001,0) [0.3|3] "" GCS_BRIDGE
+
+BO_ 512 ENGINE_EGT: 8 ENGINE_ECU
+ SG_ egt1 : 7|16@0+ (0.1,0) [0|1300] "degC" GCS_BRIDGE
+ SG_ egt2 : 23|16@0+ (0.1,0) [0|1300] "degC" GCS_BRIDGE
+ SG_ egt3 : 39|16@0+ (0.1,0) [0|1300] "degC" GCS_BRIDGE
+ SG_ egt4 : 55|16@0+ (0.1,0) [0|1300] "degC" GCS_BRIDGE
+
+BO_ 528 ENGINE_CHT: 8 ENGINE_ECU
+ SG_ cht1 : 7|16@0+ (0.1,0) [0|400] "degC" GCS_BRIDGE
+ SG_ cht2 : 23|16@0+ (0.1,0) [0|400] "degC" GCS_BRIDGE
+ SG_ cht3 : 39|16@0+ (0.1,0) [0|400] "degC" GCS_BRIDGE
+ SG_ cht4 : 55|16@0+ (0.1,0) [0|400] "degC" GCS_BRIDGE
+
+BO_ 768 ENGINE_LUBE: 8 ENGINE_ECU
+ SG_ map_bar : 7|16@0+ (0.001,0) [0|5] "bar" GCS_BRIDGE
+ SG_ oil_pressure : 23|16@0+ (0.001,0) [0|15] "bar" GCS_BRIDGE
+ SG_ oil_temp : 39|16@0+ (0.01,-50) [-50|250] "degC" GCS_BRIDGE
+ SG_ vibration : 55|16@0+ (0.001,0) [0|50] "g" GCS_BRIDGE
+
+BO_ 784 ENGINE_ELEC_COOL: 8 ENGINE_ECU
+ SG_ gen_voltage : 7|16@0+ (0.01,0) [0|60] "V" GCS_BRIDGE
+ SG_ gen_current : 23|16@0- (0.01,0) [-300|300] "A" GCS_BRIDGE
+ SG_ coolant_temp : 39|16@0+ (0.01,-50) [-50|200] "degC" GCS_BRIDGE
+
+
+CM_ "GarudaTwin engine telemetry CAN layout (simulator / test rig). Matches generateBinaryCanFrames() in server.js. A real engine ECU has its own message layout, which must come from that ECU's DBC / interface control document.";
+CM_ BO_ 768 "oil_temp offset -50 degC so sub-zero cold-soak temperatures fit an unsigned field";
+CM_ BO_ 784 "gen_current is signed (battery discharge through the alternator shows as negative)";

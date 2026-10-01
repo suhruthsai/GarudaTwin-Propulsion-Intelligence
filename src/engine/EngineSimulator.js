@@ -1,0 +1,382 @@
+/**
+ * Rotax 915 iS engine simulator + golden-twin nominal model.
+ *
+ * Shared by the live gateway (server.js) and the ML data generator
+ * (training/generate_dataset.mjs) so the models are trained on exactly the
+ * physics that drives the live digital twin.
+ *
+ * The GoldenTwin equations are mirrored in
+ * ai_health_rul/preprocessing/feature_engineering.py (GoldenTwin) — keep them in sync.
+ */
+
+export const FAULT_TYPES = [
+  'NONE', 'CYL3_INJECTOR', 'BLOW_BY', 'OIL_PUMP_CAVITATION', 'TURBO_WASTEGATE_STUCK',
+  'COOLING_DEGRADATION', 'GENERATOR_FAILURE', 'PRGB_DEGRADATION',
+  'MISFIRE', 'COMBUSTION_INSTABILITY', 'INJECTOR_COKING', 'SENSOR_DRIFT', 'SENSOR_FAILURE',
+];
+
+// Faults of the measurement chain, not the engine: they change readings only, never engine physics.
+export const SENSOR_FAULTS = ['SENSOR_DRIFT', 'SENSOR_FAILURE'];
+export const SENSOR_CHANNELS = ['egt1', 'egt2', 'egt3', 'egt4', 'cht1', 'cht2', 'cht3', 'cht4', 'oil_temp', 'oil_pressure', 'coolant'];
+// Sensor-drift bias at severity 1 (reached after SENSOR_DRIFT_RAMP_S seconds)
+const SENSOR_DRIFT_FULL_SCALE = { egt: 90, cht: 30, oil_temp: 25, oil_pressure: 1.2, coolant: 25 };
+const SENSOR_DRIFT_RAMP_S = 20;
+
+// Channel accessors on the engine reading object
+function readChannel(e, ch) {
+  if (ch.startsWith('egt')) return e.egt[Number(ch[3]) - 1];
+  if (ch.startsWith('cht')) return e.cht[Number(ch[3]) - 1];
+  return { oil_temp: e.oilTempC, oil_pressure: e.oilPressBar, coolant: e.coolantTempC }[ch];
+}
+function writeChannel(e, ch, v) {
+  if (ch.startsWith('egt')) e.egt[Number(ch[3]) - 1] = parseFloat(v.toFixed(1));
+  else if (ch.startsWith('cht')) e.cht[Number(ch[3]) - 1] = parseFloat(v.toFixed(1));
+  else if (ch === 'oil_temp') e.oilTempC = parseFloat(v.toFixed(1));
+  else if (ch === 'oil_pressure') e.oilPressBar = parseFloat(v.toFixed(2));
+  else if (ch === 'coolant') e.coolantTempC = parseFloat(v.toFixed(1));
+}
+
+/** Box-Muller Gaussian noise using the supplied uniform RNG */
+function gaussian(rng, mean = 0, stdDev = 1) {
+  const u1 = 1 - rng();
+  const u2 = 1 - rng();
+  return Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2) * stdDev + mean;
+}
+
+/** Deterministic PRNG (mulberry32) for reproducible dataset generation */
+export function seededRng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function initialEngineState() {
+  return {
+    rpm: 4800,
+    throttlePct: 78.5,
+    egt: [842.0, 839.5, 844.0, 841.2],
+    cht: [106.2, 107.5, 105.8, 108.1],
+    mapBar: 1.42,
+    oilPressBar: 3.85,
+    oilTempC: 98.4,
+    vibrationGrms: 0.28,
+    fuelFlowLph: 26.4,
+    fuelPressureBar: 3.12,
+    lambda: 0.94,
+    wastegateDutyPct: 62.0,
+    genVoltageV: 28.4,
+    genCurrentA: 45.2,
+    coolantTempC: 88.5,
+  };
+}
+
+export class EngineSimulator {
+  /**
+   * @param {object} opts
+   * @param {() => number} [opts.rng] uniform [0,1) generator (Math.random for live use)
+   * @param {object} [opts.fault] shared fault object { activeFault, severity, params? }
+   *   params (optional, defaults used by the live gateway):
+   *     MISFIRE { cylinder: 0-3 }  INJECTOR_COKING { pattern: [4 multipliers] }
+   *     SENSOR_DRIFT { channel, sign: ±1 }  SENSOR_FAILURE { channel }
+   */
+  constructor({ rng = Math.random, fault = { activeFault: 'NONE', severity: 0 } } = {}) {
+    this.rng = rng;
+    this.fault = fault;
+    this.engine = initialEngineState();
+    this.reset();
+  }
+
+  reset() {
+    this.time = 0;
+    // Judge-sandbox operating-point override; null = scripted loiter profile
+    this.manual = { rpm: null, throttle: null };
+    this.thermal = { egt: 840.0, cht: 106.0, oilTemp: 98.0 };
+    Object.assign(this.engine, initialEngineState());
+  }
+
+  _targets(time) {
+    const targetRpm = this.manual.rpm ?? (4800 + Math.sin(time * 0.1) * 60);
+    const targetThrottle = this.manual.throttle ?? (78.5 + Math.sin(time * 0.1) * 1.5);
+    return {
+      targetRpm,
+      targetThrottle,
+      targetEgt: 840 + (targetThrottle - 78.5) * 1.8 + (targetRpm - 4800) * 0.03,
+      targetCht: 106 + (targetThrottle - 78.5) * 0.6,
+      targetOilTemp: 98.0 + (targetThrottle - 78.5) * 0.25,
+    };
+  }
+
+  /** Jump thermal state to steady state for the current operating point (dataset warm start) */
+  settleThermal() {
+    const t = this._targets(this.time);
+    this.thermal = { egt: t.targetEgt, cht: t.targetCht, oilTemp: t.targetOilTemp };
+  }
+
+  /** 100 Hz physics step: dynamic baseline + Gaussian sensor noise + fault signatures */
+  step(dt = 0.01) {
+    const g = (m, s) => gaussian(this.rng, m, s);
+    const e = this.engine;
+    this.time += dt;
+    const time = this.time;
+
+    const rpmNoise = g(0, 4.0);
+    const mapNoise = g(0, 0.005);
+    const vibNoise = g(0, 0.008);
+
+    let { targetRpm, targetThrottle, targetEgt, targetCht, targetOilTemp } = this._targets(time);
+    const targetMap = 1.42 + (targetThrottle - 78.5) * 0.015;
+
+    // Thermal inertia: dT/dt = k (T_target - T)
+    this.thermal.egt += 0.8 * (targetEgt - this.thermal.egt) * dt;
+    this.thermal.cht += 0.05 * (targetCht - this.thermal.cht) * dt;
+    this.thermal.oilTemp += 0.02 * (targetOilTemp - this.thermal.oilTemp) * dt;
+
+    const baseEgt = this.thermal.egt;
+    const baseCht = this.thermal.cht;
+    const baseOilTemp = this.thermal.oilTemp;
+    const baseOilPress = 3.85 - (baseOilTemp - 98.0) * 0.015;
+    const baseVib = 0.28 + ((targetRpm - 4800) / 5800) * 0.12;
+
+    let egtOffsets = [0, 0, 0, 0];
+    let chtOffsets = [0, 0, 0, 0];
+    let mapOffset = 0, oilPressOffset = 0, oilTempOffset = 0, vibOffset = 0;
+    let fuelFlowOffset = 0, lambdaOffset = 0, genVoltsOffset = 0, genAmpsOffset = 0, coolantOffset = 0;
+
+    // Per-fault internal state (filters, onset time), reset whenever the active fault changes
+    if (!this._fs || this._fs.key !== this.fault.activeFault) {
+      this._fs = { key: this.fault.activeFault, t0: time, mf: 0, mfSlow: 0, rd: 0,
+                   inst: { egt: [0, 0, 0, 0], rpm: 0, map: 0, lam: 0 }, stuck: null };
+    }
+    const fs = this._fs;
+    const params = this.fault.params || {};
+    // First-order low-pass (time constant 1/k) — sensor/thermal lag
+    const lag = (x, target, k) => x + (1 - Math.exp(-k * dt)) * (target - x);
+    // Band-limited Gaussian process whose sampled std is sigmaOut (AR(1) with rate k)
+    const bandNoise = (x, k, sigmaOut) => {
+      const a = 1 - Math.exp(-k * dt);
+      return x + a * (g(0, sigmaOut / Math.sqrt(a / (2 - a))) - x);
+    };
+
+    if (this.fault.activeFault !== 'NONE') {
+      const sev = this.fault.severity;
+      switch (this.fault.activeFault) {
+        case 'CYL3_INJECTOR':
+          // Cylinder 3 partial clog -> lean burn EGT spike, CHT rise, torsional vibration
+          egtOffsets[2] = 135.0 * sev + Math.sin(time * 8.0) * 12 * sev;
+          chtOffsets[2] = 28.0 * sev;
+          egtOffsets[0] = -10.0 * sev;
+          egtOffsets[1] = -8.0 * sev;
+          egtOffsets[3] = -9.0 * sev;
+          vibOffset = 0.95 * sev + g(0, 0.1 * sev);
+          lambdaOffset = 0.18 * sev;
+          break;
+        case 'BLOW_BY':
+          // Ring blow-by -> hot gases bake oil, oil pressure decay
+          oilTempOffset = 32.0 * sev + Math.sin(time * 0.5) * 4 * sev;
+          oilPressOffset = -1.65 * sev;
+          chtOffsets[1] = 18.0 * sev;
+          chtOffsets[2] = 22.0 * sev;
+          vibOffset = 0.65 * sev;
+          break;
+        case 'OIL_PUMP_CAVITATION':
+          // Oil aeration / relief valve chatter -> pressure oscillation, bearing distress
+          oilPressOffset = -2.3 * sev + (Math.sin(time * 15.0) * 0.75 * sev);
+          oilTempOffset = 25.0 * sev;
+          vibOffset = 1.35 * sev + g(0, 0.2 * sev);
+          break;
+        case 'TURBO_WASTEGATE_STUCK':
+          // Wastegate stuck closed -> overboost
+          mapOffset = 0.58 * sev + Math.sin(time * 3.0) * 0.08 * sev;
+          egtOffsets = [45 * sev, 42 * sev, 48 * sev, 44 * sev];
+          targetRpm += 350 * sev;
+          vibOffset = 0.5 * sev;
+          break;
+        case 'COOLING_DEGRADATION':
+          chtOffsets = [32 * sev, 35 * sev, 34 * sev, 36 * sev];
+          oilTempOffset = 18.0 * sev;
+          coolantOffset = 35.0 * sev;
+          break;
+        case 'GENERATOR_FAILURE':
+          genVoltsOffset = -4.9 * sev;
+          genAmpsOffset = -33.2 * sev;
+          break;
+        case 'PRGB_DEGRADATION':
+          // Gear tooth wear / clutch slip -> severe vibration
+          vibOffset = 2.15 * sev + g(0, 0.15);
+          break;
+        case 'MISFIRE': {
+          // Intermittent loss of combustion in one cylinder (fouled plug / ignition fault).
+          // r = fraction of that cylinder's cycles that do not fire.
+          const c = params.cylinder ?? 1;
+          const r = 0.6 * sev;
+          const m = this.rng() < r ? 1 : 0;
+          fs.mf = lag(fs.mf, m, 2.0);          // thermocouple lag (~0.5 s)
+          fs.mfSlow = lag(fs.mfSlow, m, 0.05); // cylinder-head thermal mass (~20 s)
+          fs.rd = lag(fs.rd, m, 15.0);         // crankshaft torque dips
+          egtOffsets[c] = -380 * fs.mf;        // unburned charge: port EGT falls toward ~460 °C at full misfire
+          chtOffsets[c] = -35 * fs.mfSlow;     // less combustion heat into that head
+          targetRpm += -40 * r - 250 * (fs.rd - r); // small mean loss + crank-speed jitter
+          vibOffset = 0.9 * r + g(0, 0.1 * r); // uneven firing
+          lambdaOffset = 0.30 * r;             // unburned O2 reaches the exhaust lambda sensor (reads lean)
+          break;
+        }
+        case 'COMBUSTION_INSTABILITY': {
+          // Cycle-to-cycle combustion variation on all cylinders (erratic ignition / fuelling).
+          for (let i = 0; i < 4; i++) {
+            fs.inst.egt[i] = bandNoise(fs.inst.egt[i], 2.0, 22 * sev);
+            egtOffsets[i] = 12 * sev + fs.inst.egt[i]; // late burning raises mean EGT, plus fluctuation
+            chtOffsets[i] = 5 * sev;
+          }
+          fs.inst.rpm = bandNoise(fs.inst.rpm, 10.0, 30 * sev);
+          fs.inst.map = bandNoise(fs.inst.map, 5.0, 0.025 * sev);
+          fs.inst.lam = bandNoise(fs.inst.lam, 5.0, 0.035 * sev);
+          targetRpm += fs.inst.rpm;
+          mapOffset = fs.inst.map;
+          lambdaOffset = fs.inst.lam;
+          vibOffset = 0.35 * sev + g(0, 0.08 * sev);
+          break;
+        }
+        case 'INJECTOR_COKING': {
+          // Carbon deposits on all injector nozzles (uneven): restricted fuel delivery -> lean shift.
+          const pattern = params.pattern ?? [0.9, 1.3, 0.6, 1.1];
+          for (let i = 0; i < 4; i++) {
+            egtOffsets[i] = 32 * sev * pattern[i];
+            chtOffsets[i] = 7 * sev * pattern[i];
+          }
+          fuelFlowOffset = -2.2 * sev;             // ~8 % less fuel at loiter
+          lambdaOffset = 0.08 * sev;               // lean
+          vibOffset = 0.10 * sev + g(0, 0.03 * sev); // uneven cylinder torque
+          break;
+        }
+        // SENSOR_DRIFT / SENSOR_FAILURE: engine physics unchanged; readings altered below
+      }
+    }
+
+    e.rpm = Math.max(2000, Math.min(5800, targetRpm + rpmNoise));
+    e.throttlePct = Math.max(0, Math.min(100, targetThrottle + g(0, 0.1)));
+    e.mapBar = parseFloat(Math.max(0.6, Math.min(2.4, targetMap + mapOffset + mapNoise)).toFixed(3));
+    e.egt = [
+      parseFloat((baseEgt + egtOffsets[0] + g(0, 1.2)).toFixed(1)),
+      parseFloat((baseEgt + egtOffsets[1] + g(0, 1.2)).toFixed(1)),
+      parseFloat((baseEgt + egtOffsets[2] + g(0, 1.5)).toFixed(1)),
+      parseFloat((baseEgt + egtOffsets[3] + g(0, 1.2)).toFixed(1)),
+    ];
+    e.cht = [0, 1, 2, 3].map(i => parseFloat((baseCht + chtOffsets[i] + g(0, 0.3)).toFixed(1)));
+    e.oilPressBar = parseFloat(Math.max(0.5, Math.min(6.0, baseOilPress + oilPressOffset + g(0, 0.02))).toFixed(2));
+    e.oilTempC = parseFloat(Math.max(50, Math.min(150, baseOilTemp + oilTempOffset + g(0, 0.1))).toFixed(1));
+    e.vibrationGrms = parseFloat(Math.max(0.08, Math.min(3.5, baseVib + vibOffset + vibNoise)).toFixed(3));
+    e.fuelFlowLph = parseFloat((26.0 + (e.throttlePct - 78.5) * 0.4 + fuelFlowOffset).toFixed(1));
+    e.lambda = parseFloat((0.94 + lambdaOffset + g(0, 0.003)).toFixed(3));
+    e.genVoltageV = parseFloat((28.4 + genVoltsOffset + g(0, 0.05)).toFixed(1));
+    e.genCurrentA = parseFloat((45.2 + genAmpsOffset + Math.sin(time) * 1.5).toFixed(1));
+    e.coolantTempC = parseFloat((88.5 + coolantOffset + g(0, 0.2)).toFixed(1));
+
+    // Measurement-chain faults: applied to the reading only, after the engine physics
+    if (this.fault.activeFault === 'SENSOR_DRIFT') {
+      const ch = params.channel ?? 'cht2';
+      const full = SENSOR_DRIFT_FULL_SCALE[ch.replace(/[0-9]/g, '')];
+      const ramp = Math.min(1, (time - fs.t0) / SENSOR_DRIFT_RAMP_S); // bias builds up after onset
+      writeChannel(e, ch, readChannel(e, ch) + (params.sign ?? 1) * full * this.fault.severity * ramp);
+    } else if (this.fault.activeFault === 'SENSOR_FAILURE') {
+      const ch = params.channel ?? 'oil_pressure';
+      if (fs.stuck === null) fs.stuck = readChannel(e, ch); // sensor freezes at its last value
+      writeChannel(e, ch, fs.stuck);
+    }
+  }
+}
+
+/**
+ * Golden twin: expected (nominal) sensor values computed only from the measured
+ * operating point (throttle, RPM), with first-order thermal lag so throttle
+ * transients do not appear as faults. Never reads fault state.
+ */
+export class GoldenTwin {
+  static K = { egt: 0.8, cht: 0.05, oilTemp: 0.02 };
+
+  constructor() { this.state = null; }
+
+  reset() { this.state = null; }
+
+  static targets(throttlePct, rpm) {
+    return {
+      egt: 840 + (throttlePct - 78.5) * 1.8 + (rpm - 4800) * 0.03,
+      cht: 106 + (throttlePct - 78.5) * 0.6,
+      oilTemp: 98.0 + (throttlePct - 78.5) * 0.25,
+    };
+  }
+
+  /** Advance the twin by dt seconds and return nominal values + residuals for engine frame e */
+  update(e, dt) {
+    const tgt = GoldenTwin.targets(e.throttlePct, e.rpm);
+    if (!this.state) this.state = { ...tgt };
+    else {
+      for (const k of ['egt', 'cht', 'oilTemp']) {
+        this.state[k] += (1 - Math.exp(-GoldenTwin.K[k] * dt)) * (tgt[k] - this.state[k]);
+      }
+    }
+    const nominal = {
+      egt: this.state.egt,
+      cht: this.state.cht,
+      oilTemp: this.state.oilTemp,
+      oilPress: 3.85 - (this.state.oilTemp - 98.0) * 0.015,
+      map: 1.42 + (e.throttlePct - 78.5) * 0.015,
+      vib: 0.28 + ((e.rpm - 4800) / 5800) * 0.12,
+      fuelFlow: 26.0 + (e.throttlePct - 78.5) * 0.4,
+      lambda: 0.94, genV: 28.4, genI: 45.2, coolant: 88.5,
+    };
+    const residuals = {
+      egt: e.egt.map(v => v - nominal.egt),
+      cht: e.cht.map(v => v - nominal.cht),
+      map: e.mapBar - nominal.map,
+      oilPress: e.oilPressBar - nominal.oilPress,
+      oilTemp: e.oilTempC - nominal.oilTemp,
+      vib: e.vibrationGrms - nominal.vib,
+      genV: e.genVoltageV - nominal.genV,
+      coolant: e.coolantTempC - nominal.coolant,
+    };
+    return { nominal, residuals };
+  }
+}
+
+/**
+ * Layer-1 threshold health monitor (conventional exceedance logic).
+ * Uses sensor values and golden-twin residuals only — never the injected fault label.
+ * Returns { index 0-100, status, exceedances[] }.
+ */
+export function thresholdHealth(e, r) {
+  // [name, normalised exceedance (0 = at caution limit, 1 = at critical limit), critical?]
+  const checks = [
+    ['EGT', Math.max(...r.egt), 40, 110],
+    ['EGT_ABS', Math.max(...e.egt), 930, 950],  // nominal at 100% / 5800 rpm is ~908 °C
+    ['CHT', Math.max(...r.cht), 12, 28],
+    ['CHT_ABS', Math.max(...e.cht), 125, 135],
+    ['OIL_PRESS', -r.oilPress, 0.5, 1.5],
+    ['OIL_PRESS_ABS', -e.oilPressBar, -2.5, -1.8],
+    ['OIL_TEMP', r.oilTemp, 10, 25],
+    ['VIBRATION', r.vib, 0.25, 0.9],
+    ['MAP', r.map, 0.15, 0.4],
+    ['GEN_VOLTS', -r.genV, 1.2, 3.5],
+    ['COOLANT', r.coolant, 10, 25],
+  ];
+  let penalty = 0;
+  let status = 'NOMINAL';
+  const exceedances = [];
+  for (const [name, v, caution, critical] of checks) {
+    if (v <= caution) continue;
+    const x = (v - caution) / (critical - caution);
+    exceedances.push(name.replace('_ABS', ''));
+    penalty = Math.max(penalty, 12 + 70 * Math.min(1.2, x));
+    if (x >= 1) status = 'CRITICAL';
+    else if (status !== 'CRITICAL') status = 'DEGRADED';
+  }
+  return {
+    index: Math.max(10, Math.min(98, 98 - penalty)),
+    status,
+    exceedances: [...new Set(exceedances)],
+  };
+}

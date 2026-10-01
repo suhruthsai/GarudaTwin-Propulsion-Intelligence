@@ -13,6 +13,7 @@
  *  7. Performance envelope display (Nz, L/D, Mach)
  */
 
+import { gatewayFetch } from '../api/gateway';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import PrimaryFlightDisplay   from './PrimaryFlightDisplay';
 import ControlSurfaceInspector from './ControlSurfaceInspector';
@@ -695,10 +696,6 @@ function FadecInterlockPanel({ fcs, injectFault, clearFault }) {
 // ─────────────────────────────────────────────────────────────
 //  FCS Database History Panel
 // ─────────────────────────────────────────────────────────────
-const BACKEND_URL = typeof window !== 'undefined' && window.location.hostname
-  ? `http://${window.location.hostname}:5002`
-  : 'http://localhost:5002';
-
 function FcsDatabasePanel() {
   const [sorties, setSorties]     = useState([]);
   const [selected, setSelected]   = useState(null);
@@ -707,7 +704,7 @@ function FcsDatabasePanel() {
 
   const fetchSorties = async () => {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/database/sorties`);
+      const res = await gatewayFetch('/api/database/sorties');
       const data = await res.json();
       if (data.success) setSorties(data.sorties);
     } catch (e) { /* ignore */ }
@@ -716,7 +713,7 @@ function FcsDatabasePanel() {
   const fetchRows = async (id) => {
     setLoading(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/api/database/fcs/${id}?limit=50`);
+      const res = await gatewayFetch(`/api/database/fcs/${id}?limit=50`);
       const data = await res.json();
       if (data.success) setRows(data.data);
     } catch (e) { /* ignore */ }
@@ -724,6 +721,20 @@ function FcsDatabasePanel() {
   };
 
   useEffect(() => { fetchSorties(); }, []);
+
+  // Download via fetch so the gateway URL works both direct and behind a proxy
+  const exportCsv = async () => {
+    try {
+      const res = await gatewayFetch(`/api/database/export/csv/${selected}`);
+      if (!res.ok) return;
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sortie_${selected}_fcs.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { /* ignore */ }
+  };
 
   const handleSelect = (id) => {
     setSelected(id);
@@ -791,14 +802,13 @@ function FcsDatabasePanel() {
             </table>
           </div>
           {selected && (
-            <a
-              href={`${BACKEND_URL}/api/database/export/csv/${selected}`}
-              download
+            <button
+              onClick={exportCsv}
               style={{ display: 'inline-block', marginTop: '6px', padding: '4px 8px',
-                background: '#F0F9FF', border: '1px solid #0284C7', color: '#0369A1',
+                background: '#F0F9FF', border: '1px solid #0284C7', color: '#0369A1', cursor: 'pointer',
                 borderRadius: '3px', fontSize: '9px', fontWeight: 'bold', textDecoration: 'none' }}>
               EXPORT CSV (MISSION LOG)
-            </a>
+            </button>
           )}
         </>
       )}

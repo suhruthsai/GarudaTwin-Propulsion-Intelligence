@@ -18,6 +18,14 @@ import { FlightDynamics6DOF, atmosphere, rad2deg } from './src/flight_controller
 import { CascadedAutopilot, FLIGHT_MODE }           from './src/flight_controller/CascadedAutopilot.js';
 import { FadecFlightInterlock }                      from './src/flight_controller/FadecFlightInterlock.js';
 import { TotalEnergyControlSystem }                  from './src/flight_controller/TotalEnergyControlSystem.js';
+import { EngineSimulator, GoldenTwin, thresholdHealth, FAULT_TYPES } from './src/engine/EngineSimulator.js';
+import { loadServiceConfig } from './server/serviceConfig.js';
+import { Recorder } from './server/recorder.js';
+import { Fleet, aiSummary, subsystemsFromAi } from './server/fleet.js';
+import { classifyVehicle, rtbAction, RTB_PROFILES } from './src/planner/rtbRules.js';
+import { ReplayPlayer, SPEEDS } from './server/replayPlayer.js';
+import { normalizeFrame, applyFrameToEngineState, frameFromEngineState, aiPayloadFromFrame } from './server/engineFrame.js';
+import crypto from 'crypto';
 
 // SQLite (CommonJS via createRequire)
 const _require = createRequire(import.meta.url);
@@ -27,7 +35,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
 // ── Database initialisation ───────────────────────────────────
-const DB_DIR = path.join(__dirname, 'data');
+const DB_DIR = process.env.GCS_DATA_DIR ? path.resolve(process.env.GCS_DATA_DIR) : path.join(__dirname, 'data');
 if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
 const db = new Database(path.join(DB_DIR, 'garudatwin.db'));
 db.pragma('journal_mode = WAL');
@@ -99,6 +107,9 @@ db.exec(`
 // Create opening sortie record
 const _stmtOpenSortie = db.prepare(`INSERT INTO sorties (uav_id, start_time, initial_alt) VALUES (?,?,?)`);
 let activeSortieId    = _stmtOpenSortie.run('Vahak-1', Date.now(), 4419.6).lastInsertRowid;
+
+// Engine flight recorder (every flight, 10 Hz + the exact frames the AI scored)
+const recorder = new Recorder(db);
 
 // Prepared insert statements
 const _insFcs = db.prepare(`
@@ -185,25 +196,84 @@ let interlockOut = {};
 let _fcsTick    = 0;
 let _dbFlushTick = 0;
 
+// ── Service configuration: CORS allowlist + gateway->AI internal key ──
+const SERVICE = loadServiceConfig({ dataDir: DB_DIR });
+const originAllowed = (origin) => !origin || SERVICE.allowedOrigins.has(origin); // no Origin = non-browser client
+
 const app = express();
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
+// Requests from a browser page on a non-allowlisted origin are refused outright
+// (CORS alone only stops the page reading the response, not the request executing).
+app.use((req, res, next) => originAllowed(req.headers.origin)
+  ? next()
+  : res.status(403).json({ error: 'origin not allowed' }));
 app.use(cors({
-  origin: true,
-  credentials: true
+  origin: (origin, cb) => cb(null, originAllowed(origin)),
+  credentials: false,
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type'],
+  maxAge: 600,
 }));
-app.use(express.json());
+app.use(express.json({ limit: '64kb' }));
 
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: {
-    origin: true,
-    credentials: true,
-    methods: ['GET', 'POST']
-  }
+  cors: { origin: (origin, cb) => cb(null, originAllowed(origin)), credentials: false, methods: ['GET', 'POST'] },
+  // WebSocket upgrades are not covered by CORS, so check Origin explicitly
+  allowRequest: (req, cb) => cb(null, originAllowed(req.headers.origin)),
 });
-
 const PORT = process.env.PORT || 5002;
+const HOST = process.env.HOST || '127.0.0.1';
+const AI_URL = process.env.AI_SERVICE_URL || 'http://127.0.0.1:8001';
+const AI_HEADERS = { 'Content-Type': 'application/json', 'X-Internal-Key': SERVICE.internalKey };
 
 // System Global State
+// ── Input validation (rejects NaN/strings that would poison the 6-DOF integrator) ──
+const VALID_FAULTS = new Set(FAULT_TYPES);
+const LIMITS = {
+  alt_m:   [0, 7010],      // Rotax 915 iS service ceiling ~23,000 ft
+  ias_ms:  [60 / 1.94384, 240 / 1.94384],  // 60 kt stall-buffer .. Vne 240 kt
+  heading: [-4 * Math.PI, 4 * Math.PI],
+};
+function finiteIn(v, [lo, hi]) {
+  const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : v;
+  return (typeof n === 'number' && Number.isFinite(n)) ? Math.min(hi, Math.max(lo, n)) : null;
+}
+function validWaypoints(wps) {
+  return Array.isArray(wps) && wps.length > 0 && wps.length <= 200 && wps.every(w =>
+    Number.isFinite(w?.north) && Number.isFinite(w?.east) &&
+    (w.alt_m === undefined || (Number.isFinite(w.alt_m) && w.alt_m >= LIMITS.alt_m[0] && w.alt_m <= LIMITS.alt_m[1])));
+}
+function parseFault(data) {
+  const uavId = data?.uavId ?? 'Vahak-1';
+  if (uavId !== 'Vahak-1') {
+    const m = fleet.get(uavId);
+    if (!m) return { error: `unknown uavId '${uavId}'` };
+    if (!m.airborne) return { error: `${uavId} is on the ground (engine not running)` };
+  }
+  const faultType = data?.faultType ?? 'NONE';
+  if (!VALID_FAULTS.has(faultType)) return { error: `unknown faultType '${faultType}'` };
+  const sev = data?.severity === undefined ? 0.85 : finiteIn(data.severity, [0, 1]);
+  if (sev === null) return { error: 'severity must be a number in [0,1]' };
+  return { faultType, severity: sev, uavId };
+}
+
+/** Apply a parsed fault to Vahak-1 (faultState) or a fleet vehicle; returns the fault object. */
+function applyFault(f) {
+  const target = f.uavId === 'Vahak-1' ? faultState : fleet.get(f.uavId).fault;
+  target.activeFault = f.faultType;
+  target.severity = f.faultType === 'NONE' ? 0 : f.severity;
+  if (f.uavId === 'Vahak-1') target.injectedAt = f.faultType === 'NONE' ? null : Date.now();
+  return target;
+}
+
 let faultState = {
   activeFault: 'NONE', // 'NONE' | 'CYL3_INJECTOR' | 'BLOW_BY' | 'OIL_PUMP_CAVITATION' | 'TURBO_WASTEGATE_STUCK' | 'COOLING_DEGRADATION'
   severity: 0.85,      // 0.0 to 1.0
@@ -221,78 +291,124 @@ let missionState = {
   missionPhase: 'LOITER' // 'TAKEOFF' | 'CLIMB' | 'CRUISE' | 'LOITER' | 'RTB' | 'DESCENT'
 };
 
-let fleetState = [
-  {
-    id: 'Vahak-2',
-    callsign: 'Vahak-2 (ESCORT LEAD)',
-    engine: 'Rotax 915 iS (S/N: RTX-0819)',
-    status: 'ON STATION',
-    health: 96.2,
-    rulHours: 785.0,
-    flightHours: 415.0,
-    tboDueHours: 785.0,
-    subsystems: { combustion: 98, lubrication: 95, induction: 97, cooling: 96, vibration: 95 }
-  },
-  {
-    id: 'Vahak-3',
-    callsign: 'Vahak-3 (RELAY ORBIT)',
-    engine: 'Rotax 916 iS (S/N: RTX-0902)',
-    status: 'CLIMB TO CRUISE',
-    health: 99.1,
-    rulHours: 1120.0,
-    flightHours: 80.0,
-    tboDueHours: 1120.0,
-    subsystems: { combustion: 100, lubrication: 99, induction: 98, cooling: 99, vibration: 100 }
-  },
-  {
-    id: 'Vahak-4',
-    callsign: 'Vahak-4 (PERIMETER PATROL)',
-    engine: 'Rotax 915 iS (S/N: RTX-0754)',
-    status: 'DERATED CRUISE',
-    health: 84.5,
-    rulHours: 420.0,
-    flightHours: 780.0,
-    tboDueHours: 420.0,
-    subsystems: { combustion: 88, lubrication: 82, induction: 85, cooling: 86, vibration: 80 }
-  },
-  {
-    id: 'Vahak-5',
-    callsign: 'Vahak-5 (HANGAR RESERVE)',
-    engine: 'Rotax 915 iS (S/N: RTX-0699)',
-    status: 'GROUND MAINTENANCE',
-    health: 72.0,
-    rulHours: 120.0,
-    flightHours: 1080.0,
-    tboDueHours: 120.0,
-    subsystems: { combustion: 74, lubrication: 70, induction: 78, cooling: 65, vibration: 68 }
-  }
-];
+// Escort fleet (Vahak-2..5): own simulators, golden twins and AI sessions (server/fleet.js)
+const fleet = new Fleet();
+const VAHAK1_FLIGHT_HOURS = 1248.6;   // engine hours of the live vehicle (scheduled-TBO remaining life)
+const VAHAK1_SPEC = { callsign: 'Vahak-1 (ACTIVE TESTBED)', engine: 'Rotax 915 iS', serial: 'ENG-882-X',
+  role: 'Lead testbed, Thar border orbit' };
 
-// Physics Baseline & Engine State Variables
-let engineState = {
-  rpm: 4800,
-  throttlePct: 78.5,
-  egt: [842.0, 839.5, 844.0, 841.2],
-  cht: [106.2, 107.5, 105.8, 108.1],
-  mapBar: 1.42,
-  oilPressBar: 3.85,
-  oilTempC: 98.4,
-  vibrationGrms: 0.28,
-  fuelFlowLph: 26.4,
-  fuelPressureBar: 3.12,
-  lambda: 0.94,
-  wastegateDutyPct: 62.0,
-  genVoltageV: 28.4,
-  genCurrentA: 45.2,
-  coolantTempC: 88.5
-};
+// Engine simulator (shared with the ML dataset generator) + golden-twin nominal model
+const sim = new EngineSimulator({ fault: faultState });
+const engineState = sim.engine;
+const goldenTwin = new GoldenTwin();
+let _lastTwinSimTime = 0;
+
+// ── Engine data source ────────────────────────────────────────
+//   SIM     built-in physics simulator (default; the only mode with fault injection)
+//   REPLAY  a recorded flight or imported CSV, played through the same twin + AI
+//   LIVE    frames pushed by a test rig / CAN bridge (POST /api/ingest/frames)
+// Everything downstream (golden twin, L1 monitor, AI, UI) reads engineState and dataTime(),
+// so it cannot tell — and does not need to know — where the numbers came from.
+const LIVE_TIMEOUT_MS = 2000;
+const SEGMENT_GAP_S = 5.0;          // longer data gaps restart the AI session (same rule as CSV import)
+const REPLAY_UAV = 'REPLAY';        // replay has its own AI session; the live vehicle's is untouched
+const source = { mode: 'SIM', replay: null, live: null };
+let _aiResetPending = true;         // the live AI session starts fresh with every recording
+let _twinResetPending = false;      // gateway golden twin restarts after a seek / segment / mode change
+let _recTick = 0;
+
+function dataTime() {
+  if (source.mode === 'REPLAY') return source.replay.player.cursor;
+  if (source.mode === 'LIVE') return source.live.lastT ?? 0;
+  return sim.time;
+}
+
+/** Injected scenario / CSV label: ground truth for display and evaluation, never an AI input. */
+function scenarioTruth() {
+  if (source.mode === 'SIM') return { label: faultState.activeFault, severity: faultState.severity };
+  if (source.mode === 'REPLAY') {
+    const f = source.replay.player.current();
+    return { label: f.truth_label ?? null, severity: f.truth_severity ?? null };
+  }
+  return { label: null, severity: null };
+}
+
+function startRecording(kind) {
+  const stamp = new Date().toLocaleTimeString('en-GB', { hour12: false });
+  const name = kind === 'SIM' ? `Sortie #${activeSortieId} simulator ${stamp}` : `Live ingest ${stamp}`;
+  recorder.start({ source: kind, name, uavId: missionState.uavId });
+  _aiResetPending = true;
+}
+
+const newReplayStats = () => ({ scored: 0, truthN: 0, truthAgree: 0, liveN: 0, liveAgree: 0, firstLiveMismatch: null,
+  confusion: {}, sessionRestarts: 0 });
+
+function setSourceMode(mode, opts = {}) {
+  if (source.mode !== 'REPLAY') recorder.stop();
+  source.replay = null;
+  source.live = null;
+  source.mode = mode;
+  _twinResetPending = true;
+  lastAiResult = null;
+  if (mode === 'SIM') startRecording('SIM');
+  else if (mode === 'LIVE') {
+    source.live = { startWall: Date.now(), lastFrameWall: null, lastT: null, lastScoredT: null, fresh: false,
+      frames: 0, rejected: 0, lastError: null };
+    startRecording('LIVE');
+  } else if (mode === 'REPLAY') {
+    // first AI frame of each recorded segment: where the live session was (re)started
+    const segStarts = new Set();
+    let seg;
+    for (const f of opts.player.frames) if (f.ai_input && f.segment !== seg) { segStarts.add(f.seq); seg = f.segment; }
+    source.replay = { id: opts.id, name: opts.name, player: opts.player, hasTruth: opts.hasTruth, segStarts,
+      hasLive: opts.player.frames.some(f => f.live_diagnosis),
+      exact: false, aiQueue: [], epoch: 0, resetPending: true, stats: newReplayStats(), lastError: null };
+  }
+  io.emit('source_changed', sourceStatus());
+}
+
+function replaySeek(r, t) {
+  r.player.seek(t);
+  r.aiQueue = [];
+  r.epoch++;
+  r.resetPending = true;
+  r.exact = false;            // exact reproduction resumes at the next recorded segment start
+  r.lastError = null;
+  _twinResetPending = true;
+}
+
+function replayStep(dt) {
+  const r = source.replay;
+  const { frame, aiDue } = r.player.tick(dt, { hold: r.aiQueue.length >= 20 });  // AI back-pressure
+  applyFrameToEngineState(frame, engineState);
+  for (const a of aiDue) r.aiQueue.push(a);
+  if (aiDue.some(a => a.newSegment)) _twinResetPending = true;
+}
+
+function sourceStatus() {
+  const s = { mode: source.mode, recordingId: recorder.active?.id ?? null };
+  if (source.mode === 'REPLAY') {
+    const r = source.replay, p = r.player;
+    s.replay = { id: r.id, name: r.name, t_s: p.cursor, duration_s: p.endT, playing: p.playing, speed: p.speed,
+      ended: p.ended, aiQueue: r.aiQueue.length, hasTruth: r.hasTruth, hasLive: r.hasLive, truth: p.current().truth_label ?? null,
+      exact: r.exact, stats: r.stats, error: r.lastError };
+  } else if (source.mode === 'LIVE') {
+    const l = source.live;
+    const age = l.lastFrameWall ? Date.now() - l.lastFrameWall : null;
+    s.live = { frames: l.frames, rejected: l.rejected, lastError: l.lastError, lastFrameAgeMs: age,
+      connected: age !== null && age <= LIVE_TIMEOUT_MS };
+  }
+  return s;
+}
 
 /**
- * Packs sensor values into simulated CAN 2.0B Binary Frame Buffers
- * CAN ID 0x100 (8 bytes): RPM (uint16), Throttle (uint16 * 100), FuelFlow (uint16 * 100), Lambda (uint16 * 1000)
- * CAN ID 0x200 (8 bytes): EGT1 (uint16), EGT2 (uint16), EGT3 (uint16), EGT4 (uint16)
- * CAN ID 0x210 (8 bytes): CHT1 (uint16), CHT2 (uint16), CHT3 (uint16), CHT4 (uint16)
- * CAN ID 0x300 (8 bytes): MAP (uint16 * 1000), OilPress (uint16 * 1000), OilTemp (uint16 * 10), Vibration (uint16 * 1000)
+ * Packs sensor values into CAN 2.0 frames (big-endian 16-bit fields). The authoritative layout is
+ * tools/can/garudatwin_engine.dbc; the CAN bridge decodes real or virtual bus traffic with it.
+ * CAN ID 0x100: RPM (u16, 1 rpm), Throttle (u16, 0.01 %), FuelFlow (u16, 0.01 L/h), Lambda (u16, 0.001)
+ * CAN ID 0x200: EGT1..EGT4 (u16, 0.1 °C)
+ * CAN ID 0x210: CHT1..CHT4 (u16, 0.1 °C)
+ * CAN ID 0x300: MAP (u16, 0.001 bar), OilPress (u16, 0.001 bar), OilTemp (u16, 0.01 °C, offset -50), Vibration (u16, 0.001 g)
+ * CAN ID 0x310: GenVoltage (u16, 0.01 V), GenCurrent (s16, 0.01 A), CoolantTemp (u16, 0.01 °C, offset -50)
  */
 function generateBinaryCanFrames() {
   const buf0x100 = Buffer.alloc(8);
@@ -319,33 +435,19 @@ function generateBinaryCanFrames() {
   buf0x300.writeUInt16BE(Math.round((engineState.oilTempC + 50) * 100), 4);
   buf0x300.writeUInt16BE(Math.round(engineState.vibrationGrms * 1000), 6);
 
+  const buf0x310 = Buffer.alloc(8);
+  buf0x310.writeUInt16BE(Math.round(engineState.genVoltageV * 100), 0);
+  buf0x310.writeInt16BE(Math.round(engineState.genCurrentA * 100), 2);
+  buf0x310.writeUInt16BE(Math.round((engineState.coolantTempC + 50) * 100), 4);
+
   return [
     { canId: '0x100', dlc: 8, rawHex: buf0x100.toString('hex').toUpperCase(), timestamp: Date.now() },
     { canId: '0x200', dlc: 8, rawHex: buf0x200.toString('hex').toUpperCase(), timestamp: Date.now() },
     { canId: '0x210', dlc: 8, rawHex: buf0x210.toString('hex').toUpperCase(), timestamp: Date.now() },
-    { canId: '0x300', dlc: 8, rawHex: buf0x300.toString('hex').toUpperCase(), timestamp: Date.now() }
+    { canId: '0x300', dlc: 8, rawHex: buf0x300.toString('hex').toUpperCase(), timestamp: Date.now() },
+    { canId: '0x310', dlc: 8, rawHex: buf0x310.toString('hex').toUpperCase(), timestamp: Date.now() }
   ];
 }
-
-/**
- * Box-Muller transform for explicit Gaussian measurement noise (Physics-Grounded)
- */
-function generateGaussianNoise(mean = 0, stdDev = 1) {
-  let u1 = 1 - Math.random();
-  let u2 = 1 - Math.random();
-  let z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
-  return z0 * stdDev + mean;
-}
-
-/**
- * 100 Hz Physics Simulation Step
- * Incorporates dynamic physics baseline + stochastic micro-fluctuations + fault dynamics
- */
-let thermalState = {
-  egt: 840.0,
-  cht: 106.0,
-  oilTemp: 98.0
-};
 
 function resetSimulationState() {
   fcs6dof.reset();
@@ -375,21 +477,9 @@ function resetSimulationState() {
   faultState.activeFault = 'NONE';
   faultState.severity = 0.0;
   faultState.injectedAt = null;
-
-  thermalState.egt = 840.0;
-  thermalState.cht = 106.0;
-  thermalState.oilTemp = 98.0;
-
-  engineState.rpm = 4800;
-  engineState.throttlePct = 78.5;
-  engineState.mapBar = 1.42;
-  engineState.oilPressBar = 3.85;
-  engineState.oilTempC = 98.4;
-  engineState.vibrationGrms = 0.28;
-  engineState.fuelFlowLph = 26.4;
-  engineState.genVoltageV = 28.4;
-  engineState.genCurrentA = 45.2;
-  engineState.coolantTempC = 88.5;
+  sim.reset();
+  goldenTwin.reset();
+  _lastTwinSimTime = 0;
 
   try {
     const res = _stmtOpenSortie.run('Vahak-1', Date.now(), 4419.6);
@@ -398,143 +488,41 @@ function resetSimulationState() {
   } catch (err) {
     console.error('[FCS] Error starting new sortie on reset:', err.message);
   }
+  // Each sortie is a new flight recording with a fresh live AI session
+  if (source.mode === 'SIM') startRecording('SIM'); else setSourceMode('SIM');
 
   io.emit('fault_updated', faultState);
   io.emit('fcs_mode_changed', { mode: 'ALT_HOLD', armed: true });
 }
 
-function updatePhysicsStep(dt = 0.01) {
-  missionState.missionTime += dt;
-
-  // Base flight profile micro-drift using Physics-Grounded Gaussian Noise
-  const time = missionState.missionTime;
-  const rpmNoise = generateGaussianNoise(0, 4.0);
-  const mapNoise = generateGaussianNoise(0, 0.005);
-  const vibNoise = generateGaussianNoise(0, 0.008);
-
-  // Baseline target RPM & Throttle for LOITER profile
-  let targetRpm = 4800 + Math.sin(time * 0.1) * 60;
-  let targetThrottle = 78.5 + Math.sin(time * 0.1) * 1.5;
-  let targetMap = 1.42 + (targetThrottle - 78.5) * 0.015;
-
-  // Physics-Grounded Thermal Inertia (ODE: dT/dt = k * (T_target - T_current))
-  let targetEgt = 840 + (targetThrottle - 78.5) * 1.8 + (targetRpm - 4800) * 0.03;
-  let targetCht = 106 + (targetThrottle - 78.5) * 0.6;
-  let targetOilTemp = 98.0 + (targetThrottle - 78.5) * 0.25;
-
-  thermalState.egt += 0.8 * (targetEgt - thermalState.egt) * dt; // Fast response (gas)
-  thermalState.cht += 0.05 * (targetCht - thermalState.cht) * dt; // Slow response (metal mass)
-  thermalState.oilTemp += 0.02 * (targetOilTemp - thermalState.oilTemp) * dt; // Very slow response (fluid mass)
-
-  let baseEgt = thermalState.egt;
-  let baseCht = thermalState.cht;
-  let baseOilTemp = thermalState.oilTemp;
-  let baseOilPress = 3.85 - (baseOilTemp - 98.0) * 0.015;
-  let baseVib = 0.28 + ((targetRpm - 4800) / 5800) * 0.12;
-
-  // Apply Fault State Dynamics
-  let egtOffsets = [0, 0, 0, 0];
-  let chtOffsets = [0, 0, 0, 0];
-  let mapOffset = 0;
-  let oilPressOffset = 0;
-  let oilTempOffset = 0;
-  let vibOffset = 0;
-  let fuelFlowOffset = 0;
-  let lambdaOffset = 0;
-  let genVoltsOffset = 0;
-  let genAmpsOffset = 0;
-  let coolantOffset = 0;
-
-  if (faultState.activeFault !== 'NONE') {
-    const sev = faultState.severity;
-    
-    switch (faultState.activeFault) {
-      case 'CYL3_INJECTOR':
-        // Cylinder 3 partial clog -> severe lean burn spike in Cyl 3 EGT, moderate CHT rise, torsional vibration
-        egtOffsets[2] = 135.0 * sev + Math.sin(time * 8.0) * 12 * sev; // Exceeds 970°C
-        chtOffsets[2] = 28.0 * sev;                                    // Exceeds 135°C
-        egtOffsets[0] = -10.0 * sev;
-        egtOffsets[1] = -8.0 * sev;
-        egtOffsets[3] = -9.0 * sev;
-        vibOffset = 0.95 * sev + generateGaussianNoise(0, 0.1 * sev); // Jumps to >1.2g
-        lambdaOffset = 0.18 * sev; // Lean shift
-        break;
-
-      case 'BLOW_BY':
-        // Piston ring blow-by -> crankcase pressurization, hot blowby gases bake oil, oil pressure decay
-        oilTempOffset = 32.0 * sev + Math.sin(time * 0.5) * 4 * sev; // Exceeds 130°C
-        oilPressOffset = -1.65 * sev;                                 // Drops to ~2.2 bar
-        chtOffsets[1] = 18.0 * sev;
-        chtOffsets[2] = 22.0 * sev;
-        vibOffset = 0.65 * sev;
-        break;
-
-      case 'OIL_PUMP_CAVITATION':
-        // Oil aeration / relief valve chatter -> wild pressure oscillations, sharp loss of hydrodynamic wedge
-        oilPressOffset = -2.3 * sev + (Math.sin(time * 15.0) * 0.75 * sev); // Drops to <1.5 bar
-        oilTempOffset = 25.0 * sev;
-        vibOffset = 1.35 * sev + generateGaussianNoise(0, 0.2 * sev);                // Bearing distress >1.6g
-        break;
-
-      case 'TURBO_WASTEGATE_STUCK':
-        // Wastegate stuck closed -> overboost surge or stuck open -> manifold pressure drop
-        mapOffset = 0.58 * sev + Math.sin(time * 3.0) * 0.08 * sev; // MAP jumps to ~2.0 bar
-        egtOffsets = [45 * sev, 42 * sev, 48 * sev, 44 * sev];
-        targetRpm += 350 * sev;
-        vibOffset = 0.5 * sev;
-        break;
-
-      case 'COOLING_DEGRADATION':
-        chtOffsets = [32 * sev, 35 * sev, 34 * sev, 36 * sev];
-        oilTempOffset = 18.0 * sev;
-        coolantOffset = 35.0 * sev; // Radiator boils over
-        break;
-
-      case 'GENERATOR_FAILURE':
-        genVoltsOffset = -4.9 * sev; // Drops to ~23.5V (battery)
-        genAmpsOffset = -33.2 * sev; // Load shed
-        break;
-
-      case 'PRGB_DEGRADATION':
-        // Gear tooth wear / clutch slip -> severe vibration
-        vibOffset = 2.15 * sev + generateGaussianNoise(0, 0.15); 
-        break;
-    }
-  }
-
-  // Smooth State Transition & Integration using Gaussian Noise
-  engineState.rpm = Math.max(2000, Math.min(5800, targetRpm + rpmNoise));
-  engineState.throttlePct = Math.max(0, Math.min(100, targetThrottle + generateGaussianNoise(0, 0.1)));
-  engineState.mapBar = parseFloat(Math.max(0.6, Math.min(2.4, targetMap + mapOffset + mapNoise)).toFixed(3));
-  
-  engineState.egt = [
-    parseFloat((baseEgt + egtOffsets[0] + generateGaussianNoise(0, 1.2)).toFixed(1)),
-    parseFloat((baseEgt + egtOffsets[1] + generateGaussianNoise(0, 1.2)).toFixed(1)),
-    parseFloat((baseEgt + egtOffsets[2] + generateGaussianNoise(0, 1.5)).toFixed(1)),
-    parseFloat((baseEgt + egtOffsets[3] + generateGaussianNoise(0, 1.2)).toFixed(1)),
-  ];
-
-  engineState.cht = [
-    parseFloat((baseCht + chtOffsets[0] + generateGaussianNoise(0, 0.3)).toFixed(1)),
-    parseFloat((baseCht + chtOffsets[1] + generateGaussianNoise(0, 0.3)).toFixed(1)),
-    parseFloat((baseCht + chtOffsets[2] + generateGaussianNoise(0, 0.3)).toFixed(1)),
-    parseFloat((baseCht + chtOffsets[3] + generateGaussianNoise(0, 0.3)).toFixed(1)),
-  ];
-
-  engineState.oilPressBar = parseFloat(Math.max(0.5, Math.min(6.0, baseOilPress + oilPressOffset + generateGaussianNoise(0, 0.02))).toFixed(2));
-  engineState.oilTempC = parseFloat(Math.max(50, Math.min(150, baseOilTemp + oilTempOffset + generateGaussianNoise(0, 0.1))).toFixed(1));
-  engineState.vibrationGrms = parseFloat(Math.max(0.08, Math.min(3.5, baseVib + vibOffset + vibNoise)).toFixed(3));
-  engineState.fuelFlowLph = parseFloat((26.0 + (engineState.throttlePct - 78.5) * 0.4 + fuelFlowOffset).toFixed(1));
-  engineState.lambda = parseFloat((0.94 + lambdaOffset + generateGaussianNoise(0, 0.003)).toFixed(3));
-  engineState.genVoltageV = parseFloat((28.4 + genVoltsOffset + generateGaussianNoise(0, 0.05)).toFixed(1));
-  engineState.genCurrentA = parseFloat((45.2 + genAmpsOffset + Math.sin(time) * 1.5).toFixed(1));
-  engineState.coolantTempC = parseFloat((88.5 + coolantOffset + generateGaussianNoise(0, 0.2)).toFixed(1));
-}
-
-// 100 Hz engine physics loop (10 ms)
-// Every 2nd tick also runs the FCS at 50 Hz
+// 100 Hz engine physics (fixed 10 ms sim step), FCS every 2nd step (50 Hz).
+// Steps are driven by elapsed wall-clock time so sim time tracks real time even when the
+// OS timer fires slower than 10 ms (Windows timer resolution is ~15.6 ms).
+const PHYSICS_DT = 0.01;
+let _lastTickMs = performance.now();
+let _simAccumulator = 0;
 setInterval(() => {
-  updatePhysicsStep(0.01);
+  const now = performance.now();
+  _simAccumulator = Math.min(0.25, _simAccumulator + (now - _lastTickMs) / 1000);
+  _lastTickMs = now;
+  while (_simAccumulator >= PHYSICS_DT) {
+    _simAccumulator -= PHYSICS_DT;
+    physicsTick();
+  }
+}, 10);
+
+function physicsTick() {
+  if (source.mode === 'SIM') {
+    sim.step(PHYSICS_DT);
+    if (++_recTick % 10 === 0) {   // 10 Hz flight recording
+      recorder.record(sim.time, frameFromEngineState(engineState),
+        { truthLabel: faultState.activeFault, truthSeverity: faultState.severity });
+    }
+  } else if (source.mode === 'REPLAY') {
+    replayStep(PHYSICS_DT);
+  }
+  missionState.missionTime = dataTime();
+  fleet.step(PHYSICS_DT);
 
   _fcsTick++;
   if (_fcsTick % 2 === 0) {
@@ -597,60 +585,71 @@ setInterval(() => {
     }
     if (_dbFlushTick % 50 === 0) _flushDb();  // flush every ~1 s
   }
-}, 10);
+}
 
 // Broadcast full telemetry packet to connected clients at 20 Hz (50ms) for high-framerate rendering
 setInterval(() => {
   const binaryCanFrames = generateBinaryCanFrames();
   
-  // Calculate First-Principles Physics Nominal Baseline for Residuals
-  const nominalEgt = 840 + (engineState.throttlePct - 78.5) * 1.8 + (engineState.rpm - 4800) * 0.03;
-  const nominalCht = 106 + (engineState.throttlePct - 78.5) * 0.6;
-  const nominalMap = 1.42 + (engineState.throttlePct - 78.5) * 0.015;
-  const nominalOilTemp = 98.0 + (engineState.throttlePct - 78.5) * 0.25;
-  const nominalOilPress = 3.85 - (nominalOilTemp - 98.0) * 0.015;
-  const nominalVib = 0.28 + ((engineState.rpm - 4800) / 5800) * 0.12;
+  // Golden-twin nominal model (thermal-lag aware) -> residuals. Uses measured sensors only.
+  const nowT = dataTime();
+  if (_twinResetPending) { goldenTwin.reset(); _lastTwinSimTime = nowT; _twinResetPending = false; }
+  const twinDt = Math.max(0, nowT - _lastTwinSimTime);
+  _lastTwinSimTime = nowT;
+  const twin = goldenTwin.update(engineState, twinDt);
+  const r = twin.residuals;
+  const round = (v, d) => parseFloat(v.toFixed(d));
 
   const residuals = {
-    egtResiduals: engineState.egt.map(v => parseFloat((v - nominalEgt).toFixed(1))),
-    chtResiduals: engineState.cht.map(v => parseFloat((v - nominalCht).toFixed(1))),
-    mapResidual: parseFloat((engineState.mapBar - nominalMap).toFixed(3)),
-    oilPressResidual: parseFloat((engineState.oilPressBar - nominalOilPress).toFixed(2)),
-    oilTempResidual: parseFloat((engineState.oilTempC - nominalOilTemp).toFixed(1)),
-    vibrationResidual: parseFloat((engineState.vibrationGrms - nominalVib).toFixed(3)),
-    genVoltageResidual: parseFloat((engineState.genVoltageV - 28.4).toFixed(1)),
-    coolantTempResidual: parseFloat((engineState.coolantTempC - 88.5).toFixed(1)),
+    egtResiduals: r.egt.map(v => round(v, 1)),
+    chtResiduals: r.cht.map(v => round(v, 1)),
+    mapResidual: round(r.map, 3),
+    oilPressResidual: round(r.oilPress, 2),
+    oilTempResidual: round(r.oilTemp, 1),
+    vibrationResidual: round(r.vib, 3),
+    genVoltageResidual: round(r.genV, 1),
+    coolantTempResidual: round(r.coolant, 1),
     maxResidualAbs: Math.max(
-      ...engineState.egt.map(v => Math.abs(v - nominalEgt)),
-      ...engineState.cht.map(v => Math.abs(v - nominalCht) * 2.5),
-      Math.abs(engineState.oilPressBar - nominalOilPress) * 40,
-      Math.abs(engineState.vibrationGrms - nominalVib) * 80
+      ...r.egt.map(Math.abs),
+      ...r.cht.map(v => Math.abs(v) * 2.5),
+      Math.abs(r.oilPress) * 40,
+      Math.abs(r.vib) * 80
     )
   };
 
-  // Determine Real-Time Health & Alert Level
-  let healthIndex = 98.0;
-  let status = 'NOMINAL'; // 'NOMINAL' | 'DEGRADED' | 'CRITICAL'
+  // Layer-1 threshold health monitor: sensor exceedances only (never reads the injected fault)
+  const th = thresholdHealth(engineState, r);
+  const healthIndex = th.index;
+  let status = th.status; // 'NOMINAL' | 'DEGRADED' | 'CRITICAL' | 'NO_DATA'
   let alertMessage = 'All Rotax 915 iS engine subsystems operating within flight envelope.';
-
-  if (faultState.activeFault !== 'NONE') {
-    if (residuals.maxResidualAbs > 80 || engineState.vibrationGrms > 1.2 || engineState.egt[2] > 950 || engineState.oilPressBar < 1.8 || engineState.genVoltageV < 24.0) {
-      status = 'CRITICAL';
-      healthIndex = Math.max(15, 65 - residuals.maxResidualAbs * 0.45);
-      alertMessage = `CRITICAL ALERT: Fault [${faultState.activeFault}] detected. Physical parameters exceeding redline thresholds. Autonomous RTB protocol recommended.`;
-    } else {
-      status = 'DEGRADED';
-      healthIndex = Math.max(55, 88 - residuals.maxResidualAbs * 0.35);
-      alertMessage = `CAUTION: Micro-residual anomaly detected in [${faultState.activeFault}]. Engine derating recommended.`;
-    }
+  if (status === 'CRITICAL') {
+    alertMessage = `CRITICAL ALERT: Redline exceedance on [${th.exceedances.join(', ')}]. Autonomous RTB protocol recommended.`;
+  } else if (status === 'DEGRADED') {
+    alertMessage = `CAUTION: Residual exceedance on [${th.exceedances.join(', ')}]. Engine derating recommended.`;
   }
-
-  // Feed current engine health to FCS health tracker
-  if (faultState.activeFault !== 'NONE') {
-    fcsState.health_from_engine = parseFloat(healthIndex.toFixed(1));
-  } else {
-    fcsState.health_from_engine = 98.0;
+  const srcStatus = sourceStatus();
+  if (source.mode === 'LIVE' && !srcStatus.live.connected) {
+    // Silence must never look like a healthy engine
+    status = 'NO_DATA';
+    alertMessage = srcStatus.live.lastFrameAgeMs === null
+      ? 'LIVE source selected: waiting for the first engine frame from the test rig / CAN bridge.'
+      : `ENGINE DATA LOST: no frame for ${(srcStatus.live.lastFrameAgeMs / 1000).toFixed(1)} s. Values shown are stale.`;
   }
+  const truth = scenarioTruth();
+  fleet.updateTwins();
+  const vahak1 = {
+    id: 'Vahak-1', ...VAHAK1_SPEC, engine: `${VAHAK1_SPEC.engine} (S/N: ${VAHAK1_SPEC.serial})`, airborne: true,
+    flightHours: VAHAK1_FLIGHT_HOURS, dataSource: source.mode,
+    station: { lat: missionState.lat, lon: missionState.lon, altitudeFt: missionState.altitudeFt, airspeedKts: missionState.airspeedKts },
+    injectedFault: truth.label, injectedSeverity: truth.severity,
+    l1: { index: Number(healthIndex.toFixed(1)), status, exceedances: th.exceedances },
+    ai: aiSummary(lastAiResult), subsystems: subsystemsFromAi(lastAiResult),
+    status: !lastAiResult ? 'NO AI DATA' : lastAiResult.health?.severity_level === 'CRITICAL' ? 'CRITICAL'
+      : lastAiResult.health?.severity_level === 'ELEVATED' ? 'CAUTION' : 'ON STATION',
+  };
+
+  // Feed current engine health to FCS health tracker (FADEC derate)
+  fcsState.health_from_engine = parseFloat(healthIndex.toFixed(1));
 
   // Synchronize missionState with 6-DOF dynamic kinematics
   if (fcsState.alt_ft !== undefined) {
@@ -675,10 +674,14 @@ setInterval(() => {
       index: parseFloat(healthIndex.toFixed(1)),
       status: status,
       alertMessage: alertMessage,
-      activeFault: faultState.activeFault,
-      severity: faultState.severity
+      exceedances: th.exceedances,
+      // Injected simulator scenario / recording label (ground truth for visualisation and
+      // evaluation only). Health status above and the AI diagnosis never read these fields.
+      activeFault: truth.label,
+      severity: truth.severity
     },
-    fleetState: fleetState,
+    source: srcStatus,
+    fleetState: [vahak1, ...fleet.snapshots()],
     canBusFrames: binaryCanFrames,
     // ── FCS data appended to every telemetry frame ──────────
     fcs: {
@@ -749,6 +752,129 @@ setInterval(() => {
   io.emit('fcs_frame', payload.fcs);
 }, 50);
 
+// ── Server-side live AI inference (1 Hz) ───────────────────────
+// The gateway is the only writer to the live vehicle's AI session, so the model sees one
+// 1 Hz stream regardless of how many consoles are open, and clients cannot inject frames.
+let lastAiResult = null;
+let _aiBusy = false;
+// Typical AI latency is ~75 ms (max ~300 ms measured over 1,500 calls); 5 s only catches a hung service.
+const AI_TIMEOUT_MS = 5000;
+async function aiCall(pathName, body) {
+  const t0 = performance.now();
+  try {
+    const r = await fetch(`${AI_URL}${pathName}`, {
+      method: 'POST', headers: AI_HEADERS, body: JSON.stringify(body), signal: AbortSignal.timeout(AI_TIMEOUT_MS),
+    });
+    if (!r.ok) throw new Error(`AI service HTTP ${r.status}`);
+    return await r.json();
+  } catch (err) {
+    console.warn(`[AI] ${pathName} failed after ${Math.round(performance.now() - t0)} ms: ${err.message}`);
+    throw err;
+  }
+}
+
+// SIM / LIVE: score the current engine frame once per second, and record exactly what was scored.
+async function scoreLiveFrame() {
+  const mode = source.mode, recId = recorder.active?.id;
+  const uavId = missionState.uavId;
+  if (mode === 'LIVE') {
+    const l = source.live;
+    if (!l.fresh) return;                 // never re-score the same frame (it would look like a stuck sensor)
+    l.fresh = false;
+    if (l.lastScoredT !== null && l.lastT - l.lastScoredT > SEGMENT_GAP_S) { _aiResetPending = true; recorder.newSegment(); }
+    l.lastScoredT = l.lastT;
+  }
+  const t = dataTime();
+  const frame = frameFromEngineState(engineState);
+  const truth = scenarioTruth();
+  try {
+    if (_aiResetPending) { await aiCall('/api/health-rul/reset', { uav_id: uavId }); _aiResetPending = false; }
+    const result = await aiCall('/api/health-rul/predict', aiPayloadFromFrame(frame, { uavId, timeS: t, flightHours: VAHAK1_FLIGHT_HOURS }));
+    if (source.mode !== mode || recorder.active?.id !== recId) return;   // source changed while waiting
+    const seq = recorder.record(t, frame, { aiInput: true, truthLabel: truth.label, truthSeverity: truth.severity });
+    recorder.setLiveResult(seq, result);
+    lastAiResult = { ...result, source: { mode } };
+    io.emit('ai_prognostics', lastAiResult);
+  } catch (err) {
+    // The AI session may or may not have consumed this frame: restart it, and mark the recording so
+    // a replay restarts its session at the same point.
+    _aiResetPending = true;
+    recorder.newSegment();
+    lastAiResult = null;
+    io.emit('ai_status', { available: false, error: err.message });
+  }
+}
+
+function scoreReplay(r, frame, result) {
+  const d = result.health?.diagnosed_fault ?? 'NONE';
+  const st = r.stats;
+  st.scored++;
+  if (frame.truth_label) {
+    st.truthN++;
+    if (d === frame.truth_label) st.truthAgree++;
+    const k = `${frame.truth_label}->${d}`;
+    st.confusion[k] = (st.confusion[k] || 0) + 1;
+  }
+  // Exact-reproduction check: only valid from a recorded session start (not after a mid-segment seek)
+  if (r.exact && frame.live_diagnosis) {
+    st.liveN++;
+    if (d === frame.live_diagnosis) st.liveAgree++;
+    else if (!st.firstLiveMismatch) st.firstLiveMismatch = { t_s: frame.t_s, live: frame.live_diagnosis, replay: d };
+  }
+}
+
+// REPLAY: every recorded AI frame, in order, at its recorded time base, in the REPLAY session.
+async function drainReplayAi() {
+  const r = source.replay;
+  while (source.mode === 'REPLAY' && source.replay === r && r.aiQueue.length) {
+    const { frame, newSegment } = r.aiQueue[0];
+    const epoch = r.epoch;
+    try {
+      if (newSegment || r.resetPending) {
+        await aiCall('/api/health-rul/reset', { uav_id: REPLAY_UAV });
+        r.resetPending = false;
+        r.exact = r.segStarts.has(frame.seq);
+      }
+      const result = await aiCall('/api/health-rul/predict',
+        aiPayloadFromFrame(frame, { uavId: REPLAY_UAV, timeS: frame.ai_time_s ?? frame.t_s, flightHours: VAHAK1_FLIGHT_HOURS }));
+      if (source.replay !== r || r.epoch !== epoch) return;   // seek / stop while waiting
+      r.aiQueue.shift();
+      scoreReplay(r, frame, result);
+      lastAiResult = { ...result, source: { mode: 'REPLAY', recording_id: r.id, t_s: frame.t_s,
+        truth_label: frame.truth_label ?? null, live_diagnosis: frame.live_diagnosis ?? null } };
+      io.emit('ai_prognostics', lastAiResult);
+    } catch (err) {
+      if (source.replay !== r) return;
+      r.player.pause();
+      r.aiQueue = [];
+      r.epoch++;
+      r.resetPending = true;
+      r.exact = false;
+      r.stats.sessionRestarts++;
+      r.lastError = `AI service unavailable (${err.message}); replay paused. Resuming restarts the AI session.`;
+      io.emit('ai_status', { available: false, error: err.message });
+      return;
+    }
+  }
+}
+
+let _aiLastWall = 0;
+setInterval(async () => {
+  if (_aiBusy) return;
+  _aiBusy = true;
+  try {
+    if (source.mode === 'REPLAY') await drainReplayAi();
+    else if (performance.now() - _aiLastWall >= 1000) { _aiLastWall = performance.now(); await scoreLiveFrame(); }
+  } finally {
+    _aiBusy = false;
+  }
+}, 50);
+setInterval(() => recorder.flush(), 1000);
+setInterval(async () => {
+  const results = await fleet.scoreAll(aiCall);
+  if (results && Object.keys(results).length) io.emit('fleet_ai', results);
+}, 1000);
+
 // Socket.io Event Handling
 io.on('connection', (socket) => {
   console.log(`[Socket.io] Tactical Client Connected: ${socket.id}`);
@@ -758,42 +884,41 @@ io.on('connection', (socket) => {
     faultState,
     missionState,
     engineState,
-    fleetState
+    source: sourceStatus(),
   });
+  if (lastAiResult) socket.emit('ai_prognostics', lastAiResult);
 
   // Inject Fault Handler from Frontend/Judge UI
   socket.on('inject_fault', (data) => {
-    const { faultType, severity } = data;
-    console.log(`[Fault Injection] Triggered -> Fault: ${faultType}, Severity: ${severity || 0.85}`);
-    faultState.activeFault = faultType || 'NONE';
-    faultState.severity = severity !== undefined ? severity : 0.85;
-    faultState.injectedAt = Date.now();
-
-    io.emit('fault_updated', faultState);
+    const f = parseFault(data);
+    if (f.error) { socket.emit('command_rejected', { event: 'inject_fault', error: f.error }); return; }
+    if (f.uavId === 'Vahak-1' && source.mode !== 'SIM') { socket.emit('command_rejected', { event: 'inject_fault', error: `fault injection needs the SIM data source (current: ${source.mode})` }); return; }
+    console.log(`[Fault Injection] ${f.uavId} -> Fault: ${f.faultType}, Severity: ${f.severity}`);
+    applyFault(f);
+    if (f.uavId === 'Vahak-1') io.emit('fault_updated', faultState);
   });
 
   // Clear Fault Handler
-  socket.on('clear_fault', () => {
-    console.log('[Fault Injection] Cleared all faults -> Resumed Nominal State');
-    faultState.activeFault = 'NONE';
-    faultState.severity = 0.0;
-    faultState.injectedAt = null;
-
-    io.emit('fault_updated', faultState);
+  socket.on('clear_fault', (data) => {
+    const f = parseFault({ uavId: data?.uavId, faultType: 'NONE' });
+    if (f.error || (f.uavId === 'Vahak-1' && source.mode !== 'SIM')) return;
+    console.log(`[Fault Injection] ${f.uavId} -> cleared`);
+    applyFault(f);
+    if (f.uavId === 'Vahak-1') io.emit('fault_updated', faultState);
   });
 
   // Manual Throttle / Condition Control from Judge Sandbox
   socket.on('update_manual_conditions', (data) => {
-    if (data.altitudeFt !== undefined) missionState.altitudeFt = data.altitudeFt;
-    if (data.airspeedKts !== undefined) missionState.airspeedKts = data.airspeedKts;
-    if (data.targetRpm !== undefined) engineState.rpm = data.targetRpm;
-    if (data.throttlePct !== undefined) engineState.throttlePct = data.throttlePct;
+    if (source.mode !== 'SIM') return;
+    // altitude/airspeed are owned by the 6-DOF model and resynced every broadcast
+    if (data?.targetRpm !== undefined) sim.manual.rpm = finiteIn(data.targetRpm, [2000, 5800]);
+    if (data?.throttlePct !== undefined) sim.manual.throttle = finiteIn(data.throttlePct, [0, 100]);
   });
 
   // ── FCS / Autopilot control events ──────────────────────────
   socket.on('fcs_set_mode', (data) => {
-    const { mode } = data;
-    if (mode) { autopilot.setMode(mode); console.log(`[FCS] Mode set to: ${mode}`); }
+    const mode = data?.mode;
+    if (Object.values(FLIGHT_MODE).includes(mode)) { autopilot.setMode(mode); console.log(`[FCS] Mode set to: ${mode}`); }
     io.emit('fcs_mode_changed', { mode: autopilot.mode, armed: autopilot.armed });
   });
 
@@ -808,21 +933,24 @@ io.on('connection', (socket) => {
   });
 
   socket.on('fcs_set_altitude', (data) => {
-    if (data.alt_ft !== undefined) autopilot.setAltitude(data.alt_ft * 0.3048);
-    else if (data.alt_m !== undefined) autopilot.setAltitude(data.alt_m);
+    const alt_m = finiteIn(data?.alt_ft !== undefined ? Number(data.alt_ft) * 0.3048 : data?.alt_m, LIMITS.alt_m);
+    if (alt_m === null) return;
+    autopilot.setAltitude(alt_m);
     autopilot.arm();
     if (autopilot.mode === 'MANUAL_FBW') autopilot.setMode('ALT_HOLD');
   });
 
   socket.on('fcs_set_airspeed', (data) => {
-    if (data.ias_kts !== undefined) autopilot.setAirspeed(data.ias_kts / 1.94384);
-    else if (data.ias_ms !== undefined) autopilot.setAirspeed(data.ias_ms);
+    const ias_ms = finiteIn(data?.ias_kts !== undefined ? Number(data.ias_kts) / 1.94384 : data?.ias_ms, LIMITS.ias_ms);
+    if (ias_ms === null) return;
+    autopilot.setAirspeed(ias_ms);
     autopilot.arm();
   });
 
   socket.on('fcs_set_heading', (data) => {
-    if (data.heading_deg !== undefined) autopilot.setHeading(data.heading_deg * Math.PI / 180);
-    else if (data.heading_rad !== undefined) autopilot.setHeading(data.heading_rad);
+    const hdg = finiteIn(data?.heading_deg !== undefined ? Number(data.heading_deg) * Math.PI / 180 : data?.heading_rad, LIMITS.heading);
+    if (hdg === null) return;
+    autopilot.setHeading(hdg);
     autopilot.arm();
     if (autopilot.mode === 'AUTO_MISSION' || autopilot.mode === 'MANUAL_FBW') {
       autopilot.setMode('ALT_HOLD');
@@ -831,7 +959,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('fcs_load_waypoints', (data) => {
-    if (Array.isArray(data.waypoints)) {
+    if (validWaypoints(data?.waypoints)) {
       autopilot.loadWaypoints(data.waypoints);
       autopilot.arm();
       autopilot.setMode('AUTO_MISSION');
@@ -841,11 +969,16 @@ io.on('connection', (socket) => {
   });
 
   socket.on('fcs_set_loiter', (data) => {
-    autopilot.setLoiter(data.north ?? 0, data.east ?? 0, data.radius_m ?? 2000, data.cw ?? true);
+    const n = finiteIn(data?.north ?? 0, [-1e6, 1e6]), e = finiteIn(data?.east ?? 0, [-1e6, 1e6]);
+    const r = finiteIn(data?.radius_m ?? 2000, [200, 50000]);
+    if (n === null || e === null || r === null) return;
+    autopilot.setLoiter(n, e, r, data?.cw ?? true);
   });
 
   socket.on('fcs_fbw_input', (data) => {
-    autopilot.setFBW(data.roll ?? 0, data.pitch ?? 0, data.yaw ?? 0, data.throttle ?? 0.38);
+    const v = [data?.roll ?? 0, data?.pitch ?? 0, data?.yaw ?? 0, data?.throttle ?? 0.38].map(x => finiteIn(x, [-1, 1]));
+    if (v.includes(null)) return;
+    autopilot.setFBW(...v);
   });
 
   socket.on('fcs_reset', () => {
@@ -857,119 +990,188 @@ io.on('connection', (socket) => {
   });
 });
 
-// REST API Endpoints for Diagnostics & Sandbox
+// ── Service info ──────────────────────────────────────────────
 app.get('/', (req, res) => {
-  res.json({
-    status: 'ONLINE',
-    service: 'GarudaTwin Telemetry & CAN Bus Gateway Server',
-    port: PORT,
-    frontendUrl: 'http://localhost:5173',
-    endpoints: {
-      health: '/api/health',
-      sorties: '/api/database/sorties',
-      databaseStats: '/api/database/stats',
-      fcsStatus: '/api/fcs/status',
-      fcsTrim: '/api/fcs/trim'
-    },
-    activeSortieId: activeSortieId
-  });
+  res.json({ status: 'ONLINE', service: 'GarudaTwin Telemetry & CAN Bus Gateway Server' });
 });
 
 app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ONLINE',
-    system: 'MALE UAV Digital Twin CAN Bus Engine',
-    uptimeSeconds: Math.round(process.uptime()),
-    engineModel: 'Rotax 915 iS Turbocharged Piston',
-    activeFault: faultState.activeFault
-  });
+  res.json({ status: 'ONLINE', uptimeSeconds: Math.round(process.uptime()) });
 });
 
-app.post('/api/faults/inject', (req, res) => {
-  const { faultType, severity } = req.body;
-  faultState.activeFault = faultType || 'NONE';
-  faultState.severity = severity || 0.85;
-  faultState.injectedAt = Date.now();
-  io.emit('fault_updated', faultState);
-  res.json({ success: true, faultState });
+// ── Fault injection ───────────────────────────────────────────
+// Vahak-1 faults need the SIM data source; fleet vehicles always run their own simulators
+const requireSim = (req, res, next) => (req.body?.uavId ?? 'Vahak-1') !== 'Vahak-1' || source.mode === 'SIM' ? next()
+  : res.status(409).json({ error: `fault injection needs the SIM data source (current: ${source.mode})` });
+app.post('/api/faults/inject', requireSim, (req, res) => {
+  const f = parseFault(req.body);
+  if (f.error) { res.status(400).json({ error: f.error }); return; }
+  const target = applyFault(f);
+  if (f.uavId === 'Vahak-1') io.emit('fault_updated', faultState);
+  res.json({ success: true, uavId: f.uavId, faultState: target });
 });
 
-app.post('/api/faults/clear', (req, res) => {
-  faultState.activeFault = 'NONE';
-  faultState.severity = 0.0;
-  faultState.injectedAt = null;
-  io.emit('fault_updated', faultState);
-  res.json({ success: true, faultState });
+app.post('/api/faults/clear', requireSim, (req, res) => {
+  const f = parseFault({ uavId: req.body?.uavId, faultType: 'NONE' });
+  if (f.error) { res.status(400).json({ error: f.error }); return; }
+  const target = applyFault(f);
+  if (f.uavId === 'Vahak-1') io.emit('fault_updated', faultState);
+  res.json({ success: true, uavId: f.uavId, faultState: target });
 });
 
-// AI Health & RUL Microservice Proxy Endpoints
-app.post('/api/health-rul/predict', async (req, res) => {
-  try {
-    const aiRes = await fetch('http://127.0.0.1:8001/api/health-rul/predict', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req.body || {})
-    });
-    const data = await aiRes.json();
-    res.json(data);
-  } catch (error) {
-    res.status(503).json({
-      error: 'AI Health & RUL microservice unavailable',
-      details: error.message
-    });
+// ── Engine data source, flight recordings, replay, live ingest ──
+app.get('/api/source', (req, res) => res.json(sourceStatus()));
+app.post('/api/source', (req, res) => {
+  const mode = req.body?.mode;
+  if (mode !== 'SIM' && mode !== 'LIVE') {
+    res.status(400).json({ error: "mode must be 'SIM' or 'LIVE' (load a recording with /api/replay/load for REPLAY)" });
+    return;
   }
+  setSourceMode(mode);
+  res.json(sourceStatus());
 });
 
-app.post('/api/health-rul/detect-anomaly', async (req, res) => {
-  try {
-    const aiRes = await fetch('http://127.0.0.1:8001/api/health-rul/detect-anomaly', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req.body || {})
-    });
-    const data = await aiRes.json();
-    res.json(data);
-  } catch (error) {
-    res.status(503).json({ error: 'AI microservice unavailable' });
+app.get('/api/recordings', (req, res) => { recorder.flush(); res.json(recorder.list()); });
+app.get('/api/recordings/:id/export.csv', (req, res) => {
+  const id = Number(req.params.id);
+  if (!recorder.meta(id)) { res.status(404).json({ error: 'recording not found' }); return; }
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="garudatwin_recording_${id}.csv"`);
+  res.send(recorder.exportCsv(id));
+});
+app.post('/api/recordings/import', express.text({ type: ['text/csv', 'text/plain'], limit: '25mb' }), (req, res) => {
+  if (typeof req.body !== 'string' || !req.body.length) {
+    res.status(400).json({ error: 'send the CSV file as the request body with Content-Type: text/csv' });
+    return;
   }
+  const out = recorder.importCsv(req.body, String(req.query.name || 'Imported CSV').slice(0, 120));
+  res.status(out.error ? 400 : 200).json(out);
+});
+app.post('/api/recordings/:id/delete', (req, res) => {
+  const id = Number(req.params.id);
+  if (!recorder.meta(id)) { res.status(404).json({ error: 'recording not found' }); return; }
+  if (recorder.active?.id === id) { res.status(409).json({ error: 'recording in progress' }); return; }
+  if (source.replay?.id === id) { res.status(409).json({ error: 'recording is being replayed' }); return; }
+  recorder.delete(id);
+  res.json({ success: true });
 });
 
-app.post('/api/health-rul/predict-rul', async (req, res) => {
-  try {
-    const aiRes = await fetch('http://127.0.0.1:8001/api/health-rul/predict-rul', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req.body || {})
-    });
-    const data = await aiRes.json();
-    res.json(data);
-  } catch (error) {
-    res.status(503).json({ error: 'AI microservice unavailable' });
-  }
+app.post('/api/replay/load', (req, res) => {
+  const id = Number(req.body?.id);
+  if (!recorder.meta(id)) { res.status(404).json({ error: 'recording not found' }); return; }
+  if (source.mode !== 'REPLAY') recorder.stop();         // finish the current recording first
+  const meta = recorder.meta(id);
+  const frames = meta ? recorder.frames(id) : [];
+  if (frames.filter(f => f.ai_input).length < 2) { res.status(400).json({ error: 'recording has fewer than 2 AI frames' }); return; }
+  setSourceMode('REPLAY', { id, name: meta.name, player: new ReplayPlayer(frames), hasTruth: !!meta.has_truth });
+  res.json(sourceStatus());
 });
+app.post('/api/replay/control', (req, res) => {
+  if (source.mode !== 'REPLAY') { res.status(409).json({ error: 'no replay loaded' }); return; }
+  const r = source.replay;
+  const { action, value } = req.body || {};
+  if (action === 'play') {
+    if (r.player.ended) { replaySeek(r, 0); r.stats = newReplayStats(); }
+    r.lastError = null;
+    r.player.play();
+  } else if (action === 'pause') {
+    r.player.pause();
+  } else if (action === 'speed') {
+    if (!SPEEDS.includes(Number(value))) { res.status(400).json({ error: `speed must be one of ${SPEEDS.join(', ')}` }); return; }
+    r.player.setSpeed(Number(value));
+  } else if (action === 'seek') {
+    const t = finiteIn(value, [0, r.player.endT]);
+    if (t === null) { res.status(400).json({ error: 'seek value must be a number of seconds' }); return; }
+    replaySeek(r, t);
+  } else {
+    res.status(400).json({ error: "action must be 'play', 'pause', 'speed' or 'seek'" });
+    return;
+  }
+  res.json(sourceStatus());
+});
+
+function ingestKeyOk(given) {
+  if (typeof given !== 'string' || !SERVICE.ingestKey) return false;
+  const a = Buffer.from(given), b = Buffer.from(SERVICE.ingestKey);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+// Live engine data from a test rig or CAN bridge: {"frames": [{t_s?, rpm, throttle, egt1..4, ...}, ...]}
+app.post('/api/ingest/frames', (req, res) => {
+  if (!ingestKeyOk(req.get('x-ingest-key'))) { res.status(401).json({ error: 'invalid or missing X-Ingest-Key' }); return; }
+  if (source.mode !== 'LIVE') { res.status(409).json({ error: 'data source is not LIVE: POST /api/source {"mode":"LIVE"} first' }); return; }
+  const list = Array.isArray(req.body?.frames) ? req.body.frames : null;
+  if (!list || !list.length) { res.status(400).json({ error: 'body must be {"frames": [ ... ]}' }); return; }
+  if (list.length > 50) { res.status(413).json({ error: 'at most 50 frames per request' }); return; }
+  const l = source.live;
+  let accepted = 0;
+  const errors = [];
+  for (const raw of list) {
+    const { frame, error } = normalizeFrame(raw);
+    const t = raw?.t_s === undefined ? (Date.now() - l.startWall) / 1000 : Number(raw.t_s);
+    const err = error
+      ?? (!Number.isFinite(t) ? 't_s must be a number (seconds)'
+        : (l.lastT !== null && t <= l.lastT) ? `t_s ${t} is not after the previous frame (${l.lastT})` : null);
+    if (err) { errors.push(err); continue; }
+    applyFrameToEngineState(frame, engineState);
+    recorder.record(t, frame);
+    l.lastT = t;
+    l.fresh = true;
+    accepted++;
+  }
+  l.frames += accepted;
+  l.rejected += errors.length;
+  if (errors.length) l.lastError = errors[errors.length - 1];
+  if (accepted) l.lastFrameWall = Date.now();
+  res.status(accepted ? 200 : 400).json({ accepted, rejected: errors.length, errors: errors.slice(0, 5) });
+});
+
+// ── AI Health & RUL proxy ─────────────────────────────────────
+// Client-initiated predictions (e.g. the Judges Sandbox) always run in the sandbox session;
+// only the gateway's own 1 Hz loop writes to the live vehicle's session.
+async function proxyAi(req, res, aiPath) {
+  try {
+    // What-if requests are independent single-frame assessments (fresh session, no persistence)
+    const body = { ...(req.body || {}), uav_id: 'SANDBOX', one_shot: true };
+    const aiRes = await fetch(`${AI_URL}${aiPath}`, {
+      method: 'POST', headers: AI_HEADERS, body: JSON.stringify(body), signal: AbortSignal.timeout(5000),
+    });
+    res.status(aiRes.status).json(await aiRes.json());
+  } catch (error) {
+    res.status(503).json({ error: 'AI Health & RUL microservice unavailable' });
+  }
+}
+app.post('/api/health-rul/predict', (req, res) => proxyAi(req, res, '/api/health-rul/predict'));
+app.post('/api/health-rul/detect-anomaly', (req, res) => proxyAi(req, res, '/api/health-rul/detect-anomaly'));
+app.post('/api/health-rul/predict-rul', (req, res) => proxyAi(req, res, '/api/health-rul/predict-rul'));
 
 app.post('/api/rl-replan', async (req, res) => {
   try {
-    const aiRes = await fetch('http://127.0.0.1:8001/rl-replan', {
+    const aiRes = await fetch(`${AI_URL}/rl-replan`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: AI_HEADERS,
       body: JSON.stringify(req.body || {})
     });
     if (!aiRes.ok) throw new Error(`Python AI returned HTTP ${aiRes.status}`);
     const data = await aiRes.json();
     return res.json(data);
   } catch (error) {
-    // Local first-principles analytical RL policy fallback
+    // AI service unreachable: same rule-based planner, computed here (shared rules: src/planner/rtbRules.js)
     const {
       uav_id = "Vahak-1",
       current_lat = 26.4500,
       current_lng = 70.5200,
       altitude_ft = 14500.0,
-      fuel_remaining_liters = 84.0,
-      engine_health_index = 98.5,
-      rul_hours = 842.0,
+      fuel_remaining_liters = null,
+      engine_health_index = null,
+      rul_hours = null,
+      diagnosed_fault = 'NONE',
+      ai_online = true,
+      l1_status = null,
+      current_throttle_pct = null,
+      current_rpm = null,
+      current_airspeed_kts = null,
       target_field_id = null,
-      mode = "AUTO"
+      mode = "AUTO_EVENT"
     } = req.body || {};
 
     const airfields = [
@@ -992,60 +1194,31 @@ app.post('/api/rl-replan', async (req, res) => {
       dist_nm: Number(calcDistNm(current_lat, current_lng, f.lat, f.lng).toFixed(1))
     })).sort((a, b) => a.dist_nm - b.dist_nm);
 
-    const isSim = mode === "FORCE_SIMULATION";
-    const isPreview = mode === "CONTINGENCY_PREVIEW";
-    const isBingo = fuel_remaining_liters <= 22.0;
-    const isCrit = rul_hours < 2.0 || engine_health_index < 40.0 || isBingo;
-    const requiresDivert = isCrit || isSim;
-    const isDegraded = !requiresDivert && !isPreview && (engine_health_index < 75.0 || rul_hours < 50.0 || fuel_remaining_liters < 35.0);
+    const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    const { status, reasons } = classifyVehicle({ health: num(engine_health_index), rul: num(rul_hours),
+      fault: diagnosed_fault || 'NONE', fuel: num(fuel_remaining_liters), aiOk: ai_online !== false, l1: l1_status });
+    const action = rtbAction(status, mode);
+    const profile = RTB_PROFILES[action];
+    const requiresDivert = action === 'EMERGENCY_DIVERT_RTB';
+    const isPreview = action === 'CONTINGENCY_RTB_PREVIEW';
 
     let targetDest = null;
     if (target_field_id && target_field_id !== "AUTO") {
       targetDest = candidates.find(f => f.id === target_field_id) || candidates[0];
-    } else if (requiresDivert || isDegraded) {
+    } else if (profile.field === 'NEAREST') {
       targetDest = candidates[0];
     } else {
-      // Nominal & Contingency Preview: Full primary base Return-to-Base (RTB) recovery to AFS Uttarlai
       targetDest = candidates.find(f => f.id === "AFS_UTTARLAI") || candidates[0];
     }
-
     const targetDist = targetDest.dist_nm;
-
-    let recThrottle = 78.0;
-    let recRpm = 4850;
-    let recClimbFpm = 0;
-    let speedKts = 115.0;
-    let action = "DERATE_AND_CONTINUE_MISSION";
-
-    if (requiresDivert) {
-      action = "EMERGENCY_DIVERT_RTB";
-      recThrottle = 58.0;
-      recRpm = 4200;
-      recClimbFpm = -350;
-      speedKts = 95.0;
-    } else if (isDegraded) {
-      action = "DERATE_AND_CONTINUE_MISSION";
-      recThrottle = 68.0;
-      recRpm = 4600;
-      recClimbFpm = -200;
-      speedKts = 105.0;
-    } else if (isPreview) {
-      action = "CONTINGENCY_RTB_PREVIEW";
-      recThrottle = 68.0;
-      recRpm = 4600;
-      recClimbFpm = -200;
-      speedKts = 105.0;
-    } else {
-      action = "DERATE_AND_CONTINUE_MISSION";
-      recThrottle = 78.0;
-      recRpm = 4850;
-      recClimbFpm = 0;
-      speedKts = 115.0;
-    }
+    const recThrottle = profile.throttle ?? num(current_throttle_pct) ?? 78.0;
+    const recRpm = profile.rpm ?? num(current_rpm) ?? 4850;
+    const recClimbFpm = profile.climbFpm;
+    const speedKts = profile.speedKts ?? num(current_airspeed_kts) ?? 115.0;
 
     const flightTimeMin = Math.max(0.1, (targetDist / speedKts) * 60.0);
     const flightTimeHrs = flightTimeMin / 60.0;
-    const safetyMargin = Number((Math.max(0, rul_hours) / Math.max(0.01, flightTimeHrs)).toFixed(2));
+    const safetyMargin = num(rul_hours) == null ? null : Number((Math.max(0, rul_hours) / Math.max(0.01, flightTimeHrs)).toFixed(2));
 
     const waypoints = [];
     const numWp = 4;
@@ -1067,6 +1240,9 @@ app.post('/api/rl-replan', async (req, res) => {
     return res.json({
       uav_id: uav_id,
       action: action,
+      status,
+      reasons,
+      source: 'gateway-fallback',
       target_recovery_field: targetDest.name,
       target_field_id: targetDest.id,
       distance_to_field_nm: targetDist,
@@ -1177,7 +1353,9 @@ app.get('/api/database/stats', (req, res) => {
 // POST /api/fcs/mode  — set autopilot mode
 app.post('/api/fcs/mode', (req, res) => {
   const { mode } = req.body;
-  if (!mode) { res.status(400).json({ error: 'mode required' }); return; }
+  if (!Object.values(FLIGHT_MODE).includes(mode)) {
+    res.status(400).json({ error: `mode must be one of ${Object.values(FLIGHT_MODE).join(', ')}` }); return;
+  }
   autopilot.setMode(mode);
   res.json({ success: true, mode: autopilot.mode });
 });
@@ -1199,9 +1377,9 @@ app.post('/api/fcs/disarm', (req, res) => {
 // POST /api/fcs/altitude  — set altitude setpoint (ft or m)
 app.post('/api/fcs/altitude', (req, res) => {
   const { alt_ft, alt_m } = req.body;
-  if (alt_ft !== undefined) autopilot.setAltitude(alt_ft * 0.3048);
-  else if (alt_m !== undefined) autopilot.setAltitude(alt_m);
-  else { res.status(400).json({ error: 'alt_ft or alt_m required' }); return; }
+  const target = finiteIn(alt_ft !== undefined ? Number(alt_ft) * 0.3048 : alt_m, LIMITS.alt_m);
+  if (target === null) { res.status(400).json({ error: 'numeric alt_ft or alt_m required' }); return; }
+  autopilot.setAltitude(target);
   autopilot.arm();
   if (autopilot.mode === 'MANUAL_FBW') autopilot.setMode('ALT_HOLD');
   res.json({ success: true, alt_m: autopilot.sp.alt_m, alt_ft: autopilot.sp.alt_m * 3.28084 });
@@ -1210,9 +1388,9 @@ app.post('/api/fcs/altitude', (req, res) => {
 // POST /api/fcs/airspeed  — set airspeed setpoint (kts or m/s)
 app.post('/api/fcs/airspeed', (req, res) => {
   const { ias_kts, ias_ms } = req.body;
-  if (ias_kts !== undefined) autopilot.setAirspeed(ias_kts / 1.94384);
-  else if (ias_ms !== undefined) autopilot.setAirspeed(ias_ms);
-  else { res.status(400).json({ error: 'ias_kts or ias_ms required' }); return; }
+  const target = finiteIn(ias_kts !== undefined ? Number(ias_kts) / 1.94384 : ias_ms, LIMITS.ias_ms);
+  if (target === null) { res.status(400).json({ error: 'numeric ias_kts or ias_ms required' }); return; }
+  autopilot.setAirspeed(target);
   autopilot.arm();
   res.json({ success: true, ias_ms: autopilot.sp.ias_ms, ias_kts: autopilot.sp.ias_ms * 1.94384 });
 });
@@ -1220,9 +1398,9 @@ app.post('/api/fcs/airspeed', (req, res) => {
 // POST /api/fcs/heading  — set heading setpoint (deg or rad)
 app.post('/api/fcs/heading', (req, res) => {
   const { heading_deg, heading_rad } = req.body;
-  if (heading_deg !== undefined) autopilot.setHeading(heading_deg * Math.PI / 180);
-  else if (heading_rad !== undefined) autopilot.setHeading(heading_rad);
-  else { res.status(400).json({ error: 'heading_deg or heading_rad required' }); return; }
+  const target = finiteIn(heading_deg !== undefined ? Number(heading_deg) * Math.PI / 180 : heading_rad, LIMITS.heading);
+  if (target === null) { res.status(400).json({ error: 'numeric heading_deg or heading_rad required' }); return; }
+  autopilot.setHeading(target);
   autopilot.arm();
   if (autopilot.mode === 'AUTO_MISSION' || autopilot.mode === 'MANUAL_FBW') {
     autopilot.setMode('ALT_HOLD');
@@ -1235,7 +1413,7 @@ app.post('/api/fcs/heading', (req, res) => {
 // POST /api/fcs/waypoints  — load mission waypoints
 app.post('/api/fcs/waypoints', (req, res) => {
   const { waypoints } = req.body;
-  if (!Array.isArray(waypoints)) { res.status(400).json({ error: 'waypoints array required' }); return; }
+  if (!validWaypoints(waypoints)) { res.status(400).json({ error: 'waypoints must be 1-200 {north, east, alt_m?} numeric objects' }); return; }
   autopilot.loadWaypoints(waypoints);
   autopilot.arm();
   autopilot.setMode('AUTO_MISSION');
@@ -1288,10 +1466,22 @@ app.post('/api/fcs/emergency-glide', (req, res) => {
 });
 
 
-server.listen(PORT, () => {
+// JSON errors only (e.g. malformed request body) — never an HTML stack trace
+app.use((err, req, res, next) => {
+  const status = err.status || err.statusCode || 500;
+  res.status(status).json({ error: err.type === 'entity.parse.failed' ? 'invalid JSON body' : (status < 500 ? err.message : 'server error') });
+});
+
+startRecording('SIM');
+const _shutdown = () => { try { recorder.stop(); _flushDb(); } finally { process.exit(0); } };
+process.on('SIGINT', _shutdown);
+process.on('SIGTERM', _shutdown);
+
+server.listen(PORT, HOST, () => {
   console.log(`=======================================================`);
-  console.log(`🚀 MALE UAV Digital Twin Telemetry Engine Running on Port ${PORT}`);
-  console.log(`📡 100 Hz CAN Bus Emulator Active (IDs 0x100, 0x200, 0x210, 0x300)`);
+  console.log(`🚀 MALE UAV Digital Twin Telemetry Engine Running on ${HOST}:${PORT}`);
+  console.log(`🌐 Allowed browser origins: ${[...SERVICE.allowedOrigins].join(', ')}`);
+  console.log(`📡 CAN frame encoder active (IDs 0x100, 0x200, 0x210, 0x300, 0x310; layout tools/can/garudatwin_engine.dbc)`);
   console.log(`✈️  50 Hz 6-DOF Flight Controller Active (TECS + L1 + Cascaded PID)`);
   console.log(`🗄️  SQLite Database: data/garudatwin.db (Sortie #${activeSortieId})`);
   console.log(`=======================================================`);

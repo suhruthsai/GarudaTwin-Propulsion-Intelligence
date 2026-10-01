@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { gatewayFetch } from '../api/gateway';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { EngineDigitalTwin, REGISTRY } from './EngineDigitalTwin';
@@ -74,7 +75,7 @@ export const JudgesSandboxTab = () => {
   const controlsRef = useRef(null);
   const camTargetRef = useRef(null);
 
-  // Live Python AI Microservice State (FastAPI PyTorch on port 8001)
+  // Live AI service state (reached through the authenticated gateway)
   const [aiResult, setAiResult] = useState(null);
   const [aiConnected, setAiConnected] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
@@ -82,25 +83,27 @@ export const JudgesSandboxTab = () => {
   // ═══════════════════════════════════════════════════════════════════════════
   // 2. 1-CLICK BENCHMARK SCENARIOS
   // ═══════════════════════════════════════════════════════════════════════════
+  // Benchmark operating points are generated from src/engine/EngineSimulator.js at the
+  // default injection severity (0.85), so they match the physics the AI models were trained on.
   const BENCHMARKS = [
     {
       id: 'NOMINAL_LOITER',
       profileCode: 'PROFILE A',
-      standard: 'STANAG 4586',
-      label: 'STANAG 4586 Profile A: Nominal Loiter Baseline',
+      standard: 'Simulator-generated',
+      label: 'Profile A: Nominal Loiter Baseline',
       tag: 'PRISTINE',
       badgeClass: 'border-emerald-300 bg-emerald-50 text-emerald-700',
-      summary: 'Rotax 915 iS cruise baseline: balanced combustion, nominal 3.85 bar oil pressure, minimal 0.28g vibration.',
+      summary: 'Simulator nominal loiter at 4800 RPM / 78.5 %: EGT 840 °C, CHT 106 °C, oil 3.85 bar / 98 °C, vibration 0.28 g.',
       params: {
         altitudeFt: 14500,
         airspeedKts: 110,
         rpm: 4800,
         throttlePct: 78.5,
-        egt: [842, 840, 844, 841],
-        cht: [106, 107, 106, 108],
+        egt: [840, 840, 840, 840],
+        cht: [106, 106, 106, 106],
         mapBar: 1.42,
         oilPressBar: 3.85,
-        oilTempC: 98.4,
+        oilTempC: 98,
         vibrationGrms: 0.28,
         fuelPressureBar: 3.12,
         genVoltageV: 28.4,
@@ -110,96 +113,96 @@ export const JudgesSandboxTab = () => {
     {
       id: 'CYL3_LEAN_CLOG',
       profileCode: 'PROFILE B',
-      standard: 'MIL-STD-810H',
-      label: 'MIL-STD-810H Profile B: Cyl 3 Lean Clog',
+      standard: 'Simulator-generated',
+      label: 'Profile B: Cyl 3 Lean Clog',
       tag: 'COMBUSTION',
       badgeClass: 'border-red-300 bg-red-50 text-red-700',
-      summary: 'Severe lean misfire in Cyl 3: EGT3 spikes to 985°C (spread >150°C), CHT3 heat-soak to 134°C, torsional vib 1.18g.',
+      summary: 'Simulator CYL3_INJECTOR @ 0.85: EGT3 954.7 °C (+122.3 °C spread), CHT3 129.8 °C, vibration 1.09 g, lean lambda shift.',
       params: {
         altitudeFt: 14500,
         airspeedKts: 108,
-        rpm: 4750,
-        throttlePct: 78.0,
-        egt: [832, 831, 985, 832],
-        cht: [105, 106, 134, 107],
+        rpm: 4800,
+        throttlePct: 78.5,
+        egt: [831.5, 833.2, 954.7, 832.4],
+        cht: [106, 106, 129.8, 106],
         mapBar: 1.42,
-        oilPressBar: 3.80,
-        oilTempC: 99.5,
-        vibrationGrms: 1.18,
+        oilPressBar: 3.85,
+        oilTempC: 98,
+        vibrationGrms: 1.09,
         fuelPressureBar: 2.75,
-        genVoltageV: 28.3,
+        genVoltageV: 28.4,
         faultTag: 'CYL3_INJECTOR'
       }
     },
     {
       id: 'PISTON_BLOW_BY',
       profileCode: 'PROFILE C',
-      standard: 'MIL-STD-810H',
-      label: 'MIL-STD-810H Profile C: Ring Blow-By Degradation',
+      standard: 'Simulator-generated',
+      label: 'Profile C: Ring Blow-By Degradation',
       tag: 'THERMAL/OIL',
       badgeClass: 'border-amber-300 bg-amber-50 text-amber-700',
-      summary: 'Compression loss and blow-by gas leakage: oil temp climbs to 132°C, oil press decays to 2.10 bar, CHTs elevated.',
+      summary: 'Simulator BLOW_BY @ 0.85: oil temp 124.6 °C, oil press 2.45 bar, CHT2/CHT3 121.3/124.7 °C, vibration 0.83 g.',
       params: {
         altitudeFt: 14500,
         airspeedKts: 105,
-        rpm: 4700,
-        throttlePct: 76.0,
-        egt: [855, 850, 858, 852],
-        cht: [122, 126, 124, 128],
-        mapBar: 1.38,
-        oilPressBar: 2.10,
-        oilTempC: 132.0,
-        vibrationGrms: 0.65,
+        rpm: 4800,
+        throttlePct: 78.5,
+        egt: [840, 840, 840, 840],
+        cht: [106, 121.3, 124.7, 106],
+        mapBar: 1.42,
+        oilPressBar: 2.45,
+        oilTempC: 124.6,
+        vibrationGrms: 0.83,
         fuelPressureBar: 3.10,
-        genVoltageV: 28.1,
+        genVoltageV: 28.4,
         faultTag: 'BLOW_BY'
       }
     },
     {
       id: 'OIL_CAVITATION',
       profileCode: 'PROFILE D',
-      standard: 'MIL-STD-810H',
-      label: 'MIL-STD-810H Profile D: Lubrication Collapse & Cavitation',
+      standard: 'Simulator-generated',
+      label: 'Profile D: Lubrication Collapse & Cavitation',
       tag: 'LUBRICATION',
       badgeClass: 'border-red-300 bg-red-50 text-red-700',
-      summary: 'Loss of hydrodynamic oil wedge: oil press collapses to 1.35 bar, severe bearing vibration spikes to 1.72g.',
+      summary: 'Simulator OIL_PUMP_CAVITATION @ 0.85: oil press 1.9 bar mean with ±0.64 bar chatter, oil temp 119.3 °C, bearing vibration 1.43 g.',
       params: {
         altitudeFt: 14500,
         airspeedKts: 102,
-        rpm: 4600,
-        throttlePct: 74.0,
-        egt: [844, 842, 846, 843],
-        cht: [118, 120, 119, 121],
-        mapBar: 1.35,
-        oilPressBar: 1.35,
-        oilTempC: 124.5,
-        vibrationGrms: 1.72,
+        rpm: 4800,
+        throttlePct: 78.5,
+        egt: [840, 840, 840, 840],
+        cht: [106, 106, 106, 106],
+        mapBar: 1.42,
+        oilPressBar: 1.9,
+        oilTempC: 119.3,
+        vibrationGrms: 1.43,
         fuelPressureBar: 3.08,
-        genVoltageV: 27.8,
+        genVoltageV: 28.4,
         faultTag: 'OIL_PUMP_CAVITATION'
       }
     },
     {
       id: 'TURBO_SURGE',
       profileCode: 'PROFILE E',
-      standard: 'MIL-STD-810H',
-      label: 'MIL-STD-810H Profile E: Turbo Overboost Surge',
+      standard: 'Simulator-generated',
+      label: 'Profile E: Turbo Overboost Surge',
       tag: 'AIR/BOOST',
       badgeClass: 'border-purple-300 bg-purple-50 text-purple-700',
-      summary: 'Wastegate stuck closed: MAP surges to 2.18 bar (overboost), cylinder pressures surge, RPM climbs to 5250.',
+      summary: 'Simulator TURBO_WASTEGATE_STUCK @ 0.85: MAP 1.91 bar (overboost), EGT ~878 °C on all cylinders, RPM 5098.',
       params: {
         altitudeFt: 14500,
         airspeedKts: 125,
-        rpm: 5250,
-        throttlePct: 88.0,
-        egt: [910, 905, 915, 908],
-        cht: [126, 128, 125, 129],
-        mapBar: 2.18,
-        oilPressBar: 4.10,
-        oilTempC: 108.0,
-        vibrationGrms: 0.85,
+        rpm: 5098,
+        throttlePct: 78.5,
+        egt: [878.2, 875.7, 880.8, 877.4],
+        cht: [106, 106, 106, 106],
+        mapBar: 1.91,
+        oilPressBar: 3.85,
+        oilTempC: 98,
+        vibrationGrms: 0.71,
         fuelPressureBar: 3.45,
-        genVoltageV: 28.6,
+        genVoltageV: 28.4,
         faultTag: 'TURBO_WASTEGATE_STUCK'
       }
     }
@@ -252,7 +255,7 @@ export const JudgesSandboxTab = () => {
   };
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // 3. ASYNC LIVE PYTHON AI SERVICE INFERENCE (PORT 8001)
+  // 3. ASYNC AI SERVICE INFERENCE (VIA GATEWAY, PER-USER SANDBOX SESSION)
   // ═══════════════════════════════════════════════════════════════════════════
   useEffect(() => {
     let isMounted = true;
@@ -274,27 +277,12 @@ export const JudgesSandboxTab = () => {
           is_sandbox: true,
           mode: 'SANDBOX'
         };
-        const primaryHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-          ? `http://${window.location.hostname}:8001`
-          : '/ai';
-        const gatewayHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-          ? `http://${window.location.hostname}:5002`
-          : '';
-
-        let res = null;
-        try {
-          res = await fetch(`${primaryHost}/api/health-rul/predict`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-        } catch {
-          res = await fetch(`${gatewayHost}/api/health-rul/predict`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-        }
+        // Via the gateway, which runs it in the sandbox AI session
+        const res = await gatewayFetch('/api/health-rul/predict', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
         if (res && res.ok) {
           const data = await res.json();
           if (isMounted) {
@@ -302,8 +290,8 @@ export const JudgesSandboxTab = () => {
               ...data,
               engine_health_index: data?.rul?.healthIndexScore ?? data?.health?.health_score ?? data?.engine_health_index,
               rul_hours_mean: data?.rul?.rulHours ?? data?.rul_hours_mean,
-              rul_hours_lower_95: data?.rul?.rulLower95 ?? data?.rul_hours_lower_95,
-              rul_hours_upper_95: data?.rul?.rulUpper95 ?? data?.rul_hours_upper_95,
+              rul_hours_lower_95: data?.rul?.rulHoursLower95 ?? data?.rul_hours_lower_95,
+              rul_hours_upper_95: data?.rul?.rulHoursUpper95 ?? data?.rul_hours_upper_95,
               degradation_rate_pct_per_hour: data?.rul?.degradationRatePercentPerHour ?? data?.degradation_rate_pct_per_hour,
               trend: data?.rul?.degradationTrend ?? data?.trend,
               stress: data?.rul?.stressBreakdown ?? data?.stress,
@@ -378,10 +366,12 @@ export const JudgesSandboxTab = () => {
         coolantTempC: Math.max(...cht) * 0.85
       },
       health: {
-        status: activeFaultTag !== 'NONE' ? (activeFaultTag === 'OIL_PUMP_CAVITATION' ? 'CRITICAL' : 'DEGRADED') : 'NOMINAL',
+        // Status/index from the AI's assessment of these inputs; the chosen fault tag is only the
+        // scenario shown on the 3D model (ground truth), never an input to any estimate.
+        status: aiResult?.health?.severity_level === 'CRITICAL' ? 'CRITICAL' : aiResult?.health?.severity_level === 'ELEVATED' ? 'DEGRADED' : 'NOMINAL',
         activeFault: activeFaultTag,
         severity: activeFaultTag === 'NONE' ? 0.0 : 0.85,
-        index: activeFaultTag === 'OIL_PUMP_CAVITATION' ? 18 : activeFaultTag !== 'NONE' ? 52 : 100
+        index: aiResult?.rul?.healthIndexScore ?? 100
       },
       residuals: {
         egtResiduals: egt.map(v => v - 840),
@@ -390,12 +380,13 @@ export const JudgesSandboxTab = () => {
         mapResidual: mapBar - 1.42
       }
     };
-  }, [altitudeFt, airspeedKts, rpm, throttlePct, egt, cht, mapBar, oilPressBar, oilTempC, vibrationGrms, fuelPressureBar, genVoltageV, activeFaultTag]);
+  }, [altitudeFt, airspeedKts, rpm, throttlePct, egt, cht, mapBar, oilPressBar, oilTempC, vibrationGrms, fuelPressureBar, genVoltageV, activeFaultTag, aiResult]);
 
   const evalResult = useMemo(() => {
     // Run physics and ML pipeline
+    // Physics-only fallback (used only while the AI is offline): the fault tag is hidden from it
     const pipelineOut = PrognosticsPipeline.evaluate({
-      telemetry: syntheticTelemetry,
+      telemetry: { ...syntheticTelemetry, health: { ...syntheticTelemetry.health, activeFault: 'NONE' } },
       missionDemandHours: 6.0,
       unitId: 'Vahak-1'
     });
@@ -428,7 +419,7 @@ export const JudgesSandboxTab = () => {
       airworthinessDesc = 'Subsystem wear exceeds nominal baseline. Derated throttle envelope applied. Return to base advised.';
     }
 
-    // RL Policy Evaluation
+    // Rule-based RTB recommendation
     const homeBase = { name: "AFS Uttarlai (Barmer)", lat: 25.8117, lng: 71.4883, alt_ft: 500 };
     const auxStrip = { name: "AFS Jaisalmer Forward Base", lat: 26.8897, lng: 70.8653, alt_ft: 825 };
     const distHome = 64.8;
@@ -477,9 +468,9 @@ export const JudgesSandboxTab = () => {
         chtSpread,
         healthIndex: hi,
         rulHours: rulH,
-        rulLower95: aiResult?.rul?.rulLower95 ?? aiResult?.rul_hours_lower_95 ?? (pipelineOut?.rul?.lower95 ?? (rulH * 0.85).toFixed(1)),
-        rulUpper95: aiResult?.rul?.rulUpper95 ?? aiResult?.rul_hours_upper_95 ?? (pipelineOut?.rul?.upper95 ?? (rulH * 1.15).toFixed(1)),
-        confidencePct: aiResult?.rul?.confidenceScore ?? (pipelineOut?.rul?.confidencePct ?? 92),
+        rulLower95: aiResult?.rul?.rulHoursLower95 ?? aiResult?.rul_hours_lower_95 ?? (pipelineOut?.rul?.lower95 ?? (rulH * 0.85).toFixed(1)),
+        rulUpper95: aiResult?.rul?.rulHoursUpper95 ?? aiResult?.rul_hours_upper_95 ?? (pipelineOut?.rul?.upper95 ?? (rulH * 1.15).toFixed(1)),
+        confidencePct: aiResult?.health?.confidence_pct ?? (pipelineOut?.rul?.confidencePct ?? null),
         ratePerHour: aiResult?.rul?.degradationRatePercentPerHour ?? aiResult?.degradation_rate_pct_per_hour ?? (pipelineOut?.degradation?.ratePerHour ?? 0.045),
         trend: aiResult?.rul?.degradationTrend ?? pipelineOut?.degradation?.trend ?? 'STABLE',
         stress: aiResult?.rul?.stressBreakdown ?? pipelineOut?.degradation?.stressBreakdown ?? { combinedStress: 1.0 }
@@ -559,10 +550,10 @@ export const JudgesSandboxTab = () => {
             </div>
             <div>
               <h2 className="font-display font-bold text-sm tracking-wider text-slate-900 uppercase">
-                HIL SIMULATION &amp; ACCEPTANCE TEST BENCH (FAT/SAT)
+                WHAT-IF TEST BENCH (MANUAL INPUTS → AI)
               </h2>
               <p className="text-[11px] font-mono text-slate-500">
-                MIL-STD-810H / STANAG 4586 Compliant Propulsion Hardware-in-the-Loop Dynamic Validation Deck
+                Set engine readings by hand or load a simulator-generated profile; the AI assesses each frame on its own (fresh session, no persistence), so earlier profiles cannot influence it. The diagnosis is reliable; health from a single noise-free frame is less precise than the live 8-sample stream (measured: nominal profile ≈ 89, fault profiles 17–31 vs ≈ 15 true). No hardware is in the loop.
               </p>
             </div>
           </div>
@@ -576,7 +567,7 @@ export const JudgesSandboxTab = () => {
                 className="accent-sky-600 w-3.5 h-3.5 rounded cursor-pointer"
               />
               <span className={autoSyncTwin ? 'text-sky-700 font-bold' : 'text-slate-500'}>
-                Auto-Sync to CAN Twin
+                Auto-apply to live simulator
               </span>
             </label>
 
@@ -593,7 +584,7 @@ export const JudgesSandboxTab = () => {
               className="px-3 py-1.5 rounded text-xs font-mono font-bold bg-sky-600 text-white hover:bg-sky-700 transition-all flex items-center gap-1.5 shadow-xs"
             >
               <Send className="w-3.5 h-3.5 fill-current" />
-              COMMIT TO LIVE TWIN (100 HZ)
+              APPLY TO LIVE SIMULATOR (VAHAK-1)
             </button>
           </div>
         </div>
@@ -602,13 +593,13 @@ export const JudgesSandboxTab = () => {
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-mono font-bold tracking-widest text-slate-500 uppercase flex items-center gap-1.5">
-              <Zap className="w-3.5 h-3.5 text-sky-600" /> STANAG 4586 / MIL-STD-810H ACCEPTANCE TEST PROFILES:
+              <Zap className="w-3.5 h-3.5 text-sky-600" /> SIMULATOR-GENERATED TEST PROFILES:
             </span>
             <div className="flex items-center gap-2">
               {aiConnected ? (
                 <span className="text-[9px] font-mono px-2 py-0.5 rounded border border-sky-300 bg-sky-50 text-sky-700 font-bold flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-sky-600 animate-pulse" />
-                  PYTORCH AI (PORT 8001) ONLINE
+                  AI SERVICE ONLINE (VIA GATEWAY)
                 </span>
               ) : (
                 <span className="text-[9px] font-mono px-2 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-600 font-bold flex items-center gap-1">
@@ -696,7 +687,7 @@ export const JudgesSandboxTab = () => {
               <input
                 type="range"
                 min="0"
-                max="30000"
+                max="23000"
                 step="500"
                 value={altitudeFt}
                 onChange={e => { setAltitudeFt(parseInt(e.target.value)); setActiveBenchmark('CUSTOM'); }}
@@ -705,7 +696,7 @@ export const JudgesSandboxTab = () => {
               <div className="flex justify-between text-[9px] font-mono text-slate-400">
                 <span>Sea Level (0 ft)</span>
                 <span>Operational Cruise (14,500 ft)</span>
-                <span>Service Ceiling (30,000 ft)</span>
+                <span>Service ceiling (~23,000 ft)</span>
               </div>
             </div>
 
@@ -1211,13 +1202,22 @@ export const JudgesSandboxTab = () => {
                   </div>
 
                   <div className="text-right font-mono">
-                    <div className="text-[9px] text-slate-500 uppercase font-medium">EVALUATION CONFIDENCE</div>
-                    <div className="text-sm font-bold text-slate-900 tabular-nums">{evalResult.metrics.confidencePct}% (BAYESIAN)</div>
+                    <div className="text-[9px] text-slate-500 uppercase font-medium">AI DIAGNOSIS (THIS FRAME)</div>
+                    <div className="text-sm font-bold text-slate-900">
+                      {aiResult?.health?.diagnosed_fault ? aiResult.health.diagnosed_fault.replace(/_/g, ' ') : (aiConnected ? '…' : 'AI OFFLINE')}
+                    </div>
+                    <div className="text-[10px] text-slate-500 tabular-nums">
+                      {evalResult.metrics.confidencePct != null ? `${Number(evalResult.metrics.confidencePct).toFixed(0)}% classifier posterior` : ''}
+                      {activeFaultTag && activeFaultTag !== 'NONE' ? ` · profile scenario: ${activeFaultTag}` : ''}
+                    </div>
                   </div>
                 </div>
 
                 <p className="text-xs font-mono text-slate-700 leading-relaxed border-t border-slate-200/80 pt-2 font-medium">
                   {evalResult.airworthiness.desc}
+                </p>
+                <p className="text-[10px] font-mono text-slate-500">
+                  Dispatch status combines the AI health / RUL with fixed redline checks (EGT &gt; 960 °C, oil &lt; 1.8 bar, vibration &gt; 1.3 g, …).
                 </p>
               </div>
 
@@ -1227,7 +1227,7 @@ export const JudgesSandboxTab = () => {
                   <div className="flex items-center gap-2">
                     <Activity className="w-4 h-4 text-sky-600" />
                     <h3 className="font-display font-bold text-xs tracking-wider text-slate-900 uppercase">
-                      HEALTH INDEX & MULTI-STRESS DEGRADATION (PINN / ML)
+                      HEALTH INDEX & MULTI-STRESS DEGRADATION (XGBOOST)
                     </h3>
                   </div>
                   <span className="text-[10px] font-mono text-slate-500">
@@ -1283,7 +1283,7 @@ export const JudgesSandboxTab = () => {
                       PREDICTED REMAINING USEFUL LIFE (RUL FORECAST)
                     </h3>
                   </div>
-                  <span className="text-[10px] font-mono text-slate-500">WEIBULL HAZARD MODEL</span>
+                  <span className="text-[10px] font-mono text-slate-500">CONFORMAL QUANTILE MODEL</span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 font-mono">
@@ -1356,13 +1356,13 @@ export const JudgesSandboxTab = () => {
                 </div>
               </div>
 
-              {/* Card 5: Autonomous RL Replanner Recommendation */}
+              {/* Card 5: Rule-based RTB recommendation */}
               <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-xs flex flex-col gap-3">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                   <div className="flex items-center gap-2">
                     <Compass className="w-4 h-4 text-sky-600" />
                     <h3 className="font-display font-bold text-xs tracking-wider text-slate-900 uppercase">
-                      AUTONOMOUS RL FLIGHT PLANNER & CONTINGENCY ACTION
+                      RULE-BASED RTB RECOMMENDATION
                     </h3>
                   </div>
                   <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold border ${

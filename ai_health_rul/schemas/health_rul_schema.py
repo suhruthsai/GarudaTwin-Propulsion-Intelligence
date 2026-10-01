@@ -9,22 +9,27 @@ from pydantic import BaseModel, Field
 
 
 class TelemetryInputFrame(BaseModel):
-    """Raw telemetry frame received from CAN bus or digital twin stream."""
-    timestamp_s: float = Field(0.0, description="Timestamp in seconds")
-    rpm: float = Field(4800.0, ge=0.0, le=7000.0, description="Engine crankshaft RPM")
-    true_cht: float = Field(106.0, description="Actual cylinder head temperature (°C)")
-    sensor_cht: float = Field(106.0, description="Measured sensor CHT (°C)")
-    egt: float = Field(840.0, description="Exhaust gas temperature (°C)")
-    oil_pressure: float = Field(3.85, description="Oil pressure (bar / PSI)")
-    oil_temp: float = Field(98.0, description="Oil temperature (°C)")
-    fuel_flow: float = Field(26.0, description="Fuel flow rate (L/h or GPH)")
-    vibration: float = Field(0.28, description="Engine block vibration (g-RMS / IPS)")
-    battery_voltage: float = Field(28.4, description="FADEC bus voltage (V)")
-    injection_timing: float = Field(18.5, description="Injection timing BTDC (°)")
-    health_index: float = Field(0.98, ge=0.0, le=1.0, description="Instantaneous health index (0-1)")
-    altitude: float = Field(14500.0, description="Flight altitude (ft or m)")
-    ambient_temp: float = Field(-12.5, description="Ambient air temperature (°C)")
-    throttle: float = Field(78.5, ge=0.0, le=100.0, description="Commanded throttle position (%)")
+    """
+    Documented telemetry frame for POST /api/health-rul/predict (all channels optional;
+    missing channels are imputed as nominal). There is intentionally no health_index input:
+    health is a model output, and any health_index sent by a client is ignored.
+    """
+    uav_id: str = Field("default", description="Vehicle id; inference state is kept per vehicle")
+    sim_time_s: Optional[float] = Field(None, description="Simulator/mission time (s), preferred time base")
+    timestamp_s: Optional[float] = Field(None, description="Wall-clock timestamp (s), fallback time base")
+    rpm: float = Field(4800.0, description="Engine crankshaft RPM")
+    throttle: float = Field(78.5, description="Throttle position (%)")
+    egt: List[float] = Field(default_factory=lambda: [840.0] * 4, description="EGT per cylinder (°C)")
+    cht: List[float] = Field(default_factory=lambda: [106.0] * 4, description="CHT per cylinder (°C)")
+    map_bar: Optional[float] = Field(None, description="Manifold absolute pressure (bar)")
+    oil_pressure: Optional[float] = Field(None, description="Oil pressure (bar)")
+    oil_temp: Optional[float] = Field(None, description="Oil temperature (°C)")
+    vibration: Optional[float] = Field(None, description="Engine vibration (g-RMS)")
+    fuel_flow: Optional[float] = Field(None, description="Fuel flow (L/h)")
+    lambda_: Optional[float] = Field(None, alias="lambda", description="Air-fuel equivalence ratio")
+    gen_voltage: Optional[float] = Field(None, description="Generator bus voltage (V)")
+    gen_current: Optional[float] = Field(None, description="Generator current (A)")
+    coolant_temp: Optional[float] = Field(None, description="Coolant temperature (°C)")
 
 
 class DataQualitySummary(BaseModel):
@@ -33,6 +38,7 @@ class DataQualitySummary(BaseModel):
     missing_count: int = 0
     imputed_fields: List[str] = Field(default_factory=list)
     outliers_detected: List[str] = Field(default_factory=list)
+    failed_sensors: List[str] = Field(default_factory=list, description="Sensors detected as stuck/failed and excluded")
     packet_loss_simulated: bool = False
     quality_score_pct: float = Field(default=96.0, description="Composite data quality score 0-100")
     sensor_confidence_pct: float = Field(default=93.0, description="Weighted sensor confidence 0-100")
@@ -49,6 +55,7 @@ class HealthPredictionResult(BaseModel):
     diagnosed_fault: str
     severity_level: str  # 'NOMINAL' | 'ELEVATED' | 'CRITICAL'
     class_probabilities: Dict[str, float] = Field(default_factory=dict)
+    suspect_sensor: Optional[str] = Field(None, description="Sensor channel implicated by a SENSOR_DRIFT / SENSOR_FAILURE diagnosis")
 
 
 class RulTrajectoryPoint(BaseModel):
@@ -156,13 +163,13 @@ class PilotAdvisoryOutput(BaseModel):
 
 class ModelMetadata(BaseModel):
     """Model versioning and validation metrics for judge-facing transparency."""
-    model_name: str = "RUL-XGBoost + IsolationForest"
-    version: str = "1.2.0"
-    training_dataset: str = "Rotax 915iS Physics-Informed Synthetic (C-MAPSS derived)"
-    num_features: int = 71
-    feature_engineering: str = "Rolling mean/std 30s & 60s windows + physics residuals"
+    model_name: str = "IsolationForest + XGBoost"
+    version: str = "2.0.0"
+    training_dataset: str = "GarudaTwin engine simulator"
+    num_features: int = 32
+    feature_engineering: str = "Golden-twin physics residuals + rolling mean/std"
     validation_mae_hours: float = 0.0
-    validation_rmse_hours: float = 0.0
+    validation_rmse_hours: Optional[float] = None
     anomaly_precision: float = 0.0
     anomaly_recall: float = 0.0
     inference_latency_ms: float = 0.0
@@ -184,4 +191,5 @@ class UnifiedHealthRulResponse(BaseModel):
     advisory: PilotAdvisoryOutput
     maintenance: MaintenanceAdvisory = Field(default_factory=MaintenanceAdvisory)
     model_metadata: ModelMetadata = Field(default_factory=ModelMetadata)
+    model_features: Dict[str, float] = Field(default_factory=dict, description="Engineered feature vector scored by the models")
     pipeline_latency_ms: float

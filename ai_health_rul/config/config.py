@@ -1,6 +1,6 @@
 """
 AI Health & RUL Configuration Module
-Manages model paths, sensor parameters, default thresholds, and feature dimensions.
+Manages model paths, sensor channels, thresholds and feature dimensions.
 """
 
 from pathlib import Path
@@ -10,56 +10,51 @@ from typing import List
 MODULE_ROOT = Path(__file__).parent.parent.resolve()
 MODEL_DIR = MODULE_ROOT / "models"
 
-# Model Artifact Filenames
-ISOLATION_FOREST_FILE = "isolation_forest.pkl"
-SCALER_FILE = "scaler_anomaly.pkl"
-FAULT_CLASSIFIER_FILE = "fault_classifier.pkl"
-LABEL_ENCODER_FILE = "label_encoder.pkl"
-RUL_REGRESSOR_FILE = "rul_regressor.pkl"
-FEATURE_COLS_FILE = "model_feature_cols.json"
-ANOMALY_FEATURE_COLS_FILE = "anomaly_feature_cols.json"
+# Model Artifact Filenames (XGBoost models are stored as portable JSON, not pickles)
+ANOMALY_DETECTOR_FILE = "anomaly_detector.npz"   # Mahalanobis residual detector (plain arrays)
+FAULT_CLASSIFIER_FILE = "fault_classifier.json"
+SEVERITY_REGRESSOR_FILE = "severity_regressor.json"
+RUL_REGRESSOR_FILE = "rul_quantile_regressor.json"
+MODEL_CARD_FILE = "model_card.json"
+AUTOENCODER_FILE = "autoencoder.pt"
 
-# Canonical Telemetry Sensors Expected by Feature Engineering
-SENSOR_COLS: List[str] = [
+# Canonical sensor channels accepted by the pipeline.
+# NOTE: there is deliberately no `health_index` input. Health is a model OUTPUT;
+# feeding a health score in as a feature leaks the label into the model.
+CYLINDERS = 4
+SCALAR_CHANNELS: List[str] = [
     "rpm",
-    "true_cht",
-    "sensor_cht",
-    "egt",
+    "throttle",
+    "map_bar",
     "oil_pressure",
     "oil_temp",
-    "fuel_flow",
     "vibration",
-    "battery_voltage",
-    "injection_timing",
-    "health_index",
-    "altitude",
-    "ambient_temp",
-    "throttle",
+    "fuel_flow",
+    "lambda",
+    "gen_voltage",
+    "gen_current",
+    "coolant_temp",
 ]
+ARRAY_CHANNELS: List[str] = ["egt", "cht"]
 
-# Rolling Window Window Sizes (in Timesteps)
-ROLLING_WINDOWS: List[int] = [30, 60]
+# Rolling window length (samples at ~1 Hz)
+ROLLING_WINDOW: int = 8
 
 # Operational Thresholds & Physics Baselines
 BASE_TBO_HOURS: float = 2000.0          # Rotax 915/916 iS Time Between Overhaul
 MEL_THRESHOLD_SCORE: float = 50.0        # Minimum Equipment List health threshold (50%)
-MIN_SAFE_RUL_HOURS: float = 2.0          # Safe Emergency Recovery Margin (Hours)
-ANOMALY_THRESHOLD: float = 0.085         # Isolation Forest / MSE Anomaly Cutoff
+MIN_SAFE_RUL_HOURS: float = 0.1          # Floor for displayed RUL
+ANOMALY_THRESHOLD: float = 0.5           # anomaly_score at the calibrated Mahalanobis threshold
+FAULT_PROB_THRESHOLD: float = 0.5        # min classifier posterior to report a fault class
 
-# Default Nominal Engine Baselines
-NOMINAL_DEFAULTS = {
-    "rpm": 4800.0,
-    "true_cht": 106.0,
-    "sensor_cht": 106.0,
-    "egt": 840.0,
-    "oil_pressure": 3.85,
-    "oil_temp": 98.0,
-    "fuel_flow": 26.0,
-    "vibration": 0.28,
-    "battery_voltage": 28.4,
-    "injection_timing": 18.5,
-    "health_index": 0.98,
-    "altitude": 14500.0,
-    "ambient_temp": -12.5,
-    "throttle": 78.5,
-}
+FAULT_CLASSES: List[str] = [
+    "NONE", "CYL3_INJECTOR", "BLOW_BY", "OIL_PUMP_CAVITATION", "TURBO_WASTEGATE_STUCK",
+    "COOLING_DEGRADATION", "GENERATOR_FAILURE", "PRGB_DEGRADATION",
+    "MISFIRE", "COMBUSTION_INSTABILITY", "INJECTOR_COKING", "SENSOR_DRIFT",
+]
+# Measurement-chain faults: the engine itself is healthy (no health/RUL penalty).
+# SENSOR_FAILURE (stuck sensor) comes from the data-quality layer, not the classifier.
+SENSOR_FAULT_CLASSES = {"SENSOR_DRIFT", "SENSOR_FAILURE"}
+
+# Nominal loiter operating point (used only to impute throttle/RPM when missing)
+NOMINAL_OPERATING_POINT = {"rpm": 4800.0, "throttle": 78.5}

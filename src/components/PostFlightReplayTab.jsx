@@ -38,7 +38,7 @@ export const PostFlightReplayTab = () => {
   const [activePhaseIndex, setActivePhaseIndex] = useState(7);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1); // 1x, 2x, 5x, 10x, 0.5x
-  const [activePreset, setActivePreset] = useState('HIGH_ALT_FL280'); // HIGH_ALT_FL280, HIGH_ALT_FL200, HOT_DESERT, MARITIME, ARCTIC_SOAK, MONSOON, FL300_CEILING, TERRAIN_MASK, ULTRA_LOITER
+  const [activePreset, setActivePreset] = useState('HIGH_ALT_FL220'); // HIGH_ALT_FL220, HIGH_ALT_FL200, HOT_DESERT, MARITIME, ARCTIC_SOAK, MONSOON, FL230_CEILING, TERRAIN_MASK, ULTRA_LOITER
   const [showMoreScenarios, setShowMoreScenarios] = useState(false);
 
   // Environmental sliders
@@ -158,9 +158,9 @@ export const PostFlightReplayTab = () => {
         {/* Top-Right Environmental Presets */}
         <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={() => handleSelectPreset('HIGH_ALT_FL280')}
+            onClick={() => handleSelectPreset('HIGH_ALT_FL220')}
             className={`px-3 py-1.5 rounded-lg border text-xs font-mono font-bold flex items-center gap-2 transition-all ${
-              activePreset === 'HIGH_ALT_FL280'
+              activePreset === 'HIGH_ALT_FL220'
                 ? 'bg-cyan-500/15 text-cyan-300 border-cyan-400 shadow-[0_0_12px_rgba(0,240,255,0.3)]'
                 : 'bg-slate-900/60 text-slate-400 border-slate-700/80 hover:text-slate-200'
             }`}
@@ -197,13 +197,13 @@ export const PostFlightReplayTab = () => {
           <button
             onClick={() => setShowMoreScenarios(!showMoreScenarios)}
             className={`px-2.5 py-1.5 rounded-lg border text-xs font-mono font-bold flex items-center gap-1.5 transition-all ${
-              showMoreScenarios || !['HIGH_ALT_FL280', 'HOT_DESERT', 'MARITIME'].includes(activePreset)
+              showMoreScenarios || !['HIGH_ALT_FL220', 'HOT_DESERT', 'MARITIME'].includes(activePreset)
                 ? 'bg-purple-500/20 text-purple-200 border-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.3)]'
                 : 'bg-slate-900/60 text-slate-400 border-slate-700/80 hover:text-slate-200'
             }`}
           >
             <Sliders className="w-3.5 h-3.5 text-purple-400" />
-            <span>{activePreset && !['HIGH_ALT_FL280', 'HOT_DESERT', 'MARITIME'].includes(activePreset) ? activePreset.replace(/_/g, ' ') : 'MORE SCENARIOS'}</span>
+            <span>{activePreset && !['HIGH_ALT_FL220', 'HOT_DESERT', 'MARITIME'].includes(activePreset) ? activePreset.replace(/_/g, ' ') : 'MORE SCENARIOS'}</span>
             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showMoreScenarios ? 'rotate-180' : ''}`} />
           </button>
         </div>

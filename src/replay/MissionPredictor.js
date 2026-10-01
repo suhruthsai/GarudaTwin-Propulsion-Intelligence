@@ -20,11 +20,11 @@ export class MissionPredictor {
    */
   static evaluate({
     activePhaseIndex = 7,
-    altitudeFt = 28000,
+    altitudeFt = 22000,
     ambientTempC = -28,
     payloadKg = 85,
     headwindKts = 38,
-    scenarioId = 'HIGH_ALT_FL280'
+    scenarioId = 'HIGH_ALT_FL220'
   }) {
     // 1. Compute ISA 1976 Atmosphere at Given Altitude & Temperature
     const aerothermal = AtmosphericPhysicsEngine.computeDerivations(

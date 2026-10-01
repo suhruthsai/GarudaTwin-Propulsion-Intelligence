@@ -3,11 +3,11 @@ test_complete_ai_physics.py
 ===========================
 Automated Full-Project Validation Suite for:
 1. Rotax 915 iS Thermodynamics & Analytical Physics Baseline
-2. PyTorch Deep Autoencoder (Sensor Micro-Residual Anomaly Detector)
-3. PyTorch Bi-LSTM Network (RUL Estimator with 95% Confidence Intervals)
-4. SHAP Feature Attribution & Root Cause Diagnosis
-5. Reinforcement Learning (RL) Closed-Loop Divert Replanner
-6. Unified AI Health & RUL Service (XGBoost + Isolation Forest + OOD Guard)
+2. Trained PyTorch Deep Autoencoder (single-frame anomaly detector)
+3. Trained XGBoost RUL quantile model (legacy single-frame endpoint)
+4. Feature Attribution & Root Cause Diagnosis
+5. Rule-based Return-to-Base Divert Replanner
+6. Unified AI Health & RUL Service (Mahalanobis detector + XGBoost, no label inputs)
 """
 
 import math
@@ -24,7 +24,6 @@ from ai_service import (
     rl_mission_replan,
     RlReplanRequest,
     autoencoder,
-    lstm_prognostics,
 )
 from ai_health_rul.services.health_rul_service import HealthRulService
 
@@ -67,10 +66,12 @@ except Exception as e:
     print(f"  ✗ Physics baseline test failed: {e}")
 
 # Test Telemetry Fixtures
+# Nominal = what the golden twin expects at 4850 rpm / 78.5 % (EGT 841.5 °C, CHT 106 °C).
+# (A uniform +12 °C EGT rise is a lean / injector-coking signature, not nominal.)
 nom_telemetry = TelemetryInput(
     rpm=4850.0, throttle_pct=78.5, altitude_ft=14500.0,
-    egt=[855.0, 852.0, 854.0, 850.0],
-    cht=[108.0, 107.5, 109.0, 108.0],
+    egt=[842.0, 840.5, 842.5, 841.0],
+    cht=[106.2, 105.8, 106.4, 106.0],
     map_bar=1.45, oil_press_bar=3.85, oil_temp_c=98.0,
     vibration_grms=0.28
 )
@@ -105,7 +106,7 @@ except Exception as e:
 # -------------------------------------------------------------
 # 3. PyTorch Bi-LSTM Remaining Useful Life (RUL) Network
 # -------------------------------------------------------------
-print("\n[SECTION 3/6] Validating PyTorch Bi-LSTM RUL & 95% Confidence Intervals...")
+print("\n[SECTION 3/6] Validating trained RUL quantile model & 95% intervals...")
 try:
     rul_nom = predict_rul(nom_telemetry)
     print(f"  ✓ Nominal Engine Health Index: {rul_nom.engine_health_index}%")
@@ -118,10 +119,10 @@ try:
     print(f"  ✓ Degraded Mean RUL: {rul_fault.rul_hours_mean} hrs (Degradation Rate: {rul_fault.degradation_rate_pct_per_hour}%/hr)")
     assert rul_fault.rul_hours_mean < rul_nom.rul_hours_mean, "Fault did not decrease RUL"
     assert rul_fault.engine_health_index < rul_nom.engine_health_index, "Fault did not reduce health index"
-    print("  ✓ Bi-LSTM RUL estimation and Bayesian uncertainty quantification verified.")
+    print("  ✓ Trained RUL estimation and conformal 95% interval verified.")
     passed += 1
 except Exception as e:
-    print(f"  ✗ Bi-LSTM RUL test failed: {e}")
+    print(f"  ✗ RUL test failed: {e}")
 
 # -------------------------------------------------------------
 # 4. SHAP Feature Attribution & Root Cause Analysis
@@ -142,7 +143,7 @@ except Exception as e:
 # -------------------------------------------------------------
 # 5. Reinforcement Learning (RL) Autonomous Divert Replanner
 # -------------------------------------------------------------
-print("\n[SECTION 5/6] Validating Closed-Loop RL Trajectory Replanner...")
+print("\n[SECTION 5/6] Validating rule-based Return-to-Base Replanner...")
 try:
     req_healthy = RlReplanRequest(
         current_lat=26.45, current_lng=70.52, altitude_ft=14500.0,
@@ -151,7 +152,8 @@ try:
     plan_healthy = rl_mission_replan(req_healthy)
     print(f"  ✓ Healthy Scenario Decision: {plan_healthy['action']}")
     print(f"  ✓ Target Recovery Field: {plan_healthy['target_recovery_field']} ({plan_healthy['distance_to_field_nm']} NM)")
-    assert plan_healthy["action"] == "DERATE_AND_CONTINUE_MISSION"
+    # Healthy engine: no derate, keep flying (shared rules: src/planner/rtbRules.js)
+    assert plan_healthy["action"] == "CONTINUE_MISSION" and plan_healthy["status"] == "NOMINAL"
 
     req_crit = RlReplanRequest(
         current_lat=26.45, current_lng=70.52, altitude_ft=14500.0,
@@ -178,54 +180,50 @@ try:
     assert plan_bingo["uav_id"] == "Vahak-2"
     assert "Jaisalmer" in plan_bingo["target_recovery_field"]
 
-    print("  ✓ Closed-loop RL trajectory replanning & fuel bingo verified.")
+    print("  ✓ Rule-based RTB decisions (healthy, critical, fuel bingo) verified.")
     passed += 1
 except Exception as e:
-    print(f"  ✗ RL replanner test failed: {e}")
+    print(f"  ✗ RTB planner test failed: {e}")
 
 # -------------------------------------------------------------
-# 6. Unified AI Health & RUL Service (XGBoost + IsolationForest)
+# 6. Unified AI Health & RUL Service (no health/label inputs)
 # -------------------------------------------------------------
 print("\n[SECTION 6/6] Validating Unified AI Health & RUL Service...")
 try:
     svc = HealthRulService()
-    base_telem = {
-        "timestamp_s": 10.0, "rpm": 4800.0, "true_cht": 106.0, "sensor_cht": 106.0,
-        "egt": 840.0, "oil_pressure": 3.85, "oil_temp": 98.0, "fuel_flow": 26.0,
-        "vibration": 0.28, "battery_voltage": 28.4, "injection_timing": 18.5,
-        "health_index": 0.98, "altitude": 14500.0, "ambient_temp": -12.5, "throttle": 78.5
-    }
-    for i in range(35):
-        t = base_telem.copy()
-        t["timestamp_s"] = float(i)
-        svc.predict(t)
-        
-    res = svc.predict(base_telem)
-    print(f"  ✓ Unified Pipeline Prediction: Health Score = {res.rul.healthIndexScore}, RUL = {res.rul.rulHours} hrs")
-    print(f"  ✓ Maintenance Priority: {res.maintenance.priority} (Action: {res.maintenance.action})")
-    assert res.rul.rulHours > 50.0
+    base = {"uav_id": "TEST", "rpm": 4800.0, "throttle": 78.5, "egt": [840.0] * 4, "cht": [106.0] * 4,
+            "map_bar": 1.42, "oil_pressure": 3.85, "oil_temp": 98.0, "vibration": 0.28, "fuel_flow": 26.0,
+            "lambda": 0.94, "gen_voltage": 28.4, "gen_current": 45.2, "coolant_temp": 88.5}
+    rng = np.random.default_rng(0)
+    noisy = lambda b: {**b, "egt": list(840 + rng.normal(0, 1.2, 4)), "cht": list(106 + rng.normal(0, 0.3, 4)),
+                       "rpm": 4800 + rng.normal(0, 4), "map_bar": 1.42 + rng.normal(0, 0.005),
+                       "oil_pressure": 3.85 + rng.normal(0, 0.02), "oil_temp": 98 + rng.normal(0, 0.1),
+                       "vibration": 0.28 + rng.normal(0, 0.008), "lambda": 0.94 + rng.normal(0, 0.003),
+                       "gen_current": 45.2 + rng.normal(0, 0.5), "coolant_temp": 88.5 + rng.normal(0, 0.2)}
+    # Real sensors are never perfectly constant (identical readings would be flagged as stuck sensors)
+    for i in range(10):
+        res = svc.predict({**noisy(base), "sim_time_s": float(i)})
+    print(f"  ✓ Nominal: diagnosis={res.health.diagnosed_fault}, health={res.rul.healthIndexScore}, RUL={res.rul.rulHours} h")
+    assert res.health.diagnosed_fault == "NONE"
     assert res.maintenance.priority == "LOW"
 
-    # 1. Test DataQualityGuard outlier detection
-    ood_telem = base_telem.copy()
-    ood_telem["rpm"] = 8500.0
-    res_ood = svc.predict(ood_telem)
-    assert "rpm" in res_ood.data_quality.outliers_detected, "RPM outlier was not detected by DataQualityGuard"
-    print(f"  ✓ DataQualityGuard detected physical boundary outlier: {res_ood.data_quality.outliers_detected}")
+    # Leakage guard: a health_index / fault label in the payload must not change the output
+    leak = svc.predict({**noisy(base), "sim_time_s": 10.0, "health_index": 0.05, "activeFault": "BLOW_BY"})
+    assert leak.health.diagnosed_fault == "NONE" and abs(leak.rul.healthIndexScore - res.rul.healthIndexScore) < 1.0
+    print("  ✓ health_index / fault-label inputs ignored (no label leakage)")
 
-    # 2. Test RulPredictor direct OOD exception rejection
-    from ai_health_rul.inference.rul_predictor import RulPredictor
-    import pandas as pd
-    predictor = RulPredictor()
-    df_ood = pd.DataFrame([ood_telem] * 35)
-    try:
-        predictor.predict(feature_df=df_ood, raw_telemetry=ood_telem, anomaly_score=0.1)
-        print("  ✗ Failed: RulPredictor did not raise OUT_OF_DISTRIBUTION")
-    except ValueError as err:
-        if "OUT_OF_DISTRIBUTION" in str(err):
-            print(f"  ✓ RulPredictor correctly raised OUT_OF_DISTRIBUTION exception: {err}")
-            passed += 1
-    print("  ✓ Unified Health & RUL service with DataQualityGuard and OOD protection verified.")
+    # Oil-pump cavitation signature on a separate vehicle
+    for i in range(6):
+        cav = svc.predict({**noisy(base), "uav_id": "TEST-2", "sim_time_s": float(i), "oil_pressure": 1.9 + 0.4 * (-1) ** i,
+                           "oil_temp": 119.0, "vibration": 1.45})
+    print(f"  ✓ Cavitation: diagnosis={cav.health.diagnosed_fault}, health={cav.rul.healthIndexScore}, RUL={cav.rul.rulHours} h")
+    assert cav.health.diagnosed_fault == "OIL_PUMP_CAVITATION"
+
+    # DataQualityGuard physical-bound outlier
+    res_ood = svc.predict({**base, "uav_id": "TEST-3", "rpm": 8500.0})
+    assert "rpm" in res_ood.data_quality.outliers_detected
+    print(f"  ✓ DataQualityGuard flagged: {res_ood.data_quality.outliers_detected}")
+    passed += 1
 except Exception as e:
     print(f"  ✗ Unified service test failed: {e}")
 
