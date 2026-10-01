@@ -3,7 +3,7 @@
  * live ingest (test rig / CAN bridge) and replay.
  *
  * Column names are the same as the training dataset (training/generate_dataset.mjs), so a
- * dataset CSV can be replayed as-is. All 21 channels the AI models use are required: the
+ * dataset CSV can be replayed as-is. All 25 channels the AI models use are required: the
  * models were trained with every channel present, and silently imputing a missing channel as
  * "nominal" would hide faults on it.
  */
@@ -29,7 +29,16 @@ export const CHANNELS = {
   gen_voltage:  ['genVoltageV', null, [0, 60]],
   gen_current:  ['genCurrentA', null, [-300, 300]],
   coolant_temp: ['coolantTempC', null, [-60, 200]],
+  // ECU injection data, battery and air data (column names as in the training dataset)
+  inj_pw_ms: ['injPulseMs', null, [0.5, 30]],
+  fuel_trim_pct: ['fuelTrimPct', null, [-25, 25]],
+  battery_current_a: ['batteryCurrentA', null, [-150, 60]],
+  battery_soc_pct: ['batterySocPct', null, [0, 100]],
+  ambient_pressure_bar: ['ambientPressureBar', null, [0.3, 1.1]],
+  oat_c: ['oatC', null, [-60, 55]],
 };
+// Recording / CSV format version (2 = with injection, battery and air-data channels)
+export const FRAME_SCHEMA_VERSION = 2;
 export const CHANNEL_NAMES = Object.keys(CHANNELS);
 
 const num = (v) => {
@@ -92,6 +101,9 @@ export function aiPayloadFromFrame(frame, { uavId, timeS, flightHours }) {
     map_bar: frame.map_bar, oil_pressure: frame.oil_pressure, oil_temp: frame.oil_temp,
     vibration: frame.vibration, fuel_flow: frame.fuel_flow, lambda: frame.lambda,
     gen_voltage: frame.gen_voltage, gen_current: frame.gen_current, coolant_temp: frame.coolant_temp,
+    inj_pw_ms: frame.inj_pw_ms, fuel_trim_pct: frame.fuel_trim_pct,
+    battery_current_a: frame.battery_current_a, battery_soc_pct: frame.battery_soc_pct,
+    ambient_pressure_bar: frame.ambient_pressure_bar, oat_c: frame.oat_c,
   };
 }
 

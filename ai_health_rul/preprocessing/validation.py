@@ -27,6 +27,12 @@ ALIASES: Dict[str, List[str]] = {
     "gen_voltage": ["gen_voltage", "gen_voltage_v", "genVoltageV", "battery_voltage"],
     "gen_current": ["gen_current", "gen_current_a", "genCurrentA"],
     "coolant_temp": ["coolant_temp", "coolant_temp_c", "coolantTempC"],
+    "inj_pw": ["inj_pw", "inj_pw_ms", "injPulseMs"],
+    "fuel_trim": ["fuel_trim", "fuel_trim_pct", "fuelTrimPct"],
+    "battery_current": ["battery_current", "battery_current_a", "batteryCurrentA"],
+    "battery_soc": ["battery_soc", "battery_soc_pct", "batterySocPct"],
+    "ambient_pressure": ["ambient_pressure", "ambient_pressure_bar", "ambientPressureBar"],
+    "oat": ["oat", "oat_c", "oatC", "ambient_temp_c"],
     "egt": ["egt", "egt_c"],
     "cht": ["cht", "true_cht", "sensor_cht"],
 }
@@ -50,17 +56,23 @@ class DataQualityGuard:
     PHYSICAL_BOUNDS = {
         "rpm": (1500.0, 6200.0),
         "throttle": (0.0, 100.0),
-        "egt": (400.0, 1050.0),
-        "cht": (20.0, 200.0),
+        "egt": (300.0, 1050.0),
+        "cht": (-40.0, 200.0),
         "map_bar": (0.5, 2.5),
         "oil_pressure": (0.5, 7.0),
-        "oil_temp": (20.0, 160.0),
+        "oil_temp": (-40.0, 160.0),
         "vibration": (0.05, 5.0),
         "fuel_flow": (2.0, 60.0),
         "lambda": (0.6, 1.5),
-        "gen_voltage": (18.0, 32.0),
+        "gen_voltage": (15.0, 32.0),
         "gen_current": (0.0, 120.0),
-        "coolant_temp": (20.0, 140.0),
+        "coolant_temp": (-40.0, 140.0),
+        "inj_pw": (0.5, 30.0),
+        "fuel_trim": (-25.0, 25.0),
+        "battery_current": (-150.0, 60.0),
+        "battery_soc": (0.0, 100.0),
+        "ambient_pressure": (0.3, 1.1),
+        "oat": (-60.0, 55.0),
     }
 
     # Maximum plausible change per second. Generous enough not to clip legitimate
@@ -79,6 +91,12 @@ class DataQualityGuard:
         "gen_voltage": 8.0,
         "gen_current": 60.0,
         "coolant_temp": 15.0,
+        "inj_pw": 30.0,
+        "fuel_trim": 30.0,
+        "battery_current": 150.0,
+        "battery_soc": 5.0,
+        "ambient_pressure": 0.05,
+        "oat": 5.0,
     }
 
     # Consecutive identical readings after which a sensor is declared stuck (failed).
@@ -159,6 +177,18 @@ class DataQualityGuard:
         self._last[key] = val
         return val
 
+    @staticmethod
+    def _air_data_from_altitude(raw: Dict[str, Any], parsed: Dict[str, Any]) -> None:
+        """If only an altitude is given (e.g. the what-if bench), derive ISA pressure / OAT from it."""
+        alt = raw.get("altitude_ft", raw.get("altitudeFt"))
+        if not _is_number(alt):
+            return
+        alt = float(alt)
+        if parsed.get("ambient_pressure") is None:
+            parsed["ambient_pressure"] = 1.01325 * (1 - 6.8756e-6 * alt) ** 5.2559
+        if parsed.get("oat") is None:
+            parsed["oat"] = 15.0 - 0.0019812 * alt
+
     def validate_and_clean_frame(
         self,
         raw_frame: Dict[str, Any],
@@ -171,6 +201,7 @@ class DataQualityGuard:
         golden-twin nominal value so they contribute zero residual.
         """
         parsed = self.parse(raw_frame)
+        self._air_data_from_altitude(raw_frame, parsed)
         is_sandbox = bool(raw_frame.get("is_sandbox", False) or raw_frame.get("mode") in ("SANDBOX", "BENCHMARK"))
         packet_lost = simulated_packet_loss > 0.0 and np.random.random() < simulated_packet_loss
 
@@ -185,8 +216,8 @@ class DataQualityGuard:
             if val is None:
                 missing.append(ch)
                 last = [self._last.get(f"{ch}{i}") for i in range(CYLINDERS)] if ch in ARRAY_CHANNELS else self._last.get(ch)
-                if ch in ("rpm", "throttle"):
-                    # Operating point is required by the golden twin: hold last value or loiter point
+                if ch in NOMINAL_OPERATING_POINT:
+                    # Operating point and air data drive the golden twin: hold last value or reference
                     cleaned[ch] = last if last is not None else NOMINAL_OPERATING_POINT[ch]
                     imputed.append(ch)
                 else:
@@ -205,7 +236,7 @@ class DataQualityGuard:
                 cleaned[ch] = self._clean_value(ch, ch, val, dt, not is_sandbox, outliers)
                 if not is_sandbox and self._is_stuck(ch, ch, val):
                     failed.append(ch)
-                    if ch not in ("rpm", "throttle"):  # the operating point is always required
+                    if ch not in NOMINAL_OPERATING_POINT:  # operating point / air data are always required
                         cleaned[ch] = None  # excluded; the feature extractor uses the golden-twin value
 
         summary = DataQualitySummary(

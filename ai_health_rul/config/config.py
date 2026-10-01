@@ -34,6 +34,13 @@ SCALAR_CHANNELS: List[str] = [
     "gen_voltage",
     "gen_current",
     "coolant_temp",
+    # ECU injection data, battery and air data
+    "inj_pw",              # injection time (ms)
+    "fuel_trim",           # ECU closed-loop fuel trim (%)
+    "battery_current",     # A, + charging / - discharging
+    "battery_soc",         # %
+    "ambient_pressure",    # bar (static)
+    "oat",                 # °C outside air temperature
 ]
 ARRAY_CHANNELS: List[str] = ["egt", "cht"]
 
@@ -56,5 +63,12 @@ FAULT_CLASSES: List[str] = [
 # SENSOR_FAILURE (stuck sensor) comes from the data-quality layer, not the classifier.
 SENSOR_FAULT_CLASSES = {"SENSOR_DRIFT", "SENSOR_FAILURE"}
 
-# Nominal loiter operating point (used only to impute throttle/RPM when missing)
-NOMINAL_OPERATING_POINT = {"rpm": 4800.0, "throttle": 78.5}
+# Reference flight condition of the engine model (14,500 ft ISA) — mirrors PHYS in EngineSimulator.js
+REF_ALT_FT: float = 14500.0
+_P0, _T0, _LAPSE = 1.01325, 288.15, 0.0019812
+REF_AMBIENT_PRESSURE: float = _P0 * (1 - 6.8756e-6 * REF_ALT_FT) ** 5.2559
+REF_OAT: float = 15.0 - _LAPSE * REF_ALT_FT
+
+# Values imputed when a required input is missing (operating point and air data drive the golden twin)
+NOMINAL_OPERATING_POINT = {"rpm": 4800.0, "throttle": 78.5,
+                           "ambient_pressure": REF_AMBIENT_PRESSURE, "oat": REF_OAT}

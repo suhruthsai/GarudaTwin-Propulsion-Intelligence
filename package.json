@@ -16,7 +16,8 @@
     "stop": "node scripts/start.mjs stop",
     "test:security": "node test_gateway_security.mjs",
     "test:data": "node test_data_source.mjs",
-    "test:fleet": "node test_fleet.mjs"
+    "test:fleet": "node test_fleet.mjs",
+    "test:geofence": "node test_geofence.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^9.106.0",

@@ -76,8 +76,9 @@ const HEADER = [
   'rpm', 'throttle', 'egt1', 'egt2', 'egt3', 'egt4', 'cht1', 'cht2', 'cht3', 'cht4',
   'map_bar', 'oil_pressure', 'oil_temp', 'vibration', 'fuel_flow', 'lambda',
   'gen_voltage', 'gen_current', 'coolant_temp',
+  'inj_pw_ms', 'fuel_trim_pct', 'battery_current_a', 'battery_soc_pct', 'ambient_pressure_bar', 'oat_c', 'altitude_ft',
   // JS golden-twin nominal values, used by the Python parity test
-  'twin_egt', 'twin_cht', 'twin_oil_temp',
+  'twin_egt', 'twin_cht', 'twin_oil_temp', 'twin_coolant', 'twin_inj_pw', 'twin_gen_v',
 ];
 
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
@@ -90,6 +91,15 @@ function runEpisode(ep, faultClass) {
   sim.time = U(0, 600); // random phase of the scripted loiter sine
   const profile = makeProfile();
   if (profile.init) { sim.manual.rpm = profile.init.rpm; sim.manual.throttle = profile.init.throttle; }
+  // Flight condition: altitude 0-23,000 ft, ISA deviation -20..+25 °C; a quarter of episodes climb or descend
+  sim.ambient = { altitudeFt: U(0, 23000), isaDevC: U(-20, 25) };
+  const climbFpm = rng() < 0.25 ? (rng() < 0.5 ? -1 : 1) * U(300, 1000) : 0;
+  const stepAmbient = () => {
+    if (climbFpm) sim.ambient.altitudeFt = Math.max(0, Math.min(23000, sim.ambient.altitudeFt + climbFpm / 60 * 0.01));
+  };
+  // Electrical: payload load and battery state of charge vary between flights
+  sim.electrical.baseLoadA = U(30, 46);
+  sim.electrical.soc = U(0.80, 1.0);
   sim.settleThermal();
 
   // Randomised fault parameters so the models learn the physics, not one cylinder or channel
@@ -128,7 +138,7 @@ function runEpisode(ep, faultClass) {
   const warm = U(3, 10);
   const t0 = sim.time;
   let t = 0;
-  while (t < warm) { profile.apply(sim, t); sim.step(0.01); t += 0.01; }
+  while (t < warm) { profile.apply(sim, t); stepAmbient(); sim.step(0.01); t += 0.01; }
 
   const twin = new GoldenTwin();
   const nSamples = Math.round(U(50, 90));
@@ -143,7 +153,7 @@ function runEpisode(ep, faultClass) {
       faultState.activeFault = 'NONE';
       faultState.severity = 0;
     }
-    while (t < nextSample) { profile.apply(sim, t); sim.step(0.01); t += 0.01; }
+    while (t < nextSample) { profile.apply(sim, t); stepAmbient(); sim.step(0.01); t += 0.01; }
     const dt = k === 0 ? 1.0 : t - lastSampleT;
     lastSampleT = t;
     const e = sim.engine;
@@ -159,7 +169,8 @@ function runEpisode(ep, faultClass) {
       e.rpm.toFixed(1), e.throttlePct.toFixed(2), ...e.egt, ...e.cht,
       e.mapBar, e.oilPressBar, e.oilTempC, e.vibrationGrms, e.fuelFlowLph, e.lambda,
       e.genVoltageV, e.genCurrentA, e.coolantTempC,
-      tw.egt.toFixed(3), tw.cht.toFixed(3), tw.oilTemp.toFixed(3),
+      e.injPulseMs, e.fuelTrimPct, e.batteryCurrentA, e.batterySocPct, e.ambientPressureBar, e.oatC, e.altitudeFt,
+      tw.egt.toFixed(3), tw.cht.toFixed(3), tw.oilTemp.toFixed(3), tw.coolant.toFixed(3), tw.injPulseMs.toFixed(4), tw.genV.toFixed(4),
     ];
     out.write(row.join(',') + '\n');
     nextSample = t + U(0.95, 1.4); // UI calls the AI service at ~1 Hz with network jitter

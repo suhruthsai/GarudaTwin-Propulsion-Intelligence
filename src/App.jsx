@@ -293,6 +293,13 @@ export default function App() {
         </div>
       </header>
 
+      {telemetry.fcs?.geofence?.status === 'RETURNING' && (
+        <div role="alert" className="px-4 py-2 text-xs font-mono bg-red-50 border-b border-red-300 text-red-800">
+          GEOFENCE: Vahak-1 returned to its station orbit — {(telemetry.fcs.geofence.lastEvent?.reasons || telemetry.fcs.geofence.reasons || []).join('; ')}.
+          Border distance {telemetry.fcs.geofence.borderNm?.toFixed?.(1)} NM (minimum {telemetry.fcs.geofence.bufferNm} NM). Logged as an emergency event.
+        </div>
+      )}
+
       {isNoData && (
         <div role="alert" className="px-4 py-2 text-xs font-mono bg-slate-100 border-b border-slate-300 text-slate-800">
           {health.alertMessage}

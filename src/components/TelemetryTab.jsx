@@ -200,6 +200,8 @@ export const TelemetryTab = () => {
   const cb = analytics.combustion;
   const vb = analytics.vibration;
   const el = analytics.electrical;
+  const air = analytics.air;
+  const f = (v, d) => (v == null || Number.isNaN(v) ? '—' : Number(v).toFixed(d));
 
   return (
     <div className="h-full overflow-y-auto custom-scrollbar flex flex-col gap-3 pb-6 pr-1 select-none">
@@ -302,41 +304,45 @@ export const TelemetryTab = () => {
           {/* ELECTRICAL */}
           <div className="gcs-panel rounded-lg border border-slate-200 p-3.5 shadow-xs">
             <h3 className="font-mono text-xs font-bold tracking-wider text-slate-900 uppercase mb-3 pb-2 border-b border-slate-200 flex items-center gap-2">
-              <Zap className="w-4 h-4 text-amber-600" /> DUAL ALTERNATORS & 28V BUS
+              <Zap className="w-4 h-4 text-amber-600" /> ALTERNATOR, BATTERY & 28 V BUS
             </h3>
             <div className="flex flex-col">
-              <MetricRow label="MAIN BUS VOLTAGE" value={eng.genVoltageV.toFixed(1)} unit="V" statusStr={eng.genVoltageV < 24 ? 'CRITICAL' : 'NOMINAL'} highlight />
-              <MetricRow label="ALT #1 CURRENT" value={el.alt1.toFixed(1)} unit="A" />
-              <MetricRow label="ALT #2 CURRENT" value={el.alt2.toFixed(1)} unit="A" />
-              <MetricRow label="BUS RIPPLE RMS" value={el.ripple.toFixed(1)} unit="mV" />
-              <MetricRow label="BATTERY SOC" value={el.batSoc.toFixed(1)} unit="%" highlight />
-              <MetricRow label="BATTERY SOH" value={el.batSoh.toFixed(1)} unit="%" />
+              <MetricRow label="BUS VOLTAGE" value={f(el.busV, 1)} unit="V" statusStr={el.busV < 25 ? 'CRITICAL' : el.busV < 26.5 ? 'LOW' : 'NOMINAL'} highlight />
+              <MetricRow label="ALTERNATOR OUTPUT" value={f(el.altA, 1)} unit="A" />
+              <MetricRow label="ELECTRICAL LOAD (ALT − BATT)" value={f(el.loadA, 1)} unit="A" />
+              <MetricRow label="BATTERY CURRENT" value={el.batA == null ? '—' : `${el.batA >= 0 ? '+' : ''}${el.batA.toFixed(1)}`} unit={el.batA < 0 ? 'A DISCHARGING' : 'A charging'} statusStr={el.batA < -5 ? 'CRITICAL' : el.batA < -0.5 ? 'LOW' : null} />
+              <MetricRow label="BATTERY STATE OF CHARGE" value={f(el.batSoc, 1)} unit="%" statusStr={el.batSoc < 20 ? 'CRITICAL' : el.batSoc < 40 ? 'LOW' : null} highlight />
+              <MetricRow label="BATTERY-ONLY ENDURANCE" value={el.enduranceMin == null ? 'charging' : f(el.enduranceMin, 0)} unit={el.enduranceMin == null ? '' : 'min'} statusStr={el.enduranceMin != null && el.enduranceMin < 30 ? 'CRITICAL' : null} />
             </div>
           </div>
 
           {/* INJECTION TIMING */}
           <div className="gcs-panel rounded-lg border border-slate-200 p-3.5 shadow-xs">
             <h3 className="font-mono text-xs font-bold tracking-wider text-slate-900 uppercase mb-3 pb-2 border-b border-slate-200 flex items-center gap-2">
-              <Settings className="w-4 h-4 text-sky-600" /> INJECTION & IGNITION TIMING
+              <Settings className="w-4 h-4 text-sky-600" /> FUEL INJECTION (ECU)
             </h3>
             <div className="flex flex-col">
-              <MetricRow label="START OF INJECTION" value={cb.startOfInj.toFixed(1)} unit="° BTDC" />
-              <MetricRow label="INJECTION DURATION" value={cb.injDuration.toFixed(0)} unit="μs" />
-              <MetricRow label="COMMON RAIL PRESS" value={cb.railPress.toFixed(1)} unit="bar" highlight />
-              <MetricRow label="IGNITION ADVANCE" value={cb.ignAdv.toFixed(1)} unit="° BTDC" />
+              <MetricRow label="INJECTION TIME" value={f(cb.injPulseMs, 2)} unit="ms" highlight />
+              <MetricRow label="INJECTION TIME vs NOMINAL" value={cb.injResidualPct == null ? '—' : `${cb.injResidualPct >= 0 ? '+' : ''}${cb.injResidualPct.toFixed(1)}`} unit="%" statusStr={Math.abs(cb.injResidualPct ?? 0) > 10 ? 'WARN' : null} />
+              <MetricRow label="ECU CLOSED-LOOP FUEL TRIM" value={cb.fuelTrimPct == null ? '—' : `${cb.fuelTrimPct >= 0 ? '+' : ''}${cb.fuelTrimPct.toFixed(1)}`} unit="%" statusStr={Math.abs(cb.fuelTrimPct ?? 0) >= 14.5 ? 'CRITICAL' : Math.abs(cb.fuelTrimPct ?? 0) > 10 ? 'WARN' : null} />
+              <MetricRow label="INJECTOR DUTY CYCLE" value={f(cb.injDutyPct, 0)} unit="%" />
+              <MetricRow label="LAMBDA / FUEL FLOW" value={`${f(cb.lambda, 3)} / ${f(cb.fuelFlowLph, 1)}`} unit="L/h" />
+              <div className="text-[9px] font-mono text-slate-400 px-2 pt-1">Port injection, ~3 bar rail. Ignition timing is not modelled.</div>
             </div>
           </div>
 
           {/* TRI-AXIAL FFT */}
           <div className="gcs-panel rounded-lg border border-slate-200 p-3.5 shadow-xs">
             <h3 className="font-mono text-xs font-bold tracking-wider text-slate-900 uppercase mb-3 pb-2 border-b border-slate-200 flex items-center gap-2">
-              <Activity className="w-4 h-4 text-slate-600" /> TRI-AXIAL FFT HARMONICS
+              <Activity className="w-4 h-4 text-slate-600" /> AIR DATA, TURBO & VIBRATION
             </h3>
             <div className="flex flex-col">
-              <MetricRow label="1X CRANK (FUNDAMENTAL)" value={vb.fft1x.toFixed(3)} unit="IPS" statusStr={vb.fft1x > 0.08 ? 'WARN' : null} />
-              <MetricRow label="2X HARMONIC" value={vb.fft2x.toFixed(3)} unit="IPS" />
-              <MetricRow label="0.5X VALVE" value={vb.fft05x.toFixed(3)} unit="IPS" />
-              <MetricRow label="KNOCK INTENSITY" value={vb.knock.toFixed(3)} unit="V RMS" statusStr={vb.knock > 0.3 ? 'CRITICAL' : null} highlight={vb.knock > 0.3} />
+              <MetricRow label="PRESSURE ALTITUDE" value={f(air.altitudeFt, 0)} unit="ft" />
+              <MetricRow label="OUTSIDE AIR TEMP" value={f(air.oatC, 1)} unit="°C" />
+              <MetricRow label="AMBIENT PRESSURE" value={f(air.pressureBar, 3)} unit="bar" />
+              <MetricRow label="WASTEGATE CLOSED" value={f(air.wastegatePct, 0)} unit="%" statusStr={air.wastegatePct >= 99 ? 'AT LIMIT' : null} />
+              <MetricRow label="VIBRATION (BROADBAND)" value={f(vb.grms, 3)} unit="g-RMS" statusStr={(vb.residual ?? 0) > 0.25 ? 'WARN' : null} />
+              <div className="text-[9px] font-mono text-slate-400 px-2 pt-1">Wastegate at its limit = above critical altitude (MAP can no longer be held). No spectral vibration sensor is modelled.</div>
             </div>
           </div>
 

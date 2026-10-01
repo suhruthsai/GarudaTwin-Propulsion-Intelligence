@@ -77,6 +77,7 @@ class FleetMember {
     this.sim.time = Math.random() * 600;
     this.sim.manual.rpm = spec.op.rpm;
     this.sim.manual.throttle = spec.op.throttle;
+    this.sim.ambient = { altitudeFt: spec.station.altitudeFt, isaDevC: 0 };   // engine at its orbit altitude
     this.sim.settleThermal();
     this.twin = new GoldenTwin();
     this.lastTwinT = this.sim.time;
@@ -119,6 +120,7 @@ class FleetMember {
         egtResiduals: r.egt.map(v => round(v, 1)), chtResiduals: r.cht.map(v => round(v, 1)),
         mapResidual: round(r.map, 3), oilPressResidual: round(r.oilPress, 2), oilTempResidual: round(r.oilTemp, 1),
         vibrationResidual: round(r.vib, 3), genVoltageResidual: round(r.genV, 1), coolantTempResidual: round(r.coolant, 1),
+        batteryCurrentResidual: round(r.batteryA, 1), injectionTimeResidualPct: round(r.injPct, 1), fuelTrimPct: round(r.fuelTrimPct, 1),
       } : null,
       l1: this.twinState ? { index: Number(this.twinState.th.index.toFixed(1)), status: this.twinState.th.status,
         exceedances: this.twinState.th.exceedances } : null,

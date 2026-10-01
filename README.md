@@ -20,35 +20,48 @@ The engine physics runs at 100 Hz simulation time; the gateway broadcasts teleme
 
 ## 📊 Comprehensive Model Performance & System Metrics
 
-All numbers below are on **held-out test episodes** (15 % of episodes, episode-level split, never seen in training) from the GarudaTwin engine simulator — dataset of 377,877 samples in 5,400 episodes, including loiter, fixed operating points, rapid throttle transitions, and faults that are cleared mid-episode. They describe performance on this simulator, **not on a real engine**. Full metrics, confusion matrix and calibration: [`ai_health_rul/models/model_card.json`](ai_health_rul/models/model_card.json). Reproduce with `node training/generate_dataset.mjs && python training/train_models.py`.
+All numbers below are on **held-out test episodes** (15 % of episodes, episode-level split, never seen in training) from the GarudaTwin engine simulator — dataset of 378,618 samples in 5,400 episodes flown at 0–23,000 ft and ISA −20 to +25 °C (a quarter of them climbing or descending), including loiter, fixed operating points, rapid throttle transitions, and faults that are cleared mid-episode. They describe performance on this simulator, **not on a real engine**. Full metrics, confusion matrix and calibration: [`ai_health_rul/models/model_card.json`](ai_health_rul/models/model_card.json). Reproduce with `node training/generate_dataset.mjs && python training/train_models.py`.
 
 ### 1. AI / ML Model Results (held-out simulator test episodes)
 
 | Model | Task | Metric | Result |
 | :--- | :--- | :--- | :--- |
-| **Mahalanobis residual detector** (fitted on nominal data only) | Unknown-fault detection | Recall / precision / ROC-AUC | **88.2% / 100.0% / 0.9965** (≥ 86.6% for 9 of 11 fault classes; combustion instability 65.4%, injector coking 67.0%) |
+| **Mahalanobis residual detector** (fitted on nominal data only) | Unknown-fault detection | Recall / precision / ROC-AUC | **91.9% / 100.0% / 0.9975** (≥ 95.7% for 7 of 11 classes; lowest: sensor drift 82.4%, turbo wastegate 83.3%, cooling 84.3%, generator 85.0%) |
 | | | Nominal false-alarm rate (2-sample persistence) | **0.0% of samples** |
-| **Full diagnosis** (detector + classifier + persistence, as served) | Fault detection | Precision / recall | **99.99% / 96.4%**, 0.68 false alarms per hour at 1 Hz; median latency 1.19 s (p90 1.39 s) |
-| **XGBoost fault classifier** (12 classes) | Fault isolation | Macro F1 | **0.980**; per-class recall 0.963–0.972 except sensor drift 0.917; accuracy at severity 0.05–0.15: 95.6% |
-| **XGBoost severity regressor** | Health index (0–100) | MAE | **1.24 points** (1.52 on fault samples); mean health during a sensor drift **99.6** (engine is healthy) |
-| **XGBoost quantile RUL + conformal calibration** | Hours to functional failure | MAE / median % error / 95 % interval coverage | **25.28 h / 26.6% / 95.5%** |
-| **Recovery after a fault is cleared** | Return to `NONE` | Median / p90 time | **7.77 s / 8.46 s** (the 8-sample rolling window must flush) |
-| **PyTorch autoencoder** (legacy `/detect-anomaly`, 12 raw inputs) | Single-frame anomaly | Recall at 0.14% false alarms | **14.0%** (inputs exclude vibration/voltage, so generator and gearbox faults are invisible to it) |
+| **Full diagnosis** (detector + classifier + persistence, as served) | Fault detection | Precision / recall | **100.0% / 96.5%**; **0 false alarms** in the 15,225 healthy test samples (≈ 4.2 h at 1 Hz — zero observed, not a guarantee); median latency 1.19 s (p90 1.39 s) |
+| **XGBoost fault classifier** (12 classes) | Fault isolation | Macro F1 | **0.981**; per-class recall 0.967–0.972 except sensor drift 0.923; accuracy at severity 0.05–0.15: 96.0% |
+| **XGBoost severity regressor** | Health index (0–100) | MAE | **1.51 points** (1.88 on fault samples); mean health during a sensor drift **99.5** (engine is healthy) |
+| **XGBoost quantile RUL + conformal calibration** | Hours to functional failure | MAE / median % error / 95 % interval coverage | **22.87 h / 26.8% / 94.5%** |
+| **Recovery after a fault is cleared** | Return to `NONE` | Median / p90 time | **8.2 s / 12.4 s** (8-sample window flush, plus ~3 s for the ECU fuel trim to unwind after fuel-related faults — the mixture really is rich until it does) |
+| **PyTorch autoencoder** (legacy `/detect-anomaly`, 12 raw inputs, not used by the GCS) | Single-frame anomaly | Recall at 0.08% false alarms | **17.1%** |
+
+**Across the flight envelope (held-out test, by band):**
+
+| Altitude | 0–5k ft | 5–10k | 10–15k | 15–20k | 20–23k |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| Fault diagnosis accuracy | 96.6% | 96.5% | 97.0% | 95.8% | 96.6% |
+| False alarms (healthy) | 0 | 0 | 0 | 0 | 0 |
+| Health MAE | 1.52 | 1.33 | 1.42 | 1.53 | 1.96 |
+
+ISA deviation bands (−20…−5, −5…+5, +5…+15, +15…+25 °C): accuracy 96.2 / 96.9 / 96.4 / 96.6 %, 0 false alarms in each.
 
 **Fault modes covered (problem statement §C):**
 
 | Problem statement | Class | Physics signature in the simulator (`src/engine/EngineSimulator.js`) |
 | :--- | :--- | :--- |
-| Misfire | `MISFIRE` | One cylinder intermittently fails to fire: its EGT drops up to ~380 °C and CHT ~35 °C (slow lag), RPM sags with jitter, vibration ↑, lambda lean |
-| Injector malfunction | `CYL3_INJECTOR` | Cylinder 3 partial clog: its EGT ↑ ~135 °C and CHT ↑ ~28 °C, other cylinders slightly cooler, vibration ↑, lambda lean |
-| "Coding degradation" (interpreted as injector **coking**) | `INJECTOR_COKING` | All injectors partly blocked with unequal patterns: uneven EGT/CHT rise, fuel flow ↓ ~2 L/h at full severity, lean lambda — fuel-flow residual dominates the TreeSHAP explanation |
+| Misfire | `MISFIRE` | One cylinder intermittently fails to fire: its EGT drops up to ~380 °C and CHT ~35 °C (slow lag), RPM sags with jitter, vibration ↑; unburned O₂ makes the lambda sensor read lean, so the ECU richens all cylinders (fuel trim up to +15 %, injection time +14 %, firing cylinders cooler) |
+| Injector malfunction | `CYL3_INJECTOR` | Cylinder 3 partial clog: its EGT ↑ and CHT ↑ ~28 °C; the ECU's closed-loop trim (+15 %, saturated) richens all cylinders, so the others run ~60 °C cooler; injection time +14 %, fuel flow +15 %, vibration ↑ |
+| "Coding degradation" (interpreted as injector **coking**) | `INJECTOR_COKING` | All injectors partly blocked with unequal patterns: the ECU compensates (trim ≈ +8 %, injection time ≈ +7 % at severity 0.85), so fuel flow and lambda return to normal and the evidence is the **injection time / fuel trim** plus the uneven cylinder temperatures |
 | Lubrication failure | `OIL_PUMP_CAVITATION` | Oil pressure ↓ ~2.3 bar with oscillation, oil temperature ↑, bearing vibration ↑ (`BLOW_BY` also degrades lubrication: oil temp ↑, oil pressure ↓) |
 | Combustion instability | `COMBUSTION_INSTABILITY` | Band-limited cycle-to-cycle fluctuation of EGT, lambda, MAP and RPM (detected from rolling standard deviations, not means) |
 | Overheating | `COOLING_DEGRADATION` | CHT ↑ ~35 °C, coolant ↑ ~35 °C, oil temperature ↑ above the thermal-lag prediction |
 | Abnormal vibration | `PRGB_DEGRADATION` | Propeller-reduction-gearbox vibration ↑ ~2.15 g |
 | Sensor drift | `SENSOR_DRIFT` | One channel (EGT/CHT cylinder, oil temperature, oil pressure, coolant) ramps a bias over 20 s; physics on the other channels is unchanged. Engine health stays ~100, action = sensor **inspection**, suspect channel named |
 | Sensor failure | `SENSOR_FAILURE` | Stuck/frozen channel, detected by a data-quality rule (identical readings for longer than the measured nominal maximum per channel, full-scale saturation excluded); a failed cylinder channel is replaced by the median of healthy cylinders before scoring |
-| (additional) | `BLOW_BY`, `TURBO_WASTEGATE_STUCK`, `GENERATOR_FAILURE` | Crankcase/oil, MAP/boost, bus voltage/current signatures |
+| Battery / alternator (§B monitored parameters) | `GENERATOR_FAILURE` | Failing alternator: lower capacity and weaker regulation (bus −0.7 V at severity 0.2). Once its capacity drops below the electrical load the battery discharges (−12 A, SOC −1 %/min at 0.6; −29 A, SOC −2.8 %/min, bus 23.8 V at 0.85) and the GCS shows battery-only endurance |
+| (additional) | `BLOW_BY`, `TURBO_WASTEGATE_STUCK` | Crankcase/oil and MAP/boost signatures |
+
+**Engine physics and flight condition (`src/engine/EngineSimulator.js`, mirrored in `feature_engineering.py`, parity < 0.011 °C).** The engine follows the 6-DOF aircraft's altitude (and the fleet engines their orbit altitudes). ISA pressure and OAT (ISA + deviation) drive: turbo boost — manifold pressure is held at the throttle target until ambient × max pressure ratio (3.0) runs out, then power falls (above ~20,000 ft at loiter); cooling — (CHT, oil, coolant) − OAT scales with (density)^−0.8 and delivered power; EGT with intake temperature. The ECU runs closed-loop lambda control (trim ±15 %, ~1 s) and reports injection time (ms). Electrical: alternator capacity vs. electrical load (payload + cold-weather heaters), 17 Ah battery, 28.4 V regulated bus. The original calibration is preserved exactly at 14,500 ft ISA. **All constants are engineering assumptions, not Rotax data; no thermostat is modelled, so in cold soak at altitude oil/coolant read colder than a real engine would; ignition timing is not modelled.**
 
 `SENSOR_FAILURE` is a rule, not an ML class: a stuck value is defined exactly by "no change", and its thresholds are measured from nominal simulator data (`training/measure_noise_floor.py`).
 
@@ -63,7 +76,7 @@ All numbers below are on **held-out test episodes** (15 % of episodes, episode-l
 * RUL uses assumed degradation-life priors per fault mode (see `training/generate_dataset.mjs`); its error is dominated by life-to-life variability, which the 95 % interval reflects.
 
 ### 1b. Leakage Controls
-* **No label inputs:** features are 41 golden-twin physics residuals and cylinder-spread / crank-speed-jitter terms (measured − expected at the current throttle/RPM, with thermal lag) and their rolling mean/std. `health_index`, fault labels or any score derived from them are never inputs; a regression test asserts that sending them changes nothing.
+* **No label inputs:** features are 45 golden-twin physics residuals (incl. injection time vs. nominal, ECU fuel trim, battery current vs. expected charge), cylinder-spread / crank-speed-jitter terms (measured − expected at the current throttle/RPM/air data, with thermal lag) and their rolling mean/std. `health_index`, fault labels or any score derived from them are never inputs; a regression test asserts that sending them changes nothing.
 * **Episode-level split** (70/15/15, stratified by fault) so overlapping rolling windows never straddle train and test.
 * **Recovery samples** (after a fault is cleared) are used for evaluation only; training on them tripled missed low-severity faults.
 * **Calibration on validation, metrics on test**, using the exact decision rule the service runs (`ai_health_rul/inference/decision.py`).
@@ -252,7 +265,7 @@ When $RUL < 2.0\text{ hours}$, Health Index $< 40\%$, or Fuel $\le 22.0\text{ Li
 ### 3. Node.js Telemetry & Socket.io Engine (`server.js`)
 * **Purpose**: Engine data source (simulator / replay / live ingest), golden twin + L1 threshold monitor, 1 Hz live AI loop, CAN frame encoder, SQLite WAL database.
 * **Database Architecture**: Uses `better-sqlite3` writing to `data/garudatwin.db`: FCS tables (`fcs_telemetry`, `control_surfaces`, `autopilot_guidance`, `sorties`) and the engine flight recorder (`recordings`, `engine_frames`, see *Engine Data Sources* below).
-* **CAN frames**: `0x100` RPM/throttle/fuel flow/lambda, `0x200` EGT 1–4, `0x210` CHT 1–4, `0x300` MAP/oil pressure/oil temperature/vibration, `0x310` generator voltage/current + coolant temperature. Scaling and offsets are defined once in `tools/can/garudatwin_engine.dbc`; a test checks the gateway's bytes against it.
+* **CAN frames**: `0x100` RPM/throttle/fuel flow/lambda, `0x200` EGT 1–4, `0x210` CHT 1–4, `0x300` MAP/oil pressure/oil temperature/vibration, `0x310` generator voltage/current + coolant temperature, `0x320` injection time / fuel trim / battery current / SOC, `0x330` ambient pressure / OAT. Scaling and offsets are defined once in `tools/can/garudatwin_engine.dbc`; a test checks the gateway's bytes against it.
 * **Fault Injection Engine**: Simulates live failure scenarios (*Cylinder 3 Lean Clog, Piston Ring Blow-By, Oil Pump Cavitation, Turbocharger Wastegate Surge, Cooling Loss*).
 
 ---
@@ -335,6 +348,9 @@ python -m pytest tools/can
 
 # Fleet + RTB planner parity (GCS rules = planner service = gateway fallback) + what-if bench (isolated stack, ~3 min)
 npm run test:fleet
+
+# Geofence: default station orbit, route refusal, return-to-station when flying at the border (real time, ~7 min)
+npm run test:geofence
 ```
 
 ### Fleet Health (Vahak-1..5)
@@ -357,7 +373,7 @@ The twin does not have to be fed by its own simulator. The gateway has one **eng
 
 **Why replay results can be trusted.** Replay sends the recorded AI samples, in order, at their recorded time base, to a fresh AI session (`REPLAY`, separate from the live vehicle). The AI is deterministic, so a replay must reproduce the live diagnoses exactly — the UI shows this check live. If the AI service fails during recording, the session restart is marked in the recording so replay restarts at the same point. After a seek the AI restarts (8-sample warm-up) and the exactness check is suspended until the next recorded session start.
 
-**Measured (all on simulator data):**
+**Measured (all on simulator data; rows 1–4 with the previous model version — the exact-reproduction property is re-checked with the current models by `npm run test:data`):**
 
 | Check | Result |
 | :--- | :--- |
@@ -365,11 +381,11 @@ The twin does not have to be fed by its own simulator. The gateway has one **eng
 | 20 unseen fixture episodes (every class, incl. recovery) imported as CSV → replay vs scoring the same rows directly in Python | **1,484 / 1,484** identical diagnoses, health and RUL difference 0.0; 94.8 % per-sample agreement with labels |
 | Live ingest of an unseen misfire episode in real time | Diagnosed `MISFIRE`, health 70.0 (truth 70.1); replay of the live recording **85 / 85** identical |
 | Virtual CAN rig → `python-can` virtual bus → DBC decode → ingest (injector coking; sensor drift) | 64/64 and 66/66 frames accepted; `INJECTOR_COKING` health 45.4 (truth 45.6), `SENSOR_DRIFT` health 100; replays **64 / 64** identical |
-| CAN quantisation (DBC encode/decode) on all 4,911 fixture samples | Diagnoses **4,911 / 4,911 identical**, accuracy 96.78 % both ways, no false stuck-sensor flags; health index mean change 0.10 points, > 3 points on 0.47 % of samples (XGBoost split boundaries; RPM is sent at 1 rpm resolution) |
+| CAN quantisation (DBC encode/decode, all 25 channels) on all 4,838 fixture samples (current models) | Diagnoses **4,836 / 4,838 identical (99.96 %)** — the two differences are consecutive samples just after a fault was cleared, where the model sits at its decision threshold; health index mean change 0.17 points, > 3 points on 1.05 % of samples |
 
 Per-sample agreement with labels counts the ~1–2 s detection delay and the ~8 s to clear after a fault ends (on the 2-minute scripted flight above: 79.1 %, with no fault ever confused with a different fault).
 
-**CSV import format.** A time column `t_s` (seconds) and all 19 channels: `rpm, throttle, egt1–egt4, cht1–cht4, map_bar, oil_pressure, oil_temp, vibration, fuel_flow, lambda, gen_voltage, gen_current, coolant_temp` (rpm, %, °C, bar, g-RMS, L/h, V, A). Optional: `episode` (independent stretches; a time gap > 5 s also starts one), `label` + `severity` (ground truth for scoring). Rows closer than 0.9 s are display-only (the AI is trained on ~1 Hz samples). A file with any invalid row is rejected, so the AI never scores a stream with holes. The training dataset and `ai_health_rul/tests/fixtures/sim_episodes.csv` import as-is.
+**CSV import format.** A time column `t_s` (seconds) and all 25 channels: `rpm, throttle, egt1–egt4, cht1–cht4, map_bar, oil_pressure, oil_temp, vibration, fuel_flow, lambda, gen_voltage, gen_current, coolant_temp, inj_pw_ms, fuel_trim_pct, battery_current_a, battery_soc_pct, ambient_pressure_bar, oat_c` (rpm, %, °C, bar, g-RMS, L/h, V, A, ms). Recordings made before these channels existed are kept but refused for replay (format version 1). If a client omits air data, the AI assumes 14,500 ft ISA and reports those fields as imputed — always send them. Optional: `episode` (independent stretches; a time gap > 5 s also starts one), `label` + `severity` (ground truth for scoring). Rows closer than 0.9 s are display-only (the AI is trained on ~1 Hz samples). A file with any invalid row is rejected, so the AI never scores a stream with holes. The training dataset and `ai_health_rul/tests/fixtures/sim_episodes.csv` import as-is.
 
 **Live ingest API** (non-browser clients; key in `data/service.json` → `ingestKey`, or `GCS_INGEST_KEY`):
 ```bash
@@ -377,7 +393,7 @@ curl -X POST http://127.0.0.1:5002/api/source -H "Content-Type: application/json
 curl -X POST http://127.0.0.1:5002/api/ingest/frames -H "Content-Type: application/json" -H "X-Ingest-Key: <key>" \
   -d '{"frames":[{"t_s":12.0,"rpm":4800,"throttle":78.5,"egt1":842,"egt2":840,"egt3":844,"egt4":841,"cht1":106,"cht2":107,"cht3":105,"cht4":108,"map_bar":1.42,"oil_pressure":3.85,"oil_temp":98.4,"vibration":0.28,"fuel_flow":26.4,"lambda":0.94,"gen_voltage":28.4,"gen_current":45.2,"coolant_temp":88.5}]}'
 ```
-All 19 channels are required and range-checked; `t_s` must increase. The AI scores the newest frame once per second (as trained) and never re-scores a stale frame. No frame for 2 s → status `NO_DATA` (never `NOMINAL`).
+All 25 channels are required and range-checked; `t_s` must increase. The AI scores the newest frame once per second (as trained) and never re-scores a stale frame. No frame for 2 s → status `NO_DATA` (never `NOMINAL`).
 
 **CAN bridge** (`tools/can/can_bridge.py`, `python-can` + `cantools`): decodes any `python-can` bus with the DBC and forwards a frame only when all five messages of a cycle have arrived.
 ```bash
@@ -394,6 +410,14 @@ ai_venv/Scripts/python tools/can/can_bridge.py --interface socketcan --channel c
 * Partial sensor sets are not supported (missing channels are rejected rather than imputed, because imputing "nominal" would hide faults on that channel). There is no unit/column mapping yet: CSVs must use the names and units above.
 * The 6-DOF flight model keeps simulating during replay and live ingest; only engine data comes from the selected source.
 * The ingest endpoint is protected by a shared key over plain HTTP on localhost; it needs TLS before being exposed beyond the machine.
+
+---
+
+## 🧭 Operating-Area Geofence (Vahak-1)
+
+Vahak-1 patrols a 5 km orbit around its station (26.45 N, 70.52 E, 16.6 NM inside the border line drawn on the map). Previously it started in altitude-hold on heading 000° with no orbit and flew straight north until it crossed the border (flight log, sortie 41: crossed at ≈ 27.45 N after ~25 min). Now the gateway checks twice per second (`src/planner/geofence.js`): signed distance to the border line (+ = Indian side), the operating box, and the position 2 minutes ahead on the current track. If any would come within **5 NM of the border** or leave the box, the autopilot is switched back to the station orbit, an alert is shown and a `GEOFENCE_RETURN` row is written to `emergency_events`. Routes that pass within 5 NM of the border are refused before they are flown. An engine-out emergency glide is never overridden. The border line is the app's approximate, hand-digitised line (not survey data); the operating box overlaps it in places, so the 5 NM border buffer is the binding limit there.
+
+Measured (`npm run test:geofence`, real-time flight, 11/11): normal patrol stays ≥ 16.2 NM from the border with no interventions; a route towards the border is refused; heading 270° straight at the border → the guard intervened 9.55 NM from it and the aircraft never came closer than 9.2 NM; the event is logged.
 
 ---
 
@@ -432,7 +456,7 @@ The repository includes a `vercel.json` with single-page application routing rew
 
 1. **GarudaTwin Engine Simulator Dataset (training data for all AI models)**:
    * **Source**: `training/generate_dataset.mjs` driving `src/engine/EngineSimulator.js` — the same physics module the live gateway runs.
-   * **Content**: 377,877 samples in 5,400 labelled episodes (nominal loiter, fixed operating points, rapid throttle transitions; 10 engine fault modes at severities 0.05–1.0 sampled from assumed degradation trajectories with RUL labels, plus sensor drift; 30 % of fault episodes clear the fault mid-episode for recovery evaluation). Reproducible from the seed; not committed.
+   * **Content**: 378,618 samples in 5,400 labelled episodes at 0–23,000 ft, ISA −20…+25 °C (nominal loiter, fixed operating points, rapid throttle transitions, climbs/descents; 10 engine fault modes at severities 0.05–1.0 sampled from assumed degradation trajectories with RUL labels, plus sensor drift; 30 % of fault episodes clear the fault mid-episode for recovery evaluation). Reproducible from the seed; not committed.
    * **Note**: NASA C-MAPSS inspired the degradation-trajectory structure but is **not** used as training data.
 
 2. **Rotax 915 iS / 916 iS A Aircraft Engine Maintenance Manual (AMM) & Technical Baseline**:
@@ -493,4 +517,4 @@ The repository includes a `vercel.json` with single-page application routing rew
 
 12. **CAN Bus 2.0B Specification**:
     * **Standard**: Robert Bosch GmbH, *"CAN Specification Version 2.0,"* Stuttgart, Germany, 1991.
-    * **Application**: Frame layout for CAN IDs `0x100`, `0x200`, `0x210`, `0x300`, `0x310`, defined in `tools/can/garudatwin_engine.dbc` and encoded in `server.js`.
+    * **Application**: Frame layout for CAN IDs `0x100`–`0x330` (7 messages), defined in `tools/can/garudatwin_engine.dbc` and encoded in `server.js`.

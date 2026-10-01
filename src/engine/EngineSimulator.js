@@ -36,6 +36,89 @@ function writeChannel(e, ch, v) {
   else if (ch === 'coolant') e.coolantTempC = parseFloat(v.toFixed(1));
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// Shared physics (simulator AND golden twin). Mirrored in
+// ai_health_rul/preprocessing/feature_engineering.py — keep in sync (parity-tested).
+// All constants below are engineering assumptions for this prototype, not Rotax data.
+// ───────────────────────────────────────────────────────────────────────────
+export const PHYS = {
+  P0_BAR: 1.01325, T0_K: 288.15, LAPSE_K_PER_FT: 0.0019812,
+  REF_ALT_FT: 14500,           // calibration point of the original model (mission loiter altitude, ISA)
+  PR_MAX: 3.0,                 // turbo + wastegate: max manifold/ambient pressure ratio
+  COOLING_EXP: 0.8,            // forced-convection heat transfer ~ (rho V)^0.8, airspeed held constant
+  EGT_PER_OAT: 0.6,            // °C EGT per °C intake/ambient temperature change
+  EGT_PER_POWER_LOSS: 40,      // °C EGT drop per unit power fraction lost above critical altitude
+  LAMBDA_TARGET: 0.94,         // ECU closed-loop lambda target (cruise)
+  TRIM_KI: 1.0,                // 1/s, short-term closed-loop fuel trim (~1 s time constant)
+  TRIM_MAX: 0.15,              // ±15 % trim authority
+  EGT_PER_LAMBDA: 380,         // °C EGT per unit lambda on the rich side (richer -> cooler)
+  INJ_FLOW_MM3_PER_MS: 3.33,   // injector static flow (200 cc/min)
+  INJ_DEAD_MS: 0.8,            // injector opening (dead) time
+  ALT_MAX_A: 70,               // alternator capacity at >= 3000 rpm
+  BATT_AH: 17, BATT_R_OHM: 0.05, BUS_SET_V: 28.4,
+  BASE_LOAD_A: 38,             // avionics + payload electrical load
+  HEATER_A_PER_C: 0.2,         // de-ice / payload heaters below 0 °C OAT
+};
+
+export function isaPressureBar(altFt) {
+  return PHYS.P0_BAR * Math.pow(1 - 6.8756e-6 * altFt, 5.2559);
+}
+export const isaTempC = (altFt) => 15 - PHYS.LAPSE_K_PER_FT * altFt;
+const REF_P = isaPressureBar(PHYS.REF_ALT_FT);
+export const REF_OAT_C = isaTempC(PHYS.REF_ALT_FT);
+const densityRatio = (pBar, oatC) => (pBar / PHYS.P0_BAR) * (PHYS.T0_K / (oatC + 273.15));
+const REF_SIGMA = densityRatio(REF_P, REF_OAT_C);
+export const REF_AMBIENT = { pBar: REF_P, oatC: REF_OAT_C };
+
+/** Turbo limit, power fraction and cooling factor for an operating point and ambient condition. */
+export function ambientFactors(throttlePct, pBar, oatC) {
+  const mapTarget = 1.42 + (throttlePct - 78.5) * 0.015;
+  const mapAvail = pBar * PHYS.PR_MAX;
+  const map = Math.min(mapTarget, mapAvail);
+  const pf = map / mapTarget;                                        // power fraction delivered
+  const cf = Math.pow(REF_SIGMA / densityRatio(pBar, oatC), PHYS.COOLING_EXP); // cooling penalty
+  const wastegatePct = Math.max(0, Math.min(100, 100 * (mapTarget / pBar - 1) / (PHYS.PR_MAX - 1)));
+  return { mapTarget, map, pf, cf, dOat: oatC - REF_OAT_C, wastegatePct };
+}
+
+/** Steady-state thermal targets (°C) at the operating point and ambient condition. */
+export function thermalTargets(throttlePct, rpm, pBar, oatC) {
+  const a = ambientFactors(throttlePct, pBar, oatC);
+  // The original calibration (reference ambient) scaled for cooling-air density and delivered power
+  const scale = (calC) => oatC + (calC - REF_OAT_C) * a.cf * a.pf;
+  return {
+    egt: 840 + (throttlePct - 78.5) * 1.8 + (rpm - 4800) * 0.03 + PHYS.EGT_PER_OAT * a.dOat - PHYS.EGT_PER_POWER_LOSS * (1 - a.pf),
+    cht: scale(106 + (throttlePct - 78.5) * 0.6),
+    oilTemp: scale(98.0 + (throttlePct - 78.5) * 0.25),
+    coolant: scale(88.5),
+    ...a,
+  };
+}
+
+export const nominalFuelLph = (throttlePct, pf) => (26.0 + (throttlePct - 78.5) * 0.4) * pf;
+
+/** Commanded injection time (ms) for a commanded fuel flow (L/h, 4 cylinders, 4-stroke). */
+export function injPulseMs(fuelLph, rpm) {
+  const mm3PerInjection = (fuelLph / 4) / (Math.max(rpm, 500) / 2 * 60) * 1e6;
+  return mm3PerInjection / PHYS.INJ_FLOW_MM3_PER_MS + PHYS.INJ_DEAD_MS;
+}
+
+export const chargeRequestA = (soc) => Math.max(0.3, Math.min(8, 0.3 + 40 * (1 - soc)));
+
+/** Alternator / battery / bus for a given rpm, electrical load and battery state of charge (0-1). */
+export function electricalState(rpm, loadA, soc, capFactor = 1, regDroopV = 0) {
+  const cap = PHYS.ALT_MAX_A * Math.max(0, Math.min(1, (rpm - 1500) / 1500)) * capFactor;
+  const req = chargeRequestA(soc);
+  const ocv = 23.6 + 1.8 * soc;
+  if (cap >= loadA + req) return { iAlt: loadA + req, iBat: req, vBus: PHYS.BUS_SET_V - regDroopV, cap };
+  if (cap >= loadA) {   // load carried, battery charging at reduced current
+    const iBat = cap - loadA;
+    return { iAlt: cap, iBat, vBus: ocv + (PHYS.BUS_SET_V - regDroopV - ocv) * (iBat / req), cap };
+  }
+  const iBat = cap - loadA;   // alternator cannot carry the load: battery discharges, bus falls to battery
+  return { iAlt: cap, iBat, vBus: ocv + iBat * PHYS.BATT_R_OHM, cap };
+}
+
 /** Box-Muller Gaussian noise using the supplied uniform RNG */
 function gaussian(rng, mean = 0, stdDev = 1) {
   const u1 = 1 - rng();
@@ -68,10 +151,16 @@ function initialEngineState() {
     fuelFlowLph: 26.4,
     fuelPressureBar: 3.12,
     lambda: 0.94,
-    wastegateDutyPct: 62.0,
+    wastegateDutyPct: 72.0,
     genVoltageV: 28.4,
-    genCurrentA: 45.2,
+    genCurrentA: 39.0,
     coolantTempC: 88.5,
+    injPulseMs: 14.3,
+    fuelTrimPct: 0.0,
+    batteryCurrentA: 1.0,
+    batterySocPct: 98.0,
+    ambientPressureBar: REF_P,
+    oatC: REF_OAT_C,
   };
 }
 
@@ -95,26 +184,40 @@ export class EngineSimulator {
     this.time = 0;
     // Judge-sandbox operating-point override; null = scripted loiter profile
     this.manual = { rpm: null, throttle: null };
-    this.thermal = { egt: 840.0, cht: 106.0, oilTemp: 98.0 };
+    // Flight condition (set by the gateway from the 6-DOF model, or by the dataset generator)
+    this.ambient = { altitudeFt: PHYS.REF_ALT_FT, isaDevC: 0 };
+    this.thermal = { egt: 840.0, cht: 106.0, oilTemp: 98.0, coolant: 88.5 };
+    this.trim = 0;                                   // ECU closed-loop fuel trim (fraction)
+    this.electrical = { soc: 0.98, baseLoadA: PHYS.BASE_LOAD_A, payloadA: 0 };
     Object.assign(this.engine, initialEngineState());
+  }
+
+  _ambientNow() {
+    const altitudeFt = Math.max(0, Math.min(25000, this.ambient.altitudeFt));
+    return { altitudeFt, pBar: isaPressureBar(altitudeFt), oatC: isaTempC(altitudeFt) + this.ambient.isaDevC };
   }
 
   _targets(time) {
     const targetRpm = this.manual.rpm ?? (4800 + Math.sin(time * 0.1) * 60);
     const targetThrottle = this.manual.throttle ?? (78.5 + Math.sin(time * 0.1) * 1.5);
+    const amb = this._ambientNow();
+    const t = thermalTargets(targetThrottle, targetRpm, amb.pBar, amb.oatC);
     return {
       targetRpm,
       targetThrottle,
-      targetEgt: 840 + (targetThrottle - 78.5) * 1.8 + (targetRpm - 4800) * 0.03,
-      targetCht: 106 + (targetThrottle - 78.5) * 0.6,
-      targetOilTemp: 98.0 + (targetThrottle - 78.5) * 0.25,
+      targetEgt: t.egt,
+      targetCht: t.cht,
+      targetOilTemp: t.oilTemp,
+      targetCoolant: t.coolant,
+      amb,
+      af: t,
     };
   }
 
   /** Jump thermal state to steady state for the current operating point (dataset warm start) */
   settleThermal() {
     const t = this._targets(this.time);
-    this.thermal = { egt: t.targetEgt, cht: t.targetCht, oilTemp: t.targetOilTemp };
+    this.thermal = { egt: t.targetEgt, cht: t.targetCht, oilTemp: t.targetOilTemp, coolant: t.targetCoolant };
   }
 
   /** 100 Hz physics step: dynamic baseline + Gaussian sensor noise + fault signatures */
@@ -128,13 +231,14 @@ export class EngineSimulator {
     const mapNoise = g(0, 0.005);
     const vibNoise = g(0, 0.008);
 
-    let { targetRpm, targetThrottle, targetEgt, targetCht, targetOilTemp } = this._targets(time);
-    const targetMap = 1.42 + (targetThrottle - 78.5) * 0.015;
+    let { targetRpm, targetThrottle, targetEgt, targetCht, targetOilTemp, targetCoolant, amb, af } = this._targets(time);
+    const targetMap = af.map;   // turbo-limited above the critical altitude
 
     // Thermal inertia: dT/dt = k (T_target - T)
     this.thermal.egt += 0.8 * (targetEgt - this.thermal.egt) * dt;
     this.thermal.cht += 0.05 * (targetCht - this.thermal.cht) * dt;
     this.thermal.oilTemp += 0.02 * (targetOilTemp - this.thermal.oilTemp) * dt;
+    this.thermal.coolant += 0.05 * (targetCoolant - this.thermal.coolant) * dt;
 
     const baseEgt = this.thermal.egt;
     const baseCht = this.thermal.cht;
@@ -145,7 +249,7 @@ export class EngineSimulator {
     let egtOffsets = [0, 0, 0, 0];
     let chtOffsets = [0, 0, 0, 0];
     let mapOffset = 0, oilPressOffset = 0, oilTempOffset = 0, vibOffset = 0;
-    let fuelFlowOffset = 0, lambdaOffset = 0, genVoltsOffset = 0, genAmpsOffset = 0, coolantOffset = 0;
+    let injFlowFactor = 1, lambdaOffset = 0, altCapFactor = 1, regDroopV = 0, coolantOffset = 0;
 
     // Per-fault internal state (filters, onset time), reset whenever the active fault changes
     if (!this._fs || this._fs.key !== this.fault.activeFault) {
@@ -202,8 +306,10 @@ export class EngineSimulator {
           coolantOffset = 35.0 * sev;
           break;
         case 'GENERATOR_FAILURE':
-          genVoltsOffset = -4.9 * sev;
-          genAmpsOffset = -33.2 * sev;
+          // Failing alternator (diodes / winding): reduced output capacity and weaker regulation.
+          // Below the load the battery discharges and the bus falls to battery voltage.
+          altCapFactor = 1 - sev;
+          regDroopV = 3.5 * sev + Math.abs(g(0, 0.15 * sev));   // weaker regulation as the alternator fails
           break;
         case 'PRGB_DEGRADATION':
           // Gear tooth wear / clutch slip -> severe vibration
@@ -248,8 +354,8 @@ export class EngineSimulator {
             egtOffsets[i] = 32 * sev * pattern[i];
             chtOffsets[i] = 7 * sev * pattern[i];
           }
-          fuelFlowOffset = -2.2 * sev;             // ~8 % less fuel at loiter
-          lambdaOffset = 0.08 * sev;               // lean
+          injFlowFactor = 1 - 0.085 * sev;         // restricted nozzles deliver ~8.5 % less fuel per ms
+          lambdaOffset = PHYS.LAMBDA_TARGET * (1 / injFlowFactor - 1);   // lean before ECU correction
           vibOffset = 0.10 * sev + g(0, 0.03 * sev); // uneven cylinder torque
           break;
         }
@@ -257,24 +363,52 @@ export class EngineSimulator {
       }
     }
 
+    // ECU closed-loop fuelling: the trim integrator drives the measured lambda back to its target
+    // (within ±15 % authority). Richer-than-planned cylinders run cooler (EGT_PER_LAMBDA).
+    const lambdaRaw = PHYS.LAMBDA_TARGET + lambdaOffset;           // what the sensor would read untrimmed
+    let lambdaTrue = lambdaRaw / (1 + this.trim);
+    this.trim = Math.max(-PHYS.TRIM_MAX, Math.min(PHYS.TRIM_MAX,
+      this.trim + PHYS.TRIM_KI * dt * (lambdaTrue / PHYS.LAMBDA_TARGET - 1)));
+    lambdaTrue = lambdaRaw / (1 + this.trim);
+    const trimEgt = -PHYS.EGT_PER_LAMBDA * (lambdaRaw - lambdaTrue);
+
     e.rpm = Math.max(2000, Math.min(5800, targetRpm + rpmNoise));
     e.throttlePct = Math.max(0, Math.min(100, targetThrottle + g(0, 0.1)));
     e.mapBar = parseFloat(Math.max(0.6, Math.min(2.4, targetMap + mapOffset + mapNoise)).toFixed(3));
     e.egt = [
-      parseFloat((baseEgt + egtOffsets[0] + g(0, 1.2)).toFixed(1)),
-      parseFloat((baseEgt + egtOffsets[1] + g(0, 1.2)).toFixed(1)),
-      parseFloat((baseEgt + egtOffsets[2] + g(0, 1.5)).toFixed(1)),
-      parseFloat((baseEgt + egtOffsets[3] + g(0, 1.2)).toFixed(1)),
+      parseFloat((baseEgt + egtOffsets[0] + trimEgt + g(0, 1.2)).toFixed(1)),
+      parseFloat((baseEgt + egtOffsets[1] + trimEgt + g(0, 1.2)).toFixed(1)),
+      parseFloat((baseEgt + egtOffsets[2] + trimEgt + g(0, 1.5)).toFixed(1)),
+      parseFloat((baseEgt + egtOffsets[3] + trimEgt + g(0, 1.2)).toFixed(1)),
     ];
     e.cht = [0, 1, 2, 3].map(i => parseFloat((baseCht + chtOffsets[i] + g(0, 0.3)).toFixed(1)));
     e.oilPressBar = parseFloat(Math.max(0.5, Math.min(6.0, baseOilPress + oilPressOffset + g(0, 0.02))).toFixed(2));
     e.oilTempC = parseFloat(Math.max(50, Math.min(150, baseOilTemp + oilTempOffset + g(0, 0.1))).toFixed(1));
     e.vibrationGrms = parseFloat(Math.max(0.08, Math.min(3.5, baseVib + vibOffset + vibNoise)).toFixed(3));
-    e.fuelFlowLph = parseFloat((26.0 + (e.throttlePct - 78.5) * 0.4 + fuelFlowOffset).toFixed(1));
-    e.lambda = parseFloat((0.94 + lambdaOffset + g(0, 0.003)).toFixed(3));
-    e.genVoltageV = parseFloat((28.4 + genVoltsOffset + g(0, 0.05)).toFixed(1));
-    e.genCurrentA = parseFloat((45.2 + genAmpsOffset + Math.sin(time) * 1.5).toFixed(1));
-    e.coolantTempC = parseFloat((88.5 + coolantOffset + g(0, 0.2)).toFixed(1));
+    // Fuel: the ECU commands nominal fuel x (1 + trim); restricted (coked) nozzles deliver less of it
+    const commandedFuel = nominalFuelLph(e.throttlePct, af.pf) * (1 + this.trim);
+    e.fuelFlowLph = parseFloat((commandedFuel * injFlowFactor + g(0, 0.05)).toFixed(1));
+    e.injPulseMs = parseFloat(injPulseMs(commandedFuel, e.rpm).toFixed(2));
+    e.fuelTrimPct = parseFloat((this.trim * 100).toFixed(1));
+    e.lambda = parseFloat((lambdaTrue + g(0, 0.003)).toFixed(3));
+    e.wastegateDutyPct = parseFloat(af.wastegatePct.toFixed(1));
+    e.coolantTempC = parseFloat((this.thermal.coolant + coolantOffset + g(0, 0.2)).toFixed(1));
+
+    // Electrical: payload load wanders slowly; heaters switch in below 0 °C OAT
+    const el = this.electrical;
+    el.payloadA = bandNoise(el.payloadA, 1 / 30, 3.0);
+    const loadA = Math.max(5, el.baseLoadA + el.payloadA + PHYS.HEATER_A_PER_C * Math.max(0, -amb.oatC));
+    const es = electricalState(e.rpm, loadA, el.soc, altCapFactor, regDroopV);
+    el.soc = Math.max(0, Math.min(1, el.soc + es.iBat * dt / (3600 * PHYS.BATT_AH)));
+    e.genVoltageV = parseFloat((es.vBus + g(0, 0.05)).toFixed(1));
+    e.genCurrentA = parseFloat((es.iAlt + g(0, 0.4)).toFixed(1));
+    e.batteryCurrentA = parseFloat((es.iBat + g(0, 0.15)).toFixed(1));
+    e.batterySocPct = parseFloat(Math.max(0, Math.min(100, el.soc * 100 + g(0, 0.05))).toFixed(1));   // a SOC reading cannot exceed 0-100 %
+
+    // Air data
+    e.ambientPressureBar = parseFloat((amb.pBar + g(0, 0.0005)).toFixed(4));
+    e.oatC = parseFloat((amb.oatC + g(0, 0.1)).toFixed(1));
+    e.altitudeFt = Math.round(amb.altitudeFt);
 
     // Measurement-chain faults: applied to the reading only, after the engine physics
     if (this.fault.activeFault === 'SENSOR_DRIFT') {
@@ -291,43 +425,52 @@ export class EngineSimulator {
 }
 
 /**
- * Golden twin: expected (nominal) sensor values computed only from the measured
- * operating point (throttle, RPM), with first-order thermal lag so throttle
- * transients do not appear as faults. Never reads fault state.
+ * Golden twin: expected (nominal) sensor values computed only from measured quantities —
+ * operating point (throttle, RPM), air data (ambient pressure, OAT) and the measured electrical
+ * load and battery state — with first-order thermal lag so transients are not mistaken for
+ * faults. Never reads fault state.
  */
 export class GoldenTwin {
-  static K = { egt: 0.8, cht: 0.05, oilTemp: 0.02 };
+  static K = { egt: 0.8, cht: 0.05, oilTemp: 0.02, coolant: 0.05 };
 
   constructor() { this.state = null; }
 
   reset() { this.state = null; }
 
-  static targets(throttlePct, rpm) {
-    return {
-      egt: 840 + (throttlePct - 78.5) * 1.8 + (rpm - 4800) * 0.03,
-      cht: 106 + (throttlePct - 78.5) * 0.6,
-      oilTemp: 98.0 + (throttlePct - 78.5) * 0.25,
-    };
+  static targets(throttlePct, rpm, pBar = REF_P, oatC = REF_OAT_C) {
+    return thermalTargets(throttlePct, rpm, pBar, oatC);
   }
 
   /** Advance the twin by dt seconds and return nominal values + residuals for engine frame e */
   update(e, dt) {
-    const tgt = GoldenTwin.targets(e.throttlePct, e.rpm);
-    if (!this.state) this.state = { ...tgt };
+    const pBar = e.ambientPressureBar ?? REF_P;
+    const oatC = e.oatC ?? REF_OAT_C;
+    const tgt = GoldenTwin.targets(e.throttlePct, e.rpm, pBar, oatC);
+    if (!this.state) this.state = { egt: tgt.egt, cht: tgt.cht, oilTemp: tgt.oilTemp, coolant: tgt.coolant };
     else {
-      for (const k of ['egt', 'cht', 'oilTemp']) {
+      for (const k of ['egt', 'cht', 'oilTemp', 'coolant']) {
         this.state[k] += (1 - Math.exp(-GoldenTwin.K[k] * dt)) * (tgt[k] - this.state[k]);
       }
     }
+    // Electrical: the load is observable as alternator current minus battery current
+    const soc = (e.batterySocPct ?? 98) / 100;
+    const loadA = (e.genCurrentA ?? 0) - (e.batteryCurrentA ?? 0);
+    const es = electricalState(e.rpm, loadA, soc);
+    const fuel = nominalFuelLph(e.throttlePct, tgt.pf);
     const nominal = {
       egt: this.state.egt,
       cht: this.state.cht,
       oilTemp: this.state.oilTemp,
       oilPress: 3.85 - (this.state.oilTemp - 98.0) * 0.015,
-      map: 1.42 + (e.throttlePct - 78.5) * 0.015,
+      map: tgt.map,
       vib: 0.28 + ((e.rpm - 4800) / 5800) * 0.12,
-      fuelFlow: 26.0 + (e.throttlePct - 78.5) * 0.4,
-      lambda: 0.94, genV: 28.4, genI: 45.2, coolant: 88.5,
+      fuelFlow: fuel,
+      injPulseMs: injPulseMs(fuel, e.rpm),
+      fuelTrimPct: 0,
+      lambda: PHYS.LAMBDA_TARGET,
+      genV: es.vBus,
+      batteryA: es.iBat,
+      coolant: this.state.coolant,
     };
     const residuals = {
       egt: e.egt.map(v => v - nominal.egt),
@@ -337,6 +480,9 @@ export class GoldenTwin {
       oilTemp: e.oilTempC - nominal.oilTemp,
       vib: e.vibrationGrms - nominal.vib,
       genV: e.genVoltageV - nominal.genV,
+      batteryA: (e.batteryCurrentA ?? nominal.batteryA) - nominal.batteryA,
+      injPct: e.injPulseMs != null ? 100 * (e.injPulseMs - nominal.injPulseMs) / nominal.injPulseMs : 0,
+      fuelTrimPct: e.fuelTrimPct ?? 0,
       coolant: e.coolantTempC - nominal.coolant,
     };
     return { nominal, residuals };
@@ -361,21 +507,32 @@ export function thresholdHealth(e, r) {
     ['VIBRATION', r.vib, 0.25, 0.9],
     ['MAP', r.map, 0.15, 0.4],
     ['GEN_VOLTS', -r.genV, 1.2, 3.5],
+    ['BUS_VOLTS_ABS', -e.genVoltageV, -26.5, -25.0],
+    ['BATTERY_DISCHARGE', -(r.batteryA ?? 0), 5, 20],
+    ['BATTERY_SOC_ABS', -(e.batterySocPct ?? 100), -40, -20],
+    ['FUEL_TRIM', Math.abs(r.fuelTrimPct ?? 0), 10, 14.5],
     ['COOLANT', r.coolant, 10, 25],
   ];
-  let penalty = 0;
+  // Electrical checks say nothing about engine thrust: the engine's own generator powers its ECU and
+  // fuel pumps, so an aircraft-bus alternator failure drains the avionics battery but does not derate
+  // the engine. The flight model therefore uses propulsionIndex; index covers everything.
+  const ELECTRICAL = new Set(['GEN_VOLTS', 'BUS_VOLTS_ABS', 'BATTERY_DISCHARGE', 'BATTERY_SOC_ABS']);
+  let penalty = 0, propulsionPenalty = 0;
   let status = 'NOMINAL';
   const exceedances = [];
   for (const [name, v, caution, critical] of checks) {
     if (v <= caution) continue;
     const x = (v - caution) / (critical - caution);
     exceedances.push(name.replace('_ABS', ''));
-    penalty = Math.max(penalty, 12 + 70 * Math.min(1.2, x));
+    const p = 12 + 70 * Math.min(1.2, x);
+    penalty = Math.max(penalty, p);
+    if (!ELECTRICAL.has(name)) propulsionPenalty = Math.max(propulsionPenalty, p);
     if (x >= 1) status = 'CRITICAL';
     else if (status !== 'CRITICAL') status = 'DEGRADED';
   }
   return {
     index: Math.max(10, Math.min(98, 98 - penalty)),
+    propulsionIndex: Math.max(10, Math.min(98, 98 - propulsionPenalty)),
     status,
     exceedances: [...new Set(exceedances)],
   };

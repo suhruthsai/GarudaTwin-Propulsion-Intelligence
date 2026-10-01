@@ -31,7 +31,8 @@ GROUP_LABELS = {
     "vibration": "Engine Vibration (g-RMS)",
     "fuel_flow": "Fuel Flow",
     "lambda": "Mixture (Lambda)",
-    "electrical": "Generator / Bus Voltage",
+    "electrical": "Alternator / Battery / Bus",
+    "injection": "Fuel Injection (time & ECU trim)",
     "coolant": "Coolant Temperature",
     "rpm": "Engine Speed Stability (RPM)",
 }

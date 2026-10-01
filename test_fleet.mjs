@@ -89,7 +89,8 @@ try {
   check('no other vehicle affected', f['Vahak-1'].ai?.diagnosis === 'NONE' && f['Vahak-2'].ai?.diagnosis === 'NONE' && f['Vahak-1'].injectedFault === 'NONE',
     [f['Vahak-1'].ai?.diagnosis, f['Vahak-2'].ai?.diagnosis]);
   await post('/api/faults/clear', { uavId: 'Vahak-3' });
-  await sleep(12000);
+  // measured: back to NONE 12 s after clearing (8-sample window flush + ECU trim unwind); p90 12.4 s -> wait 20 s
+  await sleep(20000);
   check('Vahak-3 returns to NONE after clearing', F()['Vahak-3'].ai?.diagnosis === 'NONE', F()['Vahak-3'].ai);
 
   console.log('\n[3] RTB planner: GCS rules == planner service == gateway fallback');
@@ -134,7 +135,8 @@ try {
   console.log('\n[4] What-If Test Bench: independent single-frame assessments');
   const BENCH = {
     A: [{ rpm: 4800, throttle_pct: 78.5, egt: [840, 840, 840, 840], cht: [106, 106, 106, 106], map_bar: 1.42, oil_press_bar: 3.85, oil_temp_c: 98, vibration_grms: 0.28, gen_voltage_v: 28.4 }, 'NONE'],
-    B: [{ rpm: 4800, throttle_pct: 78.5, egt: [831.5, 833.2, 954.7, 832.4], cht: [106, 106, 129.8, 106], map_bar: 1.42, oil_press_bar: 3.85, oil_temp_c: 98, vibration_grms: 1.09, gen_voltage_v: 28.4 }, 'CYL3_INJECTOR'],
+    B: [{ rpm: 4800, throttle_pct: 78.5, egt: [777.2, 779.2, 900.3, 778.0], cht: [105.9, 105.9, 129.7, 106.0], map_bar: 1.42, oil_press_bar: 3.85, oil_temp_c: 98, vibration_grms: 1.10, gen_voltage_v: 28.4,
+      fuel_flow: 29.9, lambda: 0.950, gen_current: 41.1, coolant_temp: 88.5, inj_pw_ms: 16.39, fuel_trim_pct: 15.0, battery_current_a: 0.9, battery_soc_pct: 98.4 }, 'CYL3_INJECTOR'],
     C: [{ rpm: 4800, throttle_pct: 78.5, egt: [840, 840, 840, 840], cht: [106, 121.3, 124.7, 106], map_bar: 1.42, oil_press_bar: 2.45, oil_temp_c: 124.6, vibration_grms: 0.83, gen_voltage_v: 28.4 }, 'BLOW_BY'],
     D: [{ rpm: 4800, throttle_pct: 78.5, egt: [840, 840, 840, 840], cht: [106, 106, 106, 106], map_bar: 1.42, oil_press_bar: 1.9, oil_temp_c: 119.3, vibration_grms: 1.43, gen_voltage_v: 28.4 }, 'OIL_PUMP_CAVITATION'],
     E: [{ rpm: 5098, throttle_pct: 78.5, egt: [878.2, 875.7, 880.8, 877.4], cht: [106, 106, 106, 106], map_bar: 1.91, oil_press_bar: 3.85, oil_temp_c: 98, vibration_grms: 0.71, gen_voltage_v: 28.4 }, 'TURBO_WASTEGATE_STUCK'],

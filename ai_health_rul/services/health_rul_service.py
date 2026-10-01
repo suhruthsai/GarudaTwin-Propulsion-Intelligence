@@ -293,7 +293,8 @@ class HealthRulService:
             "vibration": f"Vibration residual {b['vib_res']:+.3f} g-RMS",
             "fuel_flow": f"Fuel flow residual {b['fuel_flow_res']:+.1f} L/h",
             "lambda": f"Lambda residual {b['lambda_res']:+.3f} (lean shift if positive)",
-            "electrical": f"Generator voltage residual {b['gen_v_res']:+.1f} V, current {b['gen_i_res']:+.1f} A",
+            "electrical": f"Bus voltage residual {b['gen_v_res']:+.1f} V, battery current residual {b['batt_i_res']:+.1f} A (negative = discharging)",
+            "injection": f"Injection time {b['inj_pw_res_pct']:+.1f} % vs nominal, ECU fuel trim {b['fuel_trim_res']:+.1f} %",
             "coolant": f"Coolant temperature residual {b['coolant_res']:+.1f}°C",
         }[group] + fluct + f" — TreeSHAP contribution to {'diagnosis ' + diagnosis if diagnosis != 'NONE' else 'health estimate'}"
 

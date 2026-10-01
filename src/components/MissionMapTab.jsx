@@ -10,6 +10,7 @@ import { TotalEnergyControlSystem } from '../flight_controller/TotalEnergyContro
 const LD_MAX = TotalEnergyControlSystem.bestGlideSpeed(1.0).LD_max;
 // Decision rules shared with the planner service and the gateway fallback (one definition)
 import { classifyVehicle, rtbAction, RTB_PROFILES, RTB_RULES, RTB_ACTION_LABEL } from '../planner/rtbRules';
+import { GEOFENCE_POLYGON, INDO_PAK_BORDER } from '../planner/geofence';
 import { 
   Navigation, 
   MapPin, 
@@ -271,36 +272,7 @@ const FLEET_GEO = {
 };
 
 // Geofence Tactical Operating Box (Indo-Pak Border Western Corridor)
-const GEOFENCE_POLYGON = [
-  [25.3000, 70.1000],
-  [27.5000, 70.1000],
-  [27.5000, 72.2000],
-  [25.3000, 72.2000]
-];
-
-// Indo-Pak International Border (IB) Line (Sir Creek to Punjab Corridor)
-const INDO_PAK_BORDER = [
-  [23.7000, 68.2000],
-  [24.1500, 68.8000],
-  [24.5500, 69.4500],
-  [24.9500, 70.3000],
-  [25.4000, 70.2800], // Munabao Border Sector
-  [25.7500, 70.2500], // Gadra Road
-  [26.1500, 70.1800], // Khokhropar / Barmer West Sector
-  [26.5500, 70.2200], // Mirpur Khas / Jaisalmer SW Sector
-  [26.9000, 70.1500], // Longewala / Tanot Sector
-  [27.3500, 70.4000], // Kishangarh Fort Sector
-  [27.8500, 71.0000], // West of Bikaner
-  [28.3000, 71.5500], // Anupgarh Sector
-  [28.8500, 72.3000], // Sri Ganganagar Sector
-  [29.4000, 72.9000],
-  [30.1000, 73.5000], // Fazilka Sector
-  [30.8500, 74.3000], // Ferozepur / Hussainiwala
-  [31.6000, 74.5700], // Wagah / Attari Border
-  [32.0500, 74.9000], // Dera Baba Nanak
-  [32.3500, 75.0500]  // Shakargarh Bulge
-];
-
+// Geofence polygon and border line come from the module the gateway enforces (one source of truth)
 // Tactical Airspace Territorial Label DivIcons
 const createTerritoryLabel = (text, flag, color, bgColor, borderColor) => new L.DivIcon({
   className: 'custom-territory-label',

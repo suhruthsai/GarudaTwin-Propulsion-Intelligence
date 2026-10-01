@@ -65,7 +65,8 @@ export const JudgesSandboxTab = () => {
   const [activeFaultTag, setActiveFaultTag] = useState('NONE');
   const [activeBenchmark, setActiveBenchmark] = useState('NOMINAL_LOITER');
   const [broadcastNotice, setBroadcastNotice] = useState(null);
-  const [autoSyncTwin, setAutoSyncTwin] = useState(true);
+  // Off by default: what-if profiles must not inject faults into the live aircraft unless asked
+  const [autoSyncTwin, setAutoSyncTwin] = useState(false);
 
   // 3D Viewport Controls
   const [viewportMode, setViewportMode] = useState('3D_AND_EVAL'); // '3D_AND_EVAL' | '3D_ONLY' | 'EVAL_ONLY'
@@ -77,6 +78,9 @@ export const JudgesSandboxTab = () => {
 
   // Live AI service state (reached through the authenticated gateway)
   const [aiResult, setAiResult] = useState(null);
+  // Channels the bench has no slider for (fuel flow, lambda, injection time, ECU trim, battery…):
+  // taken from the selected simulator profile so the AI sees a physically consistent frame
+  const [extraChannels, setExtraChannels] = useState(null);
   const [aiConnected, setAiConnected] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
 
@@ -107,6 +111,7 @@ export const JudgesSandboxTab = () => {
         vibrationGrms: 0.28,
         fuelPressureBar: 3.12,
         genVoltageV: 28.4,
+        extra: { fuel_flow: 26.0, lambda: 0.939, gen_current: 41.1, coolant_temp: 88.5, inj_pw_ms: 14.36, fuel_trim_pct: 0.0, battery_current_a: 0.9, battery_soc_pct: 98.4 },
         faultTag: 'NONE'
       }
     },
@@ -117,20 +122,21 @@ export const JudgesSandboxTab = () => {
       label: 'Profile B: Cyl 3 Lean Clog',
       tag: 'COMBUSTION',
       badgeClass: 'border-red-300 bg-red-50 text-red-700',
-      summary: 'Simulator CYL3_INJECTOR @ 0.85: EGT3 954.7 °C (+122.3 °C spread), CHT3 129.8 °C, vibration 1.09 g, lean lambda shift.',
+      summary: 'Simulator CYL3_INJECTOR @ 0.85: EGT3 900 °C (+122 °C vs the others, which run ~60 °C cooler because the ECU\'s +15 % fuel trim richens every cylinder), CHT3 129.7 °C, vibration 1.10 g, injection time +14 %.',
       params: {
         altitudeFt: 14500,
         airspeedKts: 108,
         rpm: 4800,
         throttlePct: 78.5,
-        egt: [831.5, 833.2, 954.7, 832.4],
-        cht: [106, 106, 129.8, 106],
+        egt: [777.2, 779.2, 900.3, 778.0],
+        cht: [105.9, 105.9, 129.7, 106.0],
         mapBar: 1.42,
         oilPressBar: 3.85,
         oilTempC: 98,
-        vibrationGrms: 1.09,
+        vibrationGrms: 1.10,
         fuelPressureBar: 2.75,
         genVoltageV: 28.4,
+        extra: { fuel_flow: 29.9, lambda: 0.950, gen_current: 41.1, coolant_temp: 88.5, inj_pw_ms: 16.39, fuel_trim_pct: 15.0, battery_current_a: 0.9, battery_soc_pct: 98.4 },
         faultTag: 'CYL3_INJECTOR'
       }
     },
@@ -155,6 +161,7 @@ export const JudgesSandboxTab = () => {
         vibrationGrms: 0.83,
         fuelPressureBar: 3.10,
         genVoltageV: 28.4,
+        extra: { fuel_flow: 26.0, lambda: 0.939, gen_current: 41.1, coolant_temp: 88.5, inj_pw_ms: 14.36, fuel_trim_pct: 0.0, battery_current_a: 0.9, battery_soc_pct: 98.4 },
         faultTag: 'BLOW_BY'
       }
     },
@@ -179,6 +186,7 @@ export const JudgesSandboxTab = () => {
         vibrationGrms: 1.43,
         fuelPressureBar: 3.08,
         genVoltageV: 28.4,
+        extra: { fuel_flow: 26.0, lambda: 0.939, gen_current: 41.1, coolant_temp: 88.5, inj_pw_ms: 14.36, fuel_trim_pct: 0.0, battery_current_a: 0.9, battery_soc_pct: 98.4 },
         faultTag: 'OIL_PUMP_CAVITATION'
       }
     },
@@ -203,6 +211,7 @@ export const JudgesSandboxTab = () => {
         vibrationGrms: 0.71,
         fuelPressureBar: 3.45,
         genVoltageV: 28.4,
+        extra: { fuel_flow: 26.0, lambda: 0.939, gen_current: 41.1, coolant_temp: 88.5, inj_pw_ms: 13.57, fuel_trim_pct: 0.0, battery_current_a: 0.9, battery_soc_pct: 98.4 },
         faultTag: 'TURBO_WASTEGATE_STUCK'
       }
     }
@@ -210,6 +219,7 @@ export const JudgesSandboxTab = () => {
 
   const handleApplyBenchmark = (b) => {
     setActiveBenchmark(b.id);
+    setExtraChannels(b.params.extra ?? null);
     setAltitudeFt(b.params.altitudeFt);
     setAirspeedKts(b.params.airspeedKts);
     setRpm(b.params.rpm);
@@ -274,6 +284,7 @@ export const JudgesSandboxTab = () => {
           vibration_grms: vibrationGrms,
           fuel_pressure_bar: fuelPressureBar,
           gen_voltage_v: genVoltageV,
+          ...(extraChannels || {}),
           is_sandbox: true,
           mode: 'SANDBOX'
         };
@@ -313,7 +324,7 @@ export const JudgesSandboxTab = () => {
       isMounted = false;
       clearTimeout(timer);
     };
-  }, [rpm, throttlePct, altitudeFt, egt, cht, mapBar, oilPressBar, oilTempC, vibrationGrms, fuelPressureBar, genVoltageV]);
+  }, [rpm, throttlePct, altitudeFt, egt, cht, mapBar, oilPressBar, oilTempC, vibrationGrms, fuelPressureBar, genVoltageV, extraChannels]);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 4. AUTO-SYNC WITH CAN BUS & DIGITAL TWIN

@@ -16,8 +16,9 @@ from ai_health_rul.preprocessing.feature_engineering import GoldenTwin
 from ai_health_rul.preprocessing.validation import DataQualityGuard
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sim_episodes.csv"
-SCALAR = ["rpm", "throttle", "map_bar", "oil_pressure", "oil_temp", "vibration", "fuel_flow",
-          "lambda", "gen_voltage", "gen_current", "coolant_temp"]
+from ai_health_rul.config.config import SCALAR_CHANNELS as SCALAR  # noqa: E402  (all channels, as the gateway sends)
+CSV_COL = {"inj_pw": "inj_pw_ms", "fuel_trim": "fuel_trim_pct", "battery_current": "battery_current_a",
+           "battery_soc": "battery_soc_pct", "ambient_pressure": "ambient_pressure_bar", "oat": "oat_c"}
 
 
 def frames(ep_df):
@@ -25,7 +26,7 @@ def frames(ep_df):
     t = 0.0
     for _, r in ep_df.iterrows():
         t += float(r["dt_s"])
-        payload = {c: float(r[c]) for c in SCALAR}
+        payload = {c: float(r[CSV_COL.get(c, c)]) for c in SCALAR}
         payload["egt"] = [float(r[f"egt{i}"]) for i in range(1, 5)]
         payload["cht"] = [float(r[f"cht{i}"]) for i in range(1, 5)]
         payload["sim_time_s"] = t
@@ -175,17 +176,24 @@ class TestAiHealthRulModule(unittest.TestCase):
         for _, g in self.episodes.items():
             twin = GoldenTwin()
             for _, r in g.iterrows():
-                nom = twin.update(float(r["throttle"]), float(r["rpm"]), float(r["dt_s"]))
+                frame = {k: float(r[k]) for k in ("throttle", "rpm", "gen_current")}
+                frame.update(ambient_pressure=float(r["ambient_pressure_bar"]), oat=float(r["oat_c"]),
+                             battery_current=float(r["battery_current_a"]), battery_soc=float(r["battery_soc_pct"]))
+                nom = twin.update(frame, float(r["dt_s"]))
                 worst = max(worst, abs(nom["egt"] - r["twin_egt"]), abs(nom["cht"] - r["twin_cht"]),
-                            abs(nom["oil_temp"] - r["twin_oil_temp"]))
+                            abs(nom["oil_temp"] - r["twin_oil_temp"]), abs(nom["coolant_temp"] - r["twin_coolant"]),
+                            abs(nom["inj_pw"] - r["twin_inj_pw"]), abs(nom["gen_voltage"] - r["twin_gen_v"]))
         self.assertLess(worst, 0.05)
 
     def test_sandbox_payload_format(self):
         """Judges Sandbox sends a different key dialect and no time base."""
         svc = HealthRulService()
-        payload = {"rpm": 4750, "throttle_pct": 78.0, "egt": [832, 831, 985, 832], "cht": [105, 106, 134, 107],
-                   "map_bar": 1.42, "oil_press_bar": 3.80, "oil_temp_c": 99.5, "vibration_grms": 1.18,
-                   "gen_voltage_v": 28.3, "is_sandbox": True, "mode": "SANDBOX"}
+        # Cylinder-3 injector clog at 0.85 (simulator steady state, 14,500 ft ISA): the ECU's +15 % trim
+        # richens every cylinder, so the others run ~60 °C below nominal while cylinder 3 runs hot
+        payload = {"rpm": 4800, "throttle_pct": 78.5, "egt": [777.2, 779.2, 900.3, 778.0], "cht": [105.9, 105.9, 129.7, 106.0],
+                   "map_bar": 1.42, "oil_press_bar": 3.85, "oil_temp_c": 98.0, "vibration_grms": 1.10,
+                   "gen_voltage_v": 28.4, "fuel_flow": 29.9, "lambda": 0.950, "inj_pw_ms": 16.39, "fuel_trim_pct": 15.0,
+                   "altitude_ft": 14500, "is_sandbox": True, "mode": "SANDBOX"}
         for _ in range(3):
             r = svc.predict(dict(payload))
         self.assertEqual(r.health.diagnosed_fault, "CYL3_INJECTOR")

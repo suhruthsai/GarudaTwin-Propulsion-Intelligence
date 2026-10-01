@@ -2,8 +2,9 @@
 Physics-Informed Feature Engineering
 ====================================
 Features are residuals between measured sensors and a golden-twin nominal model that
-depends only on the measured operating point (throttle, RPM), with first-order thermal
-lag so throttle transients are not mistaken for faults. Rolling statistics over the
+depends only on measured quantities — operating point (throttle, RPM), air data (ambient
+pressure, OAT) and the measured electrical load / battery state — with first-order thermal
+lag so transients are not mistaken for faults. Rolling statistics over the
 last ROLLING_WINDOW samples capture oscillatory signatures (e.g. oil-pump cavitation).
 
 No feature is derived from a health score or fault label.
@@ -17,12 +18,75 @@ from collections import deque
 from typing import Dict, Any, List, Tuple, Optional
 import numpy as np
 
-from ..config.config import ROLLING_WINDOW, CYLINDERS
+from ..config.config import ROLLING_WINDOW, CYLINDERS, REF_AMBIENT_PRESSURE, REF_OAT
+
+# Mirror of PHYS in src/engine/EngineSimulator.js (engineering assumptions, not Rotax data)
+PHYS = {
+    "P0_BAR": 1.01325, "T0_K": 288.15, "PR_MAX": 3.0, "COOLING_EXP": 0.8,
+    "EGT_PER_OAT": 0.6, "EGT_PER_POWER_LOSS": 40.0, "LAMBDA_TARGET": 0.94,
+    "INJ_FLOW_MM3_PER_MS": 3.33, "INJ_DEAD_MS": 0.8,
+    "ALT_MAX_A": 70.0, "BATT_R_OHM": 0.05, "BUS_SET_V": 28.4,
+}
+
+
+def _density_ratio(p_bar: float, oat_c: float) -> float:
+    return (p_bar / PHYS["P0_BAR"]) * (PHYS["T0_K"] / (oat_c + 273.15))
+
+
+_REF_SIGMA = _density_ratio(REF_AMBIENT_PRESSURE, REF_OAT)
+
+
+def ambient_factors(throttle: float, p_bar: float, oat_c: float) -> Dict[str, float]:
+    map_target = 1.42 + (throttle - 78.5) * 0.015
+    map_avail = p_bar * PHYS["PR_MAX"]
+    map_ = min(map_target, map_avail)
+    pf = map_ / map_target
+    cf = (_REF_SIGMA / _density_ratio(p_bar, oat_c)) ** PHYS["COOLING_EXP"]
+    return {"map": map_, "pf": pf, "cf": cf, "d_oat": oat_c - REF_OAT}
+
+
+def thermal_targets(throttle: float, rpm: float, p_bar: float, oat_c: float) -> Dict[str, float]:
+    a = ambient_factors(throttle, p_bar, oat_c)
+    scale = lambda cal: oat_c + (cal - REF_OAT) * a["cf"] * a["pf"]  # noqa: E731
+    return {
+        "egt": 840.0 + (throttle - 78.5) * 1.8 + (rpm - 4800.0) * 0.03 + PHYS["EGT_PER_OAT"] * a["d_oat"]
+               - PHYS["EGT_PER_POWER_LOSS"] * (1 - a["pf"]),
+        "cht": scale(106.0 + (throttle - 78.5) * 0.6),
+        "oil_temp": scale(98.0 + (throttle - 78.5) * 0.25),
+        "coolant_temp": scale(88.5),
+        **a,
+    }
+
+
+def nominal_fuel_lph(throttle: float, pf: float) -> float:
+    return (26.0 + (throttle - 78.5) * 0.4) * pf
+
+
+def inj_pulse_ms(fuel_lph: float, rpm: float) -> float:
+    mm3 = (fuel_lph / 4.0) / (max(rpm, 500.0) / 2.0 * 60.0) * 1e6
+    return mm3 / PHYS["INJ_FLOW_MM3_PER_MS"] + PHYS["INJ_DEAD_MS"]
+
+
+def charge_request_a(soc: float) -> float:
+    return max(0.3, min(8.0, 0.3 + 40.0 * (1.0 - soc)))
+
+
+def electrical_state(rpm: float, load_a: float, soc: float) -> Dict[str, float]:
+    cap = PHYS["ALT_MAX_A"] * max(0.0, min(1.0, (rpm - 1500.0) / 1500.0))
+    req = charge_request_a(soc)
+    ocv = 23.6 + 1.8 * soc
+    if cap >= load_a + req:
+        return {"i_bat": req, "v_bus": PHYS["BUS_SET_V"]}
+    if cap >= load_a:
+        i_bat = cap - load_a
+        return {"i_bat": i_bat, "v_bus": ocv + (PHYS["BUS_SET_V"] - ocv) * (i_bat / req)}
+    i_bat = cap - load_a
+    return {"i_bat": i_bat, "v_bus": ocv + i_bat * PHYS["BATT_R_OHM"]}
 
 
 class GoldenTwin:
-    """Nominal engine model driven by measured throttle and RPM only."""
-    K = {"egt": 0.8, "cht": 0.05, "oil_temp": 0.02}
+    """Nominal engine model driven by measured operating point, air data and electrical load."""
+    K = {"egt": 0.8, "cht": 0.05, "oil_temp": 0.02, "coolant_temp": 0.05}
 
     def __init__(self):
         self.state: Optional[Dict[str, float]] = None
@@ -31,32 +95,38 @@ class GoldenTwin:
         self.state = None
 
     @staticmethod
-    def targets(throttle: float, rpm: float) -> Dict[str, float]:
-        return {
-            "egt": 840.0 + (throttle - 78.5) * 1.8 + (rpm - 4800.0) * 0.03,
-            "cht": 106.0 + (throttle - 78.5) * 0.6,
-            "oil_temp": 98.0 + (throttle - 78.5) * 0.25,
-        }
+    def targets(throttle: float, rpm: float, p_bar: float = REF_AMBIENT_PRESSURE, oat_c: float = REF_OAT) -> Dict[str, float]:
+        return thermal_targets(throttle, rpm, p_bar, oat_c)
 
-    def update(self, throttle: float, rpm: float, dt: float) -> Dict[str, float]:
-        tgt = self.targets(throttle, rpm)
+    def update(self, frame: Dict[str, Any], dt: float) -> Dict[str, float]:
+        throttle, rpm = frame["throttle"], frame["rpm"]
+        p_bar = frame.get("ambient_pressure") or REF_AMBIENT_PRESSURE
+        oat_c = frame.get("oat") if frame.get("oat") is not None else REF_OAT
+        tgt = self.targets(throttle, rpm, p_bar, oat_c)
         if self.state is None:
-            self.state = dict(tgt)
+            self.state = {k: tgt[k] for k in self.K}
         else:
             for k, rate in self.K.items():
                 self.state[k] += (1.0 - math.exp(-rate * dt)) * (tgt[k] - self.state[k])
+        # Electrical: load observable as alternator current - battery current
+        i_alt, i_bat = frame.get("gen_current"), frame.get("battery_current")
+        soc = (frame.get("battery_soc") if frame.get("battery_soc") is not None else 98.0) / 100.0
+        es = electrical_state(rpm, (i_alt - i_bat) if (i_alt is not None and i_bat is not None) else 40.0, soc)
+        fuel = nominal_fuel_lph(throttle, tgt["pf"])
         return {
             "egt": self.state["egt"],
             "cht": self.state["cht"],
             "oil_temp": self.state["oil_temp"],
             "oil_pressure": 3.85 - (self.state["oil_temp"] - 98.0) * 0.015,
-            "map_bar": 1.42 + (throttle - 78.5) * 0.015,
+            "map_bar": tgt["map"],
             "vibration": 0.28 + ((rpm - 4800.0) / 5800.0) * 0.12,
-            "fuel_flow": 26.0 + (throttle - 78.5) * 0.4,
-            "lambda": 0.94,
-            "gen_voltage": 28.4,
-            "gen_current": 45.2,
-            "coolant_temp": 88.5,
+            "fuel_flow": fuel,
+            "inj_pw": inj_pulse_ms(fuel, rpm),
+            "fuel_trim": 0.0,
+            "lambda": PHYS["LAMBDA_TARGET"],
+            "gen_voltage": es["v_bus"],
+            "battery_current": es["i_bat"],
+            "coolant_temp": self.state["coolant_temp"],
         }
 
 
@@ -64,9 +134,11 @@ class GoldenTwin:
 BASE_FEATURES: List[str] = [
     "egt_res_mean", "egt_spread", "cht_res_mean", "cht_spread",
     "map_res", "oil_press_res", "oil_temp_res", "vib_res",
-    "fuel_flow_res", "lambda_res", "gen_v_res", "gen_i_res", "coolant_res",
+    "fuel_flow_res", "lambda_res", "gen_v_res", "batt_i_res", "coolant_res",
     # cold-cylinder imbalance (misfire: one cylinder stops producing heat) and crank-speed jitter
     "egt_cold_spread", "cht_cold_spread", "rpm_step",
+    # ECU injection: injection time vs nominal (%) and closed-loop fuel trim (%)
+    "inj_pw_res_pct", "fuel_trim_res",
 ]
 # Rolling-std features (oscillation / instability signatures)
 STD_FEATURES: List[str] = ["egt_spread", "oil_press_res", "vib_res", "map_res", "oil_temp_res", "lambda_res",
@@ -97,8 +169,9 @@ for _f in FEATURE_NAMES:
         "egt_res_mean": "egt", "egt_spread": "egt", "cht_res_mean": "cht", "cht_spread": "cht",
         "map_res": "map", "oil_press_res": "oil_pressure", "oil_temp_res": "oil_temp",
         "vib_res": "vibration", "fuel_flow_res": "fuel_flow", "lambda_res": "lambda",
-        "gen_v_res": "electrical", "gen_i_res": "electrical", "coolant_res": "coolant",
+        "gen_v_res": "electrical", "batt_i_res": "electrical", "coolant_res": "coolant",
         "egt_cold_spread": "egt", "cht_cold_spread": "cht", "rpm_step": "rpm",
+        "inj_pw_res_pct": "injection", "fuel_trim_res": "injection",
     }[base]
 
 
@@ -130,7 +203,7 @@ class FeatureExtractor:
         frame: canonical cleaned frame (None = missing channel -> imputed as nominal).
         Returns (feature vector ordered as FEATURE_NAMES, context with nominal/residuals).
         """
-        nom = self.twin.update(frame["throttle"], frame["rpm"], dt)
+        nom = self.twin.update(frame, dt)
 
         def res(ch: str) -> float:
             v = frame.get(ch)
@@ -153,8 +226,10 @@ class FeatureExtractor:
             "fuel_flow_res": res("fuel_flow"),
             "lambda_res": res("lambda"),
             "gen_v_res": res("gen_voltage"),
-            "gen_i_res": res("gen_current"),
+            "batt_i_res": res("battery_current"),
             "coolant_res": res("coolant_temp"),
+            "inj_pw_res_pct": 0.0 if frame.get("inj_pw") is None else 100.0 * (frame["inj_pw"] - nom["inj_pw"]) / nom["inj_pw"],
+            "fuel_trim_res": res("fuel_trim"),
             "egt_cold_spread": _cold_spread(egt_res),
             "cht_cold_spread": _cold_spread(cht_res),
             # sample-to-sample RPM change: its rolling std measures crank-speed jitter

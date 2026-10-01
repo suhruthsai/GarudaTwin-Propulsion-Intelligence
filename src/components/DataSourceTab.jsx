@@ -274,9 +274,9 @@ export function DataSourceTab() {
           </table>
         </div>
         <p className="text-[11px] text-slate-500 mt-2.5 leading-snug">
-          CSV import: a time column (<code>t_s</code>, seconds) and all 19 channel columns —{' '}
-          <code>rpm, throttle, egt1–egt4, cht1–cht4, map_bar, oil_pressure, oil_temp, vibration, fuel_flow, lambda, gen_voltage, gen_current, coolant_temp</code>{' '}
-          (units: rpm, %, °C, bar, g-RMS, L/h, V, A). Optional: <code>episode</code> (independent stretches), <code>label</code> + <code>severity</code> (ground truth for scoring).
+          CSV import: a time column (<code>t_s</code>, seconds) and all 25 channel columns —{' '}
+          <code>rpm, throttle, egt1–egt4, cht1–cht4, map_bar, oil_pressure, oil_temp, vibration, fuel_flow, lambda, gen_voltage, gen_current, coolant_temp, inj_pw_ms, fuel_trim_pct, battery_current_a, battery_soc_pct, ambient_pressure_bar, oat_c</code>{' '}
+          (units: rpm, %, °C, bar, g-RMS, L/h, V, A, ms).Optional: <code>episode</code> (independent stretches), <code>label</code> + <code>severity</code> (ground truth for scoring).
           A file with any invalid row is rejected so the AI never scores a stream with holes. Bundled data is simulator data; real engine data uses the same path,
           but the models have only been validated on simulator data.
         </p>

@@ -11,7 +11,7 @@ The same code reads a real adapter or python-can's software "virtual" bus:
   python tools/can/can_bridge.py --interface virtual --demo-csv ai_health_rul/tests/fixtures/sim_episodes.csv --episode 47
 
 Before starting, switch the gateway to the LIVE source (the bridge does this with --set-live).
-Frames are only forwarded when every engine message (0x100, 0x200, 0x210, 0x300, 0x310) has arrived
+Frames are only forwarded when every engine message (0x100-0x330, 7 messages) has arrived
 since the previous frame, so channels from different engine cycles are never mixed. If a message
 stops arriving, no frames are sent and the gateway reports NO_DATA after 2 s.
 """
@@ -33,7 +33,8 @@ ROOT = Path(__file__).resolve().parents[2]
 DBC_DEFAULT = Path(__file__).with_name("garudatwin_engine.dbc")
 CHANNELS = ["rpm", "throttle", "egt1", "egt2", "egt3", "egt4", "cht1", "cht2", "cht3", "cht4",
             "map_bar", "oil_pressure", "oil_temp", "vibration", "fuel_flow", "lambda",
-            "gen_voltage", "gen_current", "coolant_temp"]
+            "gen_voltage", "gen_current", "coolant_temp",
+            "inj_pw_ms", "fuel_trim_pct", "battery_current_a", "battery_soc_pct", "ambient_pressure_bar", "oat_c"]
 
 
 def ingest_key(cli_key):

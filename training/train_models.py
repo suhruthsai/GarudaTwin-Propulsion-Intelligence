@@ -61,8 +61,10 @@ NUISANCE = {
     "coolant_temp": (-3.0, 5.0), "vibration": (-0.02, 0.08), "map_bar": (-0.03, 0.03),
     "lambda": (-0.02, 0.02),
 }
-SCALAR = ["rpm", "throttle", "map_bar", "oil_pressure", "oil_temp", "vibration", "fuel_flow",
-          "lambda", "gen_voltage", "gen_current", "coolant_temp"]
+from ai_health_rul.config.config import SCALAR_CHANNELS as SCALAR  # noqa: E402
+# dataset CSV column for each canonical channel (unit suffixes in the CSV)
+CSV_COL = {"inj_pw": "inj_pw_ms", "fuel_trim": "fuel_trim_pct", "battery_current": "battery_current_a",
+           "battery_soc": "battery_soc_pct", "ambient_pressure": "ambient_pressure_bar", "oat": "oat_c"}
 
 
 def log(msg):
@@ -76,7 +78,7 @@ def build_features(df: pd.DataFrame, aug: dict):
     """aug: episode id -> nuisance offsets (episodes not in aug stay clean)."""
     X = np.zeros((len(df), len(FEATURE_NAMES)), dtype=np.float32)
     twin_err = []
-    vals = df[SCALAR].to_numpy()
+    vals = df[[CSV_COL.get(c, c) for c in SCALAR]].to_numpy()
     egts = df[["egt1", "egt2", "egt3", "egt4"]].to_numpy()
     chts = df[["cht1", "cht2", "cht3", "cht4"]].to_numpy()
     dts = df["dt_s"].to_numpy()
@@ -212,6 +214,22 @@ def evaluate(M, df, y, sev, eng_sev, rul, s_all, raw_flag, anom, probs, sev_hat,
         "interval_95_coverage": round(float(np.mean((rt >= q[:, 0]) & (rt <= q[:, 2]))), 4),
         "mae_hours_by_class": {c: round(float(err[cls == c].mean()), 2) for c in FAULT_CLASSES[1:] if (cls == c).any()},
     }
+    # Flight-condition breakdown: does the twin + AI hold across altitude and outside-air temperature?
+    alt, isa = df.loc[M, "altitude_ft"].to_numpy(), (df.loc[M, "oat_c"] - (15 - 0.0019812 * df.loc[M, "altitude_ft"])).to_numpy()
+    sh_all = sev_hat[M]
+    def cond_metrics(sel):
+        f, n_ = sel & ~nom, sel & nom
+        return {"samples": int(sel.sum()),
+                "fault_detection_recall": round(float(flagged[f].mean()), 4) if f.any() else None,
+                "classifier_accuracy_on_faults": round(float((dec[f] == yt[f]).mean()), 4) if f.any() else None,
+                "nominal_false_alarms_per_hour": round(float(flagged[n_].mean() * 3600), 2) if n_.any() else None,
+                "health_mae_pct": round(float(np.mean(np.abs(sh_all[sel] - eng_sev[M][sel])) * 100), 2)}
+    flight_condition = {
+        "by_altitude_ft": {f"{lo}-{hi}": cond_metrics((alt >= lo) & (alt < hi))
+                           for lo, hi in ((0, 5000), (5000, 10000), (10000, 15000), (15000, 20000), (20000, 23001))},
+        "by_isa_deviation_c": {f"{lo:+d}..{hi:+d}": cond_metrics((isa >= lo) & (isa < hi))
+                               for lo, hi in ((-21, -5), (-5, 5), (5, 15), (15, 26))},
+    }
     ae_flag = ae_mse[M] > ae_thr
     ae = {
         "threshold_mse": round(ae_thr, 6),
@@ -221,7 +239,8 @@ def evaluate(M, df, y, sev, eng_sev, rul, s_all, raw_flag, anom, probs, sev_hat,
         "recall_by_class": {FAULT_CLASSES[c]: round(float(ae_flag[yt == c].mean()), 4) for c in range(1, len(FAULT_CLASSES))},
     }
     return {"anomaly_detector": anomaly, "detection_end_to_end": detection, "fault_classifier": classifier,
-            "health_index": health, "rul": rul_m, "autoencoder_legacy_endpoint": ae}
+            "health_index": health, "rul": rul_m, "flight_condition": flight_condition,
+            "autoencoder_legacy_endpoint": ae}
 
 
 def live_decisions(idx_mask, df, probs, anom):

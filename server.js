@@ -23,6 +23,7 @@ import { loadServiceConfig } from './server/serviceConfig.js';
 import { Recorder } from './server/recorder.js';
 import { Fleet, aiSummary, subsystemsFromAi } from './server/fleet.js';
 import { classifyVehicle, rtbAction, RTB_PROFILES } from './src/planner/rtbRules.js';
+import { STATION, GEOFENCE_RULES, geofenceCheck, validateRoute } from './src/planner/geofence.js';
 import { ReplayPlayer, SPEEDS } from './server/replayPlayer.js';
 import { normalizeFrame, applyFrameToEngineState, frameFromEngineState, aiPayloadFromFrame } from './server/engineFrame.js';
 import crypto from 'crypto';
@@ -184,10 +185,20 @@ const fcs6dof   = new FlightDynamics6DOF();
 const autopilot = new CascadedAutopilot();
 const fadec     = new FadecFlightInterlock(autopilot);
 
-autopilot.arm();
-autopilot.setMode(FLIGHT_MODE.ALT_HOLD);
-autopilot.setAltitude(4419.6);    // 14500 ft in metres
-autopilot.setAirspeed(56.6);      // 110 kts in m/s
+// Vahak-1 patrols an orbit around its station (previously it held heading 000 with no orbit and
+// flew straight north until it crossed the border).
+function patrolStation() {
+  autopilot.setAltitude(4419.6);    // 14500 ft in metres
+  autopilot.setAirspeed(56.6);      // 110 kts in m/s
+  autopilot.setLoiter(0, 0, STATION.radiusM, true);   // local frame origin = station
+  autopilot.arm();
+  autopilot.setMode(FLIGHT_MODE.LOITER);
+}
+patrolStation();
+
+// Geofence guard state (see src/planner/geofence.js)
+const geofence = { status: 'OK', borderNm: null, aheadBorderNm: null, inside: true, reasons: [], interventions: 0, lastEvent: null };
+let _geoTick = 0;
 
 // Shared FCS state (written by FCS tick, read by broadcast)
 let fcsState    = {};
@@ -285,8 +296,9 @@ let missionState = {
   missionTime: 0,
   altitudeFt: 14500,
   airspeedKts: 110,
-  ambientTempC: -12.5,
-  baroPressureBar: 0.58,
+  ambientTempC: -13.7,      // updated from the engine's air data every broadcast
+  baroPressureBar: 0.583,
+  isaDevC: 0,               // ISA temperature deviation of the day (°C)
   uavId: 'Vahak-1',
   missionPhase: 'LOITER' // 'TAKEOFF' | 'CLIMB' | 'CRUISE' | 'LOITER' | 'RTB' | 'DESCENT'
 };
@@ -409,6 +421,8 @@ function sourceStatus() {
  * CAN ID 0x210: CHT1..CHT4 (u16, 0.1 °C)
  * CAN ID 0x300: MAP (u16, 0.001 bar), OilPress (u16, 0.001 bar), OilTemp (u16, 0.01 °C, offset -50), Vibration (u16, 0.001 g)
  * CAN ID 0x310: GenVoltage (u16, 0.01 V), GenCurrent (s16, 0.01 A), CoolantTemp (u16, 0.01 °C, offset -50)
+ * CAN ID 0x320: InjectionTime (u16, 0.001 ms), FuelTrim (s16, 0.01 %), BatteryCurrent (s16, 0.01 A), BatterySOC (u16, 0.01 %)
+ * CAN ID 0x330: AmbientPressure (u16, 0.0001 bar), OAT (s16, 0.01 °C)
  */
 function generateBinaryCanFrames() {
   const buf0x100 = Buffer.alloc(8);
@@ -440,25 +454,32 @@ function generateBinaryCanFrames() {
   buf0x310.writeInt16BE(Math.round(engineState.genCurrentA * 100), 2);
   buf0x310.writeUInt16BE(Math.round((engineState.coolantTempC + 50) * 100), 4);
 
+  const buf0x320 = Buffer.alloc(8);
+  buf0x320.writeUInt16BE(Math.round(engineState.injPulseMs * 1000), 0);
+  buf0x320.writeInt16BE(Math.round(engineState.fuelTrimPct * 100), 2);
+  buf0x320.writeInt16BE(Math.round(engineState.batteryCurrentA * 100), 4);
+  buf0x320.writeUInt16BE(Math.round(engineState.batterySocPct * 100), 6);
+
+  const buf0x330 = Buffer.alloc(8);
+  buf0x330.writeUInt16BE(Math.round(engineState.ambientPressureBar * 10000), 0);
+  buf0x330.writeInt16BE(Math.round(engineState.oatC * 100), 2);
+
   return [
     { canId: '0x100', dlc: 8, rawHex: buf0x100.toString('hex').toUpperCase(), timestamp: Date.now() },
     { canId: '0x200', dlc: 8, rawHex: buf0x200.toString('hex').toUpperCase(), timestamp: Date.now() },
     { canId: '0x210', dlc: 8, rawHex: buf0x210.toString('hex').toUpperCase(), timestamp: Date.now() },
     { canId: '0x300', dlc: 8, rawHex: buf0x300.toString('hex').toUpperCase(), timestamp: Date.now() },
-    { canId: '0x310', dlc: 8, rawHex: buf0x310.toString('hex').toUpperCase(), timestamp: Date.now() }
+    { canId: '0x310', dlc: 8, rawHex: buf0x310.toString('hex').toUpperCase(), timestamp: Date.now() },
+    { canId: '0x320', dlc: 8, rawHex: buf0x320.toString('hex').toUpperCase(), timestamp: Date.now() },
+    { canId: '0x330', dlc: 8, rawHex: buf0x330.toString('hex').toUpperCase(), timestamp: Date.now() }
   ];
 }
 
 function resetSimulationState() {
   fcs6dof.reset();
-  if (typeof autopilot.reset === 'function') {
-    autopilot.reset();
-  } else {
-    autopilot.arm();
-    autopilot.setMode(FLIGHT_MODE.ALT_HOLD);
-    autopilot.setAltitude(4419.6);
-    autopilot.setAirspeed(56.6);
-  }
+  if (typeof autopilot.reset === 'function') autopilot.reset();
+  patrolStation();
+  Object.assign(geofence, { status: 'OK', reasons: [], interventions: 0, lastEvent: null });
   fadec.resetFlameout();
   fcsState = {};
   fcsControls = { throttle: 0.38, de: -0.045, da: 0, dr: 0, df: 0, sb: false, mode: 'ALT_HOLD' };
@@ -492,7 +513,7 @@ function resetSimulationState() {
   if (source.mode === 'SIM') startRecording('SIM'); else setSourceMode('SIM');
 
   io.emit('fault_updated', faultState);
-  io.emit('fcs_mode_changed', { mode: 'ALT_HOLD', armed: true });
+  io.emit('fcs_mode_changed', { mode: 'LOITER', armed: true });
 }
 
 // 100 Hz engine physics (fixed 10 ms sim step), FCS every 2nd step (50 Hz).
@@ -513,6 +534,8 @@ setInterval(() => {
 
 function physicsTick() {
   if (source.mode === 'SIM') {
+    sim.ambient.altitudeFt = fcsState.alt_ft ?? missionState.altitudeFt;   // engine follows the 6-DOF aircraft
+    sim.ambient.isaDevC = missionState.isaDevC;
     sim.step(PHYSICS_DT);
     if (++_recTick % 10 === 0) {   // 10 Hz flight recording
       recorder.record(sim.time, frameFromEngineState(engineState),
@@ -574,6 +597,8 @@ function physicsTick() {
     fcsState = { ...derived };
     fcsState.health_from_engine = engineTelemetry.health;
 
+    if (++_geoTick % 25 === 0) geofenceGuard(derived);
+
     // Buffer to DB every 10 FCS ticks (~5 Hz)
     _dbFlushTick++;
     if (_dbFlushTick % 10 === 0) {
@@ -585,6 +610,30 @@ function physicsTick() {
     }
     if (_dbFlushTick % 50 === 0) _flushDb();  // flush every ~1 s
   }
+}
+
+/** Keep Vahak-1 inside the operating area and clear of the border; return to the station orbit if not. */
+function geofenceGuard(st) {
+  if (st.north_m === undefined) return;
+  const c = geofenceCheck({ north_m: st.north_m, east_m: st.east_m, headingDeg: st.heading_deg ?? 0, speedMs: st.tas_ms ?? 56.6 });
+  Object.assign(geofence, { borderNm: Number(c.borderNm.toFixed(2)), aheadBorderNm: Number(c.aheadBorderNm.toFixed(2)), inside: c.inside, reasons: c.reasons });
+  const emergency = autopilot.emergencyActive || autopilot.mode === 'EMERGENCY_GLIDE';
+  const returning = autopilot.mode === FLIGHT_MODE.LOITER && autopilot.sp.loiter_north === 0 && autopilot.sp.loiter_east === 0;
+  if (!c.breach) { if (geofence.status !== 'OK' && returning) geofence.status = 'OK'; return; }
+  if (emergency) { geofence.status = 'BREACH_EMERGENCY_GLIDE'; return; }   // engine out: the glide to a runway has priority
+  if (returning && geofence.status === 'RETURNING') return;               // already heading home
+  patrolStation();
+  geofence.status = 'RETURNING';
+  geofence.interventions++;
+  const ev = { ts: Date.now(), reasons: c.reasons, lat: Number(c.lat.toFixed(4)), lon: Number(c.lon.toFixed(4)), borderNm: geofence.borderNm };
+  geofence.lastEvent = ev;
+  try {
+    _insEvent.run(activeSortieId, ev.ts, 'GEOFENCE_RETURN', fcsState.health_from_engine ?? null, st.ias_kts ?? null, st.alt_ft ?? null,
+      st.north_m, st.east_m, JSON.stringify({ reasons: c.reasons, lat: ev.lat, lon: ev.lon, borderNm: ev.borderNm }));
+  } catch (err) { console.error('[GEOFENCE] event log failed:', err.message); }
+  console.warn(`[GEOFENCE] ${c.reasons.join('; ')} -> returning to station orbit`);
+  io.emit('geofence_alert', ev);
+  io.emit('fcs_mode_changed', { mode: 'LOITER', armed: true });
 }
 
 // Broadcast full telemetry packet to connected clients at 20 Hz (50ms) for high-framerate rendering
@@ -608,6 +657,9 @@ setInterval(() => {
     oilTempResidual: round(r.oilTemp, 1),
     vibrationResidual: round(r.vib, 3),
     genVoltageResidual: round(r.genV, 1),
+    batteryCurrentResidual: round(r.batteryA, 1),
+    injectionTimeResidualPct: round(r.injPct, 1),
+    fuelTrimPct: round(r.fuelTrimPct, 1),
     coolantTempResidual: round(r.coolant, 1),
     maxResidualAbs: Math.max(
       ...r.egt.map(Math.abs),
@@ -648,8 +700,12 @@ setInterval(() => {
       : lastAiResult.health?.severity_level === 'ELEVATED' ? 'CAUTION' : 'ON STATION',
   };
 
+  missionState.ambientTempC = engineState.oatC;
+  missionState.baroPressureBar = engineState.ambientPressureBar;
+
   // Feed current engine health to FCS health tracker (FADEC derate)
-  fcsState.health_from_engine = parseFloat(healthIndex.toFixed(1));
+  // Flight model / FADEC derate use propulsion health only (electrical faults do not reduce thrust)
+  fcsState.health_from_engine = parseFloat(th.propulsionIndex.toFixed(1));
 
   // Synchronize missionState with 6-DOF dynamic kinematics
   if (fcsState.alt_ft !== undefined) {
@@ -744,6 +800,8 @@ setInterval(() => {
       waypoints:    autopilot.sp?.waypoints ?? [],
       // FCS time
       fcs_time_s:   fcsState.time_s ?? 0,
+      // Geofence guard: distance to the border (NM, + = Indian side), operating-area status, interventions
+      geofence: { ...geofence, bufferNm: GEOFENCE_RULES.BORDER_BUFFER_NM, lookaheadS: GEOFENCE_RULES.LOOKAHEAD_S },
     },
   };
 
@@ -960,6 +1018,8 @@ io.on('connection', (socket) => {
 
   socket.on('fcs_load_waypoints', (data) => {
     if (validWaypoints(data?.waypoints)) {
+      const route = validateRoute(fcsState.north_m ?? 0, fcsState.east_m ?? 0, data.waypoints);
+      if (!route.ok) { socket.emit('command_rejected', { event: 'fcs_load_waypoints', error: `geofence: ${route.reason}` }); return; }
       autopilot.loadWaypoints(data.waypoints);
       autopilot.arm();
       autopilot.setMode('AUTO_MISSION');
@@ -1061,6 +1121,10 @@ app.post('/api/replay/load', (req, res) => {
   if (!recorder.meta(id)) { res.status(404).json({ error: 'recording not found' }); return; }
   if (source.mode !== 'REPLAY') recorder.stop();         // finish the current recording first
   const meta = recorder.meta(id);
+  if (meta && (meta.schema_version ?? 1) < 2) {
+    res.status(409).json({ error: 'recorded before the engine model gained injection, battery and air-data channels; not replayable with the current models (export it as CSV for reference)' });
+    return;
+  }
   const frames = meta ? recorder.frames(id) : [];
   if (frames.filter(f => f.ai_input).length < 2) { res.status(400).json({ error: 'recording has fewer than 2 AI frames' }); return; }
   setSourceMode('REPLAY', { id, name: meta.name, player: new ReplayPlayer(frames), hasTruth: !!meta.has_truth });
@@ -1414,6 +1478,8 @@ app.post('/api/fcs/heading', (req, res) => {
 app.post('/api/fcs/waypoints', (req, res) => {
   const { waypoints } = req.body;
   if (!validWaypoints(waypoints)) { res.status(400).json({ error: 'waypoints must be 1-200 {north, east, alt_m?} numeric objects' }); return; }
+  const route = validateRoute(fcsState.north_m ?? 0, fcsState.east_m ?? 0, waypoints);
+  if (!route.ok) { res.status(409).json({ error: `geofence: ${route.reason}` }); return; }
   autopilot.loadWaypoints(waypoints);
   autopilot.arm();
   autopilot.setMode('AUTO_MISSION');
@@ -1481,7 +1547,7 @@ server.listen(PORT, HOST, () => {
   console.log(`=======================================================`);
   console.log(`🚀 MALE UAV Digital Twin Telemetry Engine Running on ${HOST}:${PORT}`);
   console.log(`🌐 Allowed browser origins: ${[...SERVICE.allowedOrigins].join(', ')}`);
-  console.log(`📡 CAN frame encoder active (IDs 0x100, 0x200, 0x210, 0x300, 0x310; layout tools/can/garudatwin_engine.dbc)`);
+  console.log(`📡 CAN frame encoder active (IDs 0x100-0x330; layout tools/can/garudatwin_engine.dbc)`);
   console.log(`✈️  50 Hz 6-DOF Flight Controller Active (TECS + L1 + Cascaded PID)`);
   console.log(`🗄️  SQLite Database: data/garudatwin.db (Sortie #${activeSortieId})`);
   console.log(`=======================================================`);

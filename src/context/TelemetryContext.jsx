@@ -177,12 +177,19 @@ export const TelemetryProvider = ({ children }) => {
       fuelFlowLph: 26.4,
       fuelPressureBar: 3.12,
       lambda: 0.94,
-      wastegateDutyPct: 62.0,
+      wastegateDutyPct: 72.0,
       genVoltageV: 28.4,
-      genCurrentA: 45.2,
-      coolantTempC: 88.5
+      genCurrentA: 39.0,
+      coolantTempC: 88.5,
+      injPulseMs: 14.35,
+      fuelTrimPct: 0,
+      batteryCurrentA: 1.0,
+      batterySocPct: 98.0,
+      ambientPressureBar: 0.583,
+      oatC: -13.7,
+      altitudeFt: 14500
     },
-    fleetState: [],   // filled by the gateway: every vehicle's live engine, twin and AI summary
+    fleetState: [],// filled by the gateway: every vehicle's live engine, twin and AI summary
     residuals: {
       egtResiduals: [2.0, -0.5, 4.0, 1.2],
       chtResiduals: [0.2, 1.5, -0.2, 2.1],
@@ -690,24 +697,36 @@ export const TelemetryProvider = ({ children }) => {
       chtAvg: telemetry.engine.cht.reduce((a, b) => a + b, 0) / 4,
       egtAvg: telemetry.engine.egt.reduce((a, b) => a + b, 0) / 4,
     },
+    // ECU injection data (from the engine model / data source; nothing here is a constant)
     combustion: {
-      startOfInj: 18.2,
-      injDuration: 1850,
-      railPress: 185.4,
-      ignAdv: 16.5
+      injPulseMs: telemetry.engine.injPulseMs ?? null,
+      injResidualPct: telemetry.residuals?.injectionTimeResidualPct ?? null,
+      fuelTrimPct: telemetry.engine.fuelTrimPct ?? null,
+      lambda: telemetry.engine.lambda,
+      fuelFlowLph: telemetry.engine.fuelFlowLph,
+      // duty cycle = injection time / time per 4-stroke cycle (720° at the current rpm)
+      injDutyPct: telemetry.engine.injPulseMs != null && telemetry.engine.rpm > 0
+        ? (telemetry.engine.injPulseMs / (120000 / telemetry.engine.rpm)) * 100 : null,
     },
     vibration: {
-      fft1x: telemetry.engine.vibrationGrms * 0.4,
-      fft2x: telemetry.engine.vibrationGrms * 0.2,
-      fft05x: telemetry.engine.vibrationGrms * 0.1,
-      knock: telemetry.engine.vibrationGrms > 1.0 ? 0.45 : 0.02
+      grms: telemetry.engine.vibrationGrms,
+      residual: telemetry.residuals?.vibrationResidual ?? null,
     },
     electrical: {
-      alt1: telemetry.engine.genCurrentA * 0.5,
-      alt2: telemetry.engine.genCurrentA * 0.5,
-      ripple: 45.2,
-      batSoc: 98.4,
-      batSoh: 96.5
+      busV: telemetry.engine.genVoltageV,
+      altA: telemetry.engine.genCurrentA,
+      batA: telemetry.engine.batteryCurrentA ?? null,
+      loadA: telemetry.engine.batteryCurrentA != null ? telemetry.engine.genCurrentA - telemetry.engine.batteryCurrentA : null,
+      batSoc: telemetry.engine.batterySocPct ?? null,
+      // endurance on battery alone while discharging (17 Ah battery assumed by the engine model)
+      enduranceMin: telemetry.engine.batteryCurrentA < -0.5 && telemetry.engine.batterySocPct != null
+        ? (telemetry.engine.batterySocPct / 100) * 17 / -telemetry.engine.batteryCurrentA * 60 : null,
+    },
+    air: {
+      altitudeFt: telemetry.engine.altitudeFt ?? telemetry.mission?.altitudeFt,
+      oatC: telemetry.engine.oatC ?? null,
+      pressureBar: telemetry.engine.ambientPressureBar ?? null,
+      wastegatePct: telemetry.engine.wastegateDutyPct ?? null,
     }
   }), [telemetry]);
 

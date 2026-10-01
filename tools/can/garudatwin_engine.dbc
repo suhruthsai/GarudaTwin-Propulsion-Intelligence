@@ -37,6 +37,16 @@ BO_ 784 ENGINE_ELEC_COOL: 8 ENGINE_ECU
  SG_ gen_current : 23|16@0- (0.01,0) [-300|300] "A" GCS_BRIDGE
  SG_ coolant_temp : 39|16@0+ (0.01,-50) [-50|200] "degC" GCS_BRIDGE
 
+BO_ 800 ENGINE_INJ_BATT: 8 ENGINE_ECU
+ SG_ inj_pw_ms : 7|16@0+ (0.001,0) [0|30] "ms" GCS_BRIDGE
+ SG_ fuel_trim_pct : 23|16@0- (0.01,0) [-25|25] "%" GCS_BRIDGE
+ SG_ battery_current_a : 39|16@0- (0.01,0) [-150|60] "A" GCS_BRIDGE
+ SG_ battery_soc_pct : 55|16@0+ (0.01,0) [0|100] "%" GCS_BRIDGE
+
+BO_ 816 AIR_DATA: 8 ENGINE_ECU
+ SG_ ambient_pressure_bar : 7|16@0+ (0.0001,0) [0|1.1] "bar" GCS_BRIDGE
+ SG_ oat_c : 23|16@0- (0.01,0) [-60|60] "degC" GCS_BRIDGE
+
 
 CM_ "GarudaTwin engine telemetry CAN layout (simulator / test rig). Matches generateBinaryCanFrames() in server.js. A real engine ECU has its own message layout, which must come from that ECU's DBC / interface control document.";
 CM_ BO_ 768 "oil_temp offset -50 degC so sub-zero cold-soak temperatures fit an unsigned field";

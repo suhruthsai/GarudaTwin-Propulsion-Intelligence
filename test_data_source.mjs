@@ -126,16 +126,16 @@ try {
   console.log('\n[3] Live ingest (test rig / CAN bridge path)');
   const ep = episodeOf('MISFIRE');
   const epRows = rows.filter(r => r.episode === ep && r.phase === 'fault').slice(-16);
-  const CH = ['rpm', 'throttle', 'egt1', 'egt2', 'egt3', 'egt4', 'cht1', 'cht2', 'cht3', 'cht4', 'map_bar', 'oil_pressure', 'oil_temp', 'vibration', 'fuel_flow', 'lambda', 'gen_voltage', 'gen_current', 'coolant_temp'];
+  const { CHANNEL_NAMES: CH } = await import('./server/engineFrame.js');   // all 25 channels the AI uses
   const toFrame = r => ({ t_s: Number(r.t_s), ...Object.fromEntries(CH.map(c => [c, Number(r[c])])) });
   check('ingest refused unless source is LIVE (409)', (await post('/api/ingest/frames', { frames: [toFrame(epRows[0])] }, IH)).status === 409);
   await post('/api/source', { mode: 'LIVE' });
   check('ingest without the key refused (401)', (await post('/api/ingest/frames', { frames: [toFrame(epRows[0])] }, { 'Content-Type': 'application/json' })).status === 401);
   await sleep(700);
   check('no frame yet -> NO_DATA, never NOMINAL', tel.health.status === 'NO_DATA', tel.health.status);
-  const missing = toFrame(epRows[0]); delete missing.lambda;
+  const missing = toFrame(epRows[0]); delete missing.battery_soc_pct;
   const r1 = await post('/api/ingest/frames', { frames: [missing] }, IH);
-  check('frame missing a channel rejected with its name', r1.status === 400 && /lambda/.test(r1.body.errors[0]), r1.body);
+  check('frame missing a channel rejected with its name', r1.status === 400 && /battery_soc_pct/.test(r1.body.errors[0]), r1.body);
   const n0 = ai.length;
   for (let i = 0; i < epRows.length; i++) {
     await post('/api/ingest/frames', { frames: [toFrame(epRows[i])] }, IH);

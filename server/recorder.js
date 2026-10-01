@@ -9,7 +9,7 @@
  * `truth_label` / `truth_severity` hold the injected simulator scenario or a CSV label column.
  * They are ground truth for evaluation only and are never sent to the AI.
  */
-import { CHANNEL_NAMES, normalizeFrame, parseCsv, csvCell } from './engineFrame.js';
+import { CHANNEL_NAMES, FRAME_SCHEMA_VERSION, normalizeFrame, parseCsv, csvCell } from './engineFrame.js';
 
 const MAX_AUTO_RECORDINGS = 30;     // SIM/LIVE recordings kept (oldest pruned); CSV imports are kept
 const MAX_IMPORT_ROWS = 200000;
@@ -32,7 +32,8 @@ export class Recorder {
         ai_frame_count INTEGER DEFAULT 0,
         segment_count  INTEGER DEFAULT 1,
         has_truth      INTEGER DEFAULT 0,
-        notes          TEXT
+        notes          TEXT,
+        schema_version INTEGER DEFAULT 1
       );
       CREATE TABLE IF NOT EXISTS engine_frames (
         recording_id   INTEGER NOT NULL,
@@ -41,7 +42,7 @@ export class Recorder {
         segment        INTEGER NOT NULL DEFAULT 0, -- independent stretches of data (fresh AI session each)
         ai_input       INTEGER NOT NULL DEFAULT 0, -- 1 = frame scored by the AI
         ai_time_s      REAL,                       -- exact time base sent to the AI with this frame
-        ${CHANNEL_NAMES.map(c => `${c} REAL NOT NULL`).join(',\n        ')},
+        ${CHANNEL_NAMES.map(c => `${c} REAL`).join(',\n        ')},
         truth_label    TEXT,
         truth_severity REAL,
         live_diagnosis TEXT,
@@ -50,6 +51,12 @@ export class Recorder {
         PRIMARY KEY (recording_id, seq)
       );
     `);
+    // Migrate databases created before newer channels existed (old rows keep NULL; they are not replayable)
+    const have = new Set(db.prepare(`PRAGMA table_info(engine_frames)`).all().map(c => c.name));
+    for (const c of CHANNEL_NAMES) if (!have.has(c)) db.exec(`ALTER TABLE engine_frames ADD COLUMN ${c} REAL`);
+    const haveRec = new Set(db.prepare(`PRAGMA table_info(recordings)`).all().map(c => c.name));
+    if (!haveRec.has('schema_version')) db.exec(`ALTER TABLE recordings ADD COLUMN schema_version INTEGER DEFAULT 1`);
+
     const cols = ['recording_id', 'seq', 't_s', 'segment', 'ai_input', 'ai_time_s', ...CHANNEL_NAMES,
       'truth_label', 'truth_severity', 'live_diagnosis', 'live_health', 'live_rul'];
     this._cols = cols;
@@ -62,8 +69,8 @@ export class Recorder {
   // ── live recording ─────────────────────────────────────────
   start({ source, name, uavId }) {
     this.stop();
-    const id = this.db.prepare(`INSERT INTO recordings (name, source, uav_id, created_at) VALUES (?,?,?,?)`)
-      .run(name, source, uavId, Date.now()).lastInsertRowid;
+    const id = this.db.prepare(`INSERT INTO recordings (name, source, uav_id, created_at, schema_version) VALUES (?,?,?,?,?)`)
+      .run(name, source, uavId, Date.now(), FRAME_SCHEMA_VERSION).lastInsertRowid;
     this.active = { id: Number(id), t0: null, seq: 0, segment: 0, buf: [], aiCount: 0, frames: 0, hasTruth: false, lastT: 0 };
     return this.active.id;
   }
@@ -209,8 +216,8 @@ export class Recorder {
     if (aiCount < 2) return { error: 'not enough samples for the AI (need at least 2 rows ~1 s apart)' };
 
     const id = Number(this.db.prepare(`INSERT INTO recordings (name, source, created_at, ended_at, duration_s, frame_count,
-        ai_frame_count, segment_count, has_truth) VALUES (?,?,?,?,?,?,?,?,?)`)
-      .run(name, 'CSV', Date.now(), Date.now(), playEnd, out.length, aiCount, segment + 1, hasTruth ? 1 : 0).lastInsertRowid);
+        ai_frame_count, segment_count, has_truth, schema_version) VALUES (?,?,?,?,?,?,?,?,?,?)`)
+      .run(name, 'CSV', Date.now(), Date.now(), playEnd, out.length, aiCount, segment + 1, hasTruth ? 1 : 0, FRAME_SCHEMA_VERSION).lastInsertRowid);
     for (const row of out) row.recording_id = id;
     this._insMany(out);
     return { id, frames: out.length, aiFrames: aiCount, segments: segment + 1, durationS: playEnd, hasTruth };

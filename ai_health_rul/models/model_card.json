@@ -1,9 +1,9 @@
 {
   "version": "2.0.0",
-  "trained_at": "2026-10-01T06:05:49",
+  "trained_at": "2026-10-01T13:28:26",
   "training_data": {
     "source": "training/generate_dataset.mjs driving src/engine/EngineSimulator.js (same physics as the live gateway)",
-    "samples": 377877,
+    "samples": 378618,
     "episodes": 5400,
     "split": "by episode, stratified by fault class: 70/15/15 train/val/test",
     "profiles": [
@@ -31,11 +31,13 @@
     "fuel_flow_res",
     "lambda_res",
     "gen_v_res",
-    "gen_i_res",
+    "batt_i_res",
     "coolant_res",
     "egt_cold_spread",
     "cht_cold_spread",
     "rpm_step",
+    "inj_pw_res_pct",
+    "fuel_trim_res",
     "egt_res_mean_rmean",
     "egt_spread_rmean",
     "cht_res_mean_rmean",
@@ -47,11 +49,13 @@
     "fuel_flow_res_rmean",
     "lambda_res_rmean",
     "gen_v_res_rmean",
-    "gen_i_res_rmean",
+    "batt_i_res_rmean",
     "coolant_res_rmean",
     "egt_cold_spread_rmean",
     "cht_cold_spread_rmean",
     "rpm_step_rmean",
+    "inj_pw_res_pct_rmean",
+    "fuel_trim_res_rmean",
     "egt_spread_rstd",
     "oil_press_res_rstd",
     "vib_res_rstd",
@@ -78,14 +82,14 @@
     "SENSOR_DRIFT"
   ],
   "best_iterations": {
-    "classifier": 190,
-    "severity": 597,
-    "rul": 172
+    "classifier": 154,
+    "severity": 533,
+    "rul": 196
   },
   "anomaly_calibration": {
     "method": "Mahalanobis distance, Ledoit-Wolf covariance",
-    "threshold": 26.424640655517578,
-    "nominal_median": 5.702767372131348,
+    "threshold": 23.52726173400879,
+    "nominal_median": 5.827713489532471,
     "target_false_alarm_rate": 0.001,
     "persistence_samples": 2
   },
@@ -94,41 +98,45 @@
     0.5,
     0.975
   ],
-  "rul_conformal_log_margin": 0.18581811817086233,
+  "rul_conformal_log_margin": 0.15286402723032236,
   "feature_ranges": {
     "low": [
-      -59.42790603637695,
+      -113.79267120361328,
       0.0,
-      -6.353909015655518,
+      -7.205048561096191,
       0.0,
-      -0.04213764891028404,
-      -2.7518508434295654,
-      -23.541492462158203,
-      -0.11003582179546356,
-      -2.1480000019073486,
-      -0.05400000140070915,
-      -4.599999904632568,
-      -31.67530059814453,
-      -16.399999618530273,
+      -0.038600001484155655,
+      -2.6490702629089355,
+      -12.905111312866211,
+      -0.08363986015319824,
+      -0.6039999723434448,
+      -0.04699999839067459,
+      -5.400000095367432,
+      -47.900001525878906,
+      -13.153868675231934,
       0.0,
       0.0,
-      -1882.960693359375,
-      -55.76353073120117,
+      -1855.6539306640625,
+      -2.095513105392456,
+      -2.2500500679016113,
+      -110.85466003417969,
       0.20000000298023224,
-      -6.313623905181885,
+      -7.183645248413086,
       0.05000000074505806,
-      -0.015134487301111221,
-      -2.322014331817627,
-      -20.698890686035156,
-      -0.015853144228458405,
-      -2.1332530975341797,
-      -0.019874999299645424,
-      -4.546912670135498,
-      -30.837499618530273,
-      -15.82868766784668,
+      -0.014999999664723873,
+      -2.2321937084198,
+      -11.600578308105469,
+      -0.01588588021695614,
+      -0.29666733741760254,
+      -0.014875000342726707,
+      -5.318756103515625,
+      -47.50251007080078,
+      -12.911149024963379,
       0.20000000298023224,
       0.05000000074505806,
-      -303.17822265625,
+      -311.6187744140625,
+      -1.0578473806381226,
+      -1.162500023841858,
       0.699999988079071,
       0.017999999225139618,
       0.0071000000461936,
@@ -140,186 +148,190 @@
       5.519999980926514
     ],
     "high": [
-      37.7422981262207,
-      145.9499969482422,
-      32.857112884521484,
-      27.850000381469727,
-      0.5934876799583435,
-      0.9257519841194153,
-      33.945945739746094,
-      2.2414281368255615,
-      0.04800000041723251,
-      0.17900000512599945,
+      37.81435775756836,
+      146.60000610351562,
+      32.9958610534668,
+      27.5,
+      0.6147000193595886,
+      1.0443336963653564,
+      33.406211853027344,
+      2.2550783157348633,
+      4.315999984741211,
+      0.052000001072883606,
       0.20000000298023224,
-      1.5,
-      33.5,
-      238.96295166015625,
-      25.5,
-      1917.4788818359375,
-      33.340476989746094,
-      139.5438995361328,
-      32.834720611572266,
-      27.435956954956055,
-      0.5506203770637512,
-      0.8356004953384399,
-      31.589139938354492,
-      2.1319639682769775,
-      0.04800000041723251,
-      0.17687499523162842,
+      0.5,
+      33.54771423339844,
+      237.2250213623047,
+      28.700000762939453,
+      1981.150390625,
+      14.406291007995605,
+      15.0,
+      33.71646499633789,
+      139.26564025878906,
+      32.88547134399414,
+      27.425006866455078,
+      0.5599031448364258,
+      1.040066123008728,
+      31.445646286010742,
+      2.1268234252929688,
+      4.298750400543213,
+      0.03175000101327896,
       0.10000000149011612,
-      1.5,
-      33.45000076293945,
-      226.0750732421875,
-      25.28125,
-      306.50384521484375,
-      54.062950134277344,
-      0.9149242043495178,
-      0.8477299213409424,
-      0.21268437802791595,
-      10.973563194274902,
-      0.07703134417533875,
-      24.132335662841797,
-      88.02775573730469,
-      824.2710571289062
+      0.30000001192092896,
+      33.49980163574219,
+      225.15634155273438,
+      28.581249237060547,
+      310.4937438964844,
+      14.373147010803223,
+      15.0,
+      54.04067611694336,
+      0.9371594786643982,
+      0.8924476504325867,
+      0.2300851196050644,
+      10.831570625305176,
+      0.037149615585803986,
+      44.048336029052734,
+      86.63188171386719,
+      851.0828857421875
     ]
   },
   "golden_twin_parity_max_abs_diff": [
-    0.010315028541981519,
-    0.0034093884510468797,
-    0.0017236332480905503
+    0.01056000000005497,
+    0.004775559532731677,
+    0.006559948378594527
   ],
   "metrics": {
     "anomaly_detector": {
       "precision": 1.0,
-      "recall": 0.8821,
-      "f1": 0.9374,
-      "roc_auc": 0.9965,
+      "recall": 0.9194,
+      "f1": 0.958,
+      "roc_auc": 0.9975,
       "nominal_false_alarm_rate": 0.0,
-      "raw_single_sample_recall": 0.9028,
-      "raw_single_sample_false_alarm_rate": 0.00069,
+      "raw_single_sample_recall": 0.9402,
+      "raw_single_sample_false_alarm_rate": 0.00112,
       "note": "Fitted on nominal data only, so per-class recall is the unknown-fault detection rate. 2-sample persistence applied.",
       "recall_by_class": {
-        "CYL3_INJECTOR": 0.9679,
-        "BLOW_BY": 0.9708,
-        "OIL_PUMP_CAVITATION": 0.9677,
-        "TURBO_WASTEGATE_STUCK": 0.8787,
-        "COOLING_DEGRADATION": 0.9588,
-        "GENERATOR_FAILURE": 0.8657,
-        "PRGB_DEGRADATION": 0.9693,
-        "MISFIRE": 0.9654,
-        "COMBUSTION_INSTABILITY": 0.6543,
-        "INJECTOR_COKING": 0.6701,
-        "SENSOR_DRIFT": 0.8113
+        "CYL3_INJECTOR": 0.9696,
+        "BLOW_BY": 0.9573,
+        "OIL_PUMP_CAVITATION": 0.971,
+        "TURBO_WASTEGATE_STUCK": 0.8326,
+        "COOLING_DEGRADATION": 0.8434,
+        "GENERATOR_FAILURE": 0.85,
+        "PRGB_DEGRADATION": 0.9687,
+        "MISFIRE": 0.972,
+        "COMBUSTION_INSTABILITY": 0.9621,
+        "INJECTOR_COKING": 0.9672,
+        "SENSOR_DRIFT": 0.8243
       },
       "recall_by_severity": {
-        "0.05-0.15": 0.6721,
-        "0.15-0.30": 0.9123,
-        "0.30-0.60": 0.9611,
-        "0.60-1.00": 0.9612
+        "0.05-0.15": 0.783,
+        "0.15-0.30": 0.9362,
+        "0.30-0.60": 0.9571,
+        "0.60-1.00": 0.9655
       }
     },
     "detection_end_to_end": {
-      "precision": 0.9999,
-      "recall": 0.964,
-      "f1": 0.9816,
-      "nominal_false_alarm_rate": 0.00019,
-      "false_alarms_per_hour_at_1hz": 0.68,
+      "precision": 1.0,
+      "recall": 0.9653,
+      "f1": 0.9823,
+      "nominal_false_alarm_rate": 0.0,
+      "false_alarms_per_hour_at_1hz": 0.0,
       "nominal_false_alarm_rate_by_profile": {
         "FIXED": 0.0,
-        "LOITER": 0.00048,
+        "LOITER": 0.0,
         "TRANSIENTS": 0.0
       },
       "recall_by_severity": {
-        "0.05-0.15": 0.956,
-        "0.15-0.30": 0.963,
-        "0.30-0.60": 0.968,
-        "0.60-1.00": 0.9672
+        "0.05-0.15": 0.9603,
+        "0.15-0.30": 0.9629,
+        "0.30-0.60": 0.9665,
+        "0.60-1.00": 0.9692
       },
       "median_detection_latency_s": 1.19,
       "p90_detection_latency_s": 1.39
     },
     "fault_classifier": {
-      "macro_f1": 0.98,
-      "weighted_f1": 0.976,
+      "macro_f1": 0.9806,
+      "weighted_f1": 0.9762,
       "per_class": {
         "NONE": {
-          "precision": 0.9326,
-          "recall": 0.9998,
-          "f1-score": 0.965,
-          "support": 15851.0
+          "precision": 0.9287,
+          "recall": 1.0,
+          "f1-score": 0.963,
+          "support": 15225.0
         },
         "CYL3_INJECTOR": {
           "precision": 1.0,
-          "recall": 0.9682,
-          "f1-score": 0.9839,
-          "support": 2864.0
+          "recall": 0.9693,
+          "f1-score": 0.9844,
+          "support": 2766.0
         },
         "BLOW_BY": {
           "precision": 1.0,
-          "recall": 0.9698,
-          "f1-score": 0.9847,
-          "support": 3048.0
+          "recall": 0.9693,
+          "f1-score": 0.9844,
+          "support": 3257.0
         },
         "OIL_PUMP_CAVITATION": {
           "precision": 1.0,
-          "recall": 0.9677,
-          "f1-score": 0.9836,
-          "support": 2789.0
+          "recall": 0.971,
+          "f1-score": 0.9853,
+          "support": 3071.0
         },
         "TURBO_WASTEGATE_STUCK": {
           "precision": 1.0,
-          "recall": 0.9706,
-          "f1-score": 0.9851,
-          "support": 3066.0
+          "recall": 0.9702,
+          "f1-score": 0.9849,
+          "support": 3155.0
         },
         "COOLING_DEGRADATION": {
           "precision": 1.0,
-          "recall": 0.9669,
-          "f1-score": 0.9832,
-          "support": 2813.0
+          "recall": 0.9703,
+          "f1-score": 0.9849,
+          "support": 3065.0
         },
         "GENERATOR_FAILURE": {
           "precision": 1.0,
-          "recall": 0.9717,
-          "f1-score": 0.9856,
-          "support": 3105.0
+          "recall": 0.9692,
+          "f1-score": 0.9844,
+          "support": 2794.0
         },
         "PRGB_DEGRADATION": {
           "precision": 1.0,
-          "recall": 0.9699,
-          "f1-score": 0.9847,
-          "support": 3058.0
+          "recall": 0.968,
+          "f1-score": 0.9838,
+          "support": 3034.0
         },
         "MISFIRE": {
           "precision": 1.0,
-          "recall": 0.9658,
-          "f1-score": 0.9826,
-          "support": 2774.0
+          "recall": 0.972,
+          "f1-score": 0.9858,
+          "support": 3248.0
         },
         "COMBUSTION_INSTABILITY": {
-          "precision": 0.9992,
-          "recall": 0.9628,
-          "f1-score": 0.9807,
-          "support": 2745.0
+          "precision": 1.0,
+          "recall": 0.9682,
+          "f1-score": 0.9838,
+          "support": 3112.0
         },
         "INJECTOR_COKING": {
           "precision": 1.0,
-          "recall": 0.9701,
-          "f1-score": 0.9848,
-          "support": 2746.0
+          "recall": 0.9672,
+          "f1-score": 0.9833,
+          "support": 2898.0
         },
         "SENSOR_DRIFT": {
-          "precision": 0.9988,
-          "recall": 0.9167,
-          "f1-score": 0.956,
-          "support": 2798.0
+          "precision": 1.0,
+          "recall": 0.9226,
+          "f1-score": 0.9597,
+          "support": 3295.0
         }
       },
       "accuracy_by_severity": {
-        "0.05-0.15": 0.9558,
-        "0.15-0.30": 0.963,
-        "0.30-0.60": 0.968,
-        "0.60-1.00": 0.9672
+        "0.05-0.15": 0.9603,
+        "0.15-0.30": 0.9629,
+        "0.30-0.60": 0.9665,
+        "0.60-1.00": 0.968
       },
       "confusion_matrix": {
         "labels": [
@@ -339,7 +351,7 @@
         ],
         "matrix": [
           [
-            15848,
+            15225,
             0,
             0,
             0,
@@ -350,12 +362,116 @@
             0,
             0,
             0,
-            3,
+            0,
+            0
+          ],
+          [
+            85,
+            2681,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            100,
+            0,
+            3157,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            89,
+            0,
+            0,
+            2982,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            94,
+            0,
+            0,
+            0,
+            3061,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            91,
+            0,
+            0,
+            0,
+            0,
+            2974,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            86,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2708,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            97,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2937,
+            0,
+            0,
+            0,
+            0,
             0
           ],
           [
             91,
-            2773,
             0,
             0,
             0,
@@ -363,31 +479,14 @@
             0,
             0,
             0,
-            0,
-            0,
-            0,
-            0
-          ],
-          [
-            92,
-            0,
-            2956,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
+            3157,
             0,
             0,
             0,
             0
           ],
           [
-            90,
-            0,
-            0,
-            2699,
+            99,
             0,
             0,
             0,
@@ -396,64 +495,7 @@
             0,
             0,
             0,
-            0
-          ],
-          [
-            90,
-            0,
-            0,
-            0,
-            2976,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0
-          ],
-          [
-            93,
-            0,
-            0,
-            0,
-            0,
-            2720,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0
-          ],
-          [
-            88,
-            0,
-            0,
-            0,
-            0,
-            0,
-            3017,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0
-          ],
-          [
-            92,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            2966,
-            0,
-            0,
+            3013,
             0,
             0,
             0
@@ -467,29 +509,14 @@
             0,
             0,
             0,
-            2679,
             0,
             0,
-            0,
-            0
-          ],
-          [
-            102,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            2643,
-            0,
+            2803,
             0,
             0
           ],
           [
-            82,
+            242,
             0,
             0,
             0,
@@ -499,24 +526,9 @@
             0,
             0,
             0,
-            2664,
             0,
-            0
-          ],
-          [
-            231,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            2,
-            0,
-            2565,
-            0
+            3040,
+            13
           ],
           [
             0,
@@ -537,188 +549,257 @@
       }
     },
     "health_index": {
-      "health_index_mae_pct": 1.24,
-      "health_index_mae_pct_faults_only": 1.52,
-      "health_index_mean_during_sensor_drift": 99.57
+      "health_index_mae_pct": 1.51,
+      "health_index_mae_pct_faults_only": 1.88,
+      "health_index_mean_during_sensor_drift": 99.54
     },
     "rul": {
       "target": "hours to functional failure (severity = 1) under assumed degradation priors",
-      "mae_hours": 25.28,
-      "median_abs_error_hours": 11.94,
-      "median_abs_pct_error": 26.6,
-      "interval_95_coverage": 0.9554,
+      "mae_hours": 22.87,
+      "median_abs_error_hours": 11.74,
+      "median_abs_pct_error": 26.8,
+      "interval_95_coverage": 0.9449,
       "mae_hours_by_class": {
-        "CYL3_INJECTOR": 16.64,
-        "BLOW_BY": 37.87,
-        "OIL_PUMP_CAVITATION": 7.27,
-        "TURBO_WASTEGATE_STUCK": 19.18,
-        "COOLING_DEGRADATION": 22.0,
-        "GENERATOR_FAILURE": 14.37,
-        "PRGB_DEGRADATION": 39.41,
-        "MISFIRE": 11.42,
-        "COMBUSTION_INSTABILITY": 13.21,
-        "INJECTOR_COKING": 71.42
+        "CYL3_INJECTOR": 16.45,
+        "BLOW_BY": 34.83,
+        "OIL_PUMP_CAVITATION": 7.5,
+        "TURBO_WASTEGATE_STUCK": 24.28,
+        "COOLING_DEGRADATION": 22.48,
+        "GENERATOR_FAILURE": 20.88,
+        "PRGB_DEGRADATION": 25.57,
+        "MISFIRE": 9.3,
+        "COMBUSTION_INSTABILITY": 11.15,
+        "INJECTOR_COKING": 57.57
+      }
+    },
+    "flight_condition": {
+      "by_altitude_ft": {
+        "0-5000": {
+          "samples": 9987,
+          "fault_detection_recall": 0.9664,
+          "classifier_accuracy_on_faults": 0.9664,
+          "nominal_false_alarms_per_hour": 0.0,
+          "health_mae_pct": 1.52
+        },
+        "5000-10000": {
+          "samples": 11408,
+          "fault_detection_recall": 0.9649,
+          "classifier_accuracy_on_faults": 0.9649,
+          "nominal_false_alarms_per_hour": 0.0,
+          "health_mae_pct": 1.33
+        },
+        "10000-15000": {
+          "samples": 10111,
+          "fault_detection_recall": 0.9695,
+          "classifier_accuracy_on_faults": 0.9695,
+          "nominal_false_alarms_per_hour": 0.0,
+          "health_mae_pct": 1.42
+        },
+        "15000-20000": {
+          "samples": 10948,
+          "fault_detection_recall": 0.96,
+          "classifier_accuracy_on_faults": 0.9582,
+          "nominal_false_alarms_per_hour": 0.0,
+          "health_mae_pct": 1.53
+        },
+        "20000-23001": {
+          "samples": 6466,
+          "fault_detection_recall": 0.9662,
+          "classifier_accuracy_on_faults": 0.9662,
+          "nominal_false_alarms_per_hour": 0.0,
+          "health_mae_pct": 1.96
+        }
+      },
+      "by_isa_deviation_c": {
+        "-21..-5": {
+          "samples": 15499,
+          "fault_detection_recall": 0.9632,
+          "classifier_accuracy_on_faults": 0.9619,
+          "nominal_false_alarms_per_hour": 0.0,
+          "health_mae_pct": 1.57
+        },
+        "-5..+5": {
+          "samples": 11260,
+          "fault_detection_recall": 0.9688,
+          "classifier_accuracy_on_faults": 0.9688,
+          "nominal_false_alarms_per_hour": 0.0,
+          "health_mae_pct": 1.49
+        },
+        "+5..+15": {
+          "samples": 11516,
+          "fault_detection_recall": 0.9642,
+          "classifier_accuracy_on_faults": 0.9642,
+          "nominal_false_alarms_per_hour": 0.0,
+          "health_mae_pct": 1.43
+        },
+        "+15..+26": {
+          "samples": 10645,
+          "fault_detection_recall": 0.9657,
+          "classifier_accuracy_on_faults": 0.9657,
+          "nominal_false_alarms_per_hour": 0.0,
+          "health_mae_pct": 1.55
+        }
       }
     },
     "autoencoder_legacy_endpoint": {
-      "threshold_mse": 0.204239,
+      "threshold_mse": 0.155599,
       "inputs": "RPM, throttle, EGT1-4, CHT1-4, MAP, oil pressure (no vibration/voltage/oil temp)",
-      "nominal_false_alarm_rate": 0.00139,
-      "recall": 0.1396,
+      "nominal_false_alarm_rate": 0.00079,
+      "recall": 0.1708,
       "recall_by_class": {
-        "CYL3_INJECTOR": 0.4571,
-        "BLOW_BY": 0.2457,
-        "OIL_PUMP_CAVITATION": 0.2305,
-        "TURBO_WASTEGATE_STUCK": 0.031,
-        "COOLING_DEGRADATION": 0.0011,
-        "GENERATOR_FAILURE": 0.0019,
-        "PRGB_DEGRADATION": 0.0003,
-        "MISFIRE": 0.5097,
-        "COMBUSTION_INSTABILITY": 0.0033,
-        "INJECTOR_COKING": 0.0011,
-        "SENSOR_DRIFT": 0.0743
+        "CYL3_INJECTOR": 0.457,
+        "BLOW_BY": 0.269,
+        "OIL_PUMP_CAVITATION": 0.3533,
+        "TURBO_WASTEGATE_STUCK": 0.0422,
+        "COOLING_DEGRADATION": 0.0007,
+        "GENERATOR_FAILURE": 0.0011,
+        "PRGB_DEGRADATION": 0.0007,
+        "MISFIRE": 0.6241,
+        "COMBUSTION_INSTABILITY": 0.008,
+        "INJECTOR_COKING": 0.0007,
+        "SENSOR_DRIFT": 0.102
       }
     }
   },
   "recovery_after_fault_cleared": {
     "note": "recovery samples are evaluation-only (not used for training)",
-    "episodes": 215,
-    "median_seconds_to_nominal": 7.77,
-    "p90_seconds_to_nominal": 8.46,
-    "non_nominal_fraction_during_recovery": 0.1235
+    "episodes": 186,
+    "median_seconds_to_nominal": 8.15,
+    "p90_seconds_to_nominal": 12.4,
+    "non_nominal_fraction_during_recovery": 0.1601
   },
   "stress_test_nuisance_offsets": {
     "anomaly_detector": {
-      "precision": 0.6725,
-      "recall": 0.99,
-      "f1": 0.8009,
-      "roc_auc": 0.8937,
-      "nominal_false_alarm_rate": 0.96745,
-      "raw_single_sample_recall": 1.0,
-      "raw_single_sample_false_alarm_rate": 0.99874,
+      "precision": 0.6936,
+      "recall": 0.9895,
+      "f1": 0.8156,
+      "roc_auc": 0.9297,
+      "nominal_false_alarm_rate": 0.96729,
+      "raw_single_sample_recall": 0.9999,
+      "raw_single_sample_false_alarm_rate": 0.9979,
       "note": "Fitted on nominal data only, so per-class recall is the unknown-fault detection rate. 2-sample persistence applied.",
       "recall_by_class": {
-        "CYL3_INJECTOR": 0.9892,
-        "BLOW_BY": 0.9905,
-        "OIL_PUMP_CAVITATION": 0.9892,
-        "TURBO_WASTEGATE_STUCK": 0.9902,
-        "COOLING_DEGRADATION": 0.9879,
-        "GENERATOR_FAILURE": 0.9923,
-        "PRGB_DEGRADATION": 0.9902,
-        "MISFIRE": 0.9877,
-        "COMBUSTION_INSTABILITY": 0.9887,
-        "INJECTOR_COKING": 0.992,
-        "SENSOR_DRIFT": 0.9914
+        "CYL3_INJECTOR": 0.991,
+        "BLOW_BY": 0.988,
+        "OIL_PUMP_CAVITATION": 0.9906,
+        "TURBO_WASTEGATE_STUCK": 0.9892,
+        "COOLING_DEGRADATION": 0.9896,
+        "GENERATOR_FAILURE": 0.9907,
+        "PRGB_DEGRADATION": 0.9885,
+        "MISFIRE": 0.9901,
+        "COMBUSTION_INSTABILITY": 0.9897,
+        "INJECTOR_COKING": 0.9879,
+        "SENSOR_DRIFT": 0.9894
       },
       "recall_by_severity": {
-        "0.05-0.15": 0.9906,
-        "0.15-0.30": 0.9898,
-        "0.30-0.60": 0.9899,
-        "0.60-1.00": 0.9896
+        "0.05-0.15": 0.9894,
+        "0.15-0.30": 0.9891,
+        "0.30-0.60": 0.9895,
+        "0.60-1.00": 0.9899
       }
     },
     "detection_end_to_end": {
-      "precision": 0.6793,
-      "recall": 0.8783,
-      "f1": 0.7661,
-      "nominal_false_alarm_rate": 0.83187,
-      "false_alarms_per_hour_at_1hz": 2994.74,
+      "precision": 0.6956,
+      "recall": 0.9014,
+      "f1": 0.7852,
+      "nominal_false_alarm_rate": 0.87297,
+      "false_alarms_per_hour_at_1hz": 3142.7,
       "nominal_false_alarm_rate_by_profile": {
-        "FIXED": 0.83887,
-        "LOITER": 0.81212,
-        "TRANSIENTS": 0.85161
+        "FIXED": 0.88127,
+        "LOITER": 0.86571,
+        "TRANSIENTS": 0.87819
       },
       "recall_by_severity": {
-        "0.05-0.15": 0.853,
-        "0.15-0.30": 0.8563,
-        "0.30-0.60": 0.8979,
-        "0.60-1.00": 0.8946
+        "0.05-0.15": 0.8949,
+        "0.15-0.30": 0.9044,
+        "0.30-0.60": 0.901,
+        "0.60-1.00": 0.9036
       },
-      "median_detection_latency_s": 0.99,
+      "median_detection_latency_s": 0.0,
       "p90_detection_latency_s": 1.35
     },
     "fault_classifier": {
-      "macro_f1": 0.5159,
-      "weighted_f1": 0.4376,
+      "macro_f1": 0.5036,
+      "weighted_f1": 0.4232,
       "per_class": {
         "NONE": {
-          "precision": 0.4078,
-          "recall": 0.1681,
-          "f1-score": 0.2381,
-          "support": 15851.0
+          "precision": 0.3678,
+          "recall": 0.127,
+          "f1-score": 0.1888,
+          "support": 15225.0
         },
         "CYL3_INJECTOR": {
           "precision": 1.0,
-          "recall": 0.7877,
-          "f1-score": 0.8812,
-          "support": 2864.0
+          "recall": 0.8478,
+          "f1-score": 0.9176,
+          "support": 2766.0
         },
         "BLOW_BY": {
-          "precision": 0.9573,
-          "recall": 0.6995,
-          "f1-score": 0.8083,
-          "support": 3048.0
+          "precision": 0.8833,
+          "recall": 0.7507,
+          "f1-score": 0.8116,
+          "support": 3257.0
         },
         "OIL_PUMP_CAVITATION": {
-          "precision": 0.6839,
-          "recall": 0.4374,
-          "f1-score": 0.5336,
-          "support": 2789.0
+          "precision": 0.5544,
+          "recall": 0.4731,
+          "f1-score": 0.5105,
+          "support": 3071.0
         },
         "TURBO_WASTEGATE_STUCK": {
-          "precision": 0.5049,
-          "recall": 0.4993,
-          "f1-score": 0.5021,
-          "support": 3066.0
+          "precision": 0.5427,
+          "recall": 0.5642,
+          "f1-score": 0.5532,
+          "support": 3155.0
         },
         "COOLING_DEGRADATION": {
-          "precision": 0.2943,
-          "recall": 0.6673,
-          "f1-score": 0.4084,
-          "support": 2813.0
+          "precision": 0.3345,
+          "recall": 0.2773,
+          "f1-score": 0.3032,
+          "support": 3065.0
         },
         "GENERATOR_FAILURE": {
-          "precision": 0.1846,
-          "recall": 0.9311,
-          "f1-score": 0.3082,
-          "support": 3105.0
+          "precision": 0.1232,
+          "recall": 0.9474,
+          "f1-score": 0.2181,
+          "support": 2794.0
         },
         "PRGB_DEGRADATION": {
           "precision": 1.0,
-          "recall": 0.071,
-          "f1-score": 0.1325,
-          "support": 3058.0
+          "recall": 0.2011,
+          "f1-score": 0.3348,
+          "support": 3034.0
         },
         "MISFIRE": {
-          "precision": 1.0,
-          "recall": 0.4265,
-          "f1-score": 0.5979,
-          "support": 2774.0
+          "precision": 0.9984,
+          "recall": 0.3907,
+          "f1-score": 0.5616,
+          "support": 3248.0
         },
         "COMBUSTION_INSTABILITY": {
-          "precision": 0.7813,
-          "recall": 0.5661,
-          "f1-score": 0.6565,
-          "support": 2745.0
+          "precision": 0.842,
+          "recall": 0.5582,
+          "f1-score": 0.6713,
+          "support": 3112.0
         },
         "INJECTOR_COKING": {
           "precision": 1.0,
-          "recall": 0.9359,
-          "f1-score": 0.9669,
-          "support": 2746.0
+          "recall": 0.7409,
+          "f1-score": 0.8511,
+          "support": 2898.0
         },
         "SENSOR_DRIFT": {
-          "precision": 0.1499,
-          "recall": 0.1651,
-          "f1-score": 0.1571,
-          "support": 2798.0
+          "precision": 0.1631,
+          "recall": 0.0965,
+          "f1-score": 0.1213,
+          "support": 3295.0
         }
       },
       "accuracy_by_severity": {
-        "0.05-0.15": 0.4379,
-        "0.15-0.30": 0.5712,
-        "0.30-0.60": 0.6019,
-        "0.60-1.00": 0.6238
+        "0.05-0.15": 0.3734,
+        "0.15-0.30": 0.5762,
+        "0.30-0.60": 0.6033,
+        "0.60-1.00": 0.5174
       },
       "confusion_matrix": {
         "labels": [
@@ -738,43 +819,28 @@
         ],
         "matrix": [
           [
-            2665,
+            1934,
+            0,
+            1,
+            727,
+            968,
+            1165,
+            8409,
             0,
             0,
-            337,
-            1030,
-            2035,
-            6716,
+            314,
             0,
-            0,
-            279,
-            0,
-            2476,
-            313
+            1560,
+            147
           ],
           [
-            266,
-            2256,
+            253,
+            2345,
             0,
             0,
+            2,
             0,
-            206,
-            127,
-            0,
-            0,
-            0,
-            0,
-            0,
-            9
-          ],
-          [
-            448,
-            0,
-            2132,
-            0,
-            30,
-            156,
-            282,
+            166,
             0,
             0,
             0,
@@ -783,139 +849,154 @@
             0
           ],
           [
-            487,
+            289,
+            0,
+            2445,
+            1,
+            2,
+            0,
+            520,
             0,
             0,
-            1220,
-            35,
-            530,
-            502,
             0,
             0,
             0,
-            0,
-            0,
-            15
+            0
           ],
           [
-            446,
+            337,
+            0,
+            0,
+            1453,
+            26,
+            0,
+            1239,
             0,
             0,
             0,
-            1531,
-            297,
-            771,
             0,
-            0,
-            0,
-            0,
-            0,
-            21
+            10,
+            6
           ],
           [
-            329,
-            0,
-            0,
-            4,
-            64,
-            1877,
-            403,
-            0,
-            0,
-            24,
-            0,
-            110,
-            2
-          ],
-          [
-            106,
+            241,
             0,
             0,
             0,
-            20,
-            85,
-            2891,
+            1780,
+            1,
+            1119,
             0,
             0,
             0,
             0,
             3,
-            0
+            11
           ],
           [
-            537,
+            386,
             0,
-            0,
-            205,
-            253,
-            345,
-            1317,
-            217,
-            0,
-            0,
-            0,
-            8,
-            176
-          ],
-          [
-            360,
-            0,
-            42,
-            0,
-            2,
-            46,
-            885,
-            0,
-            1183,
-            61,
-            0,
-            24,
-            171
-          ],
-          [
-            340,
-            0,
-            0,
-            16,
-            8,
-            226,
-            601,
-            0,
-            0,
-            1554,
-            0,
-            0,
-            0
-          ],
-          [
-            112,
-            0,
-            0,
-            0,
-            0,
+            303,
             4,
-            60,
+            110,
+            850,
+            1412,
             0,
             0,
             0,
-            2570,
+            0,
             0,
             0
           ],
           [
-            439,
+            109,
             0,
-            53,
+            0,
+            0,
+            7,
+            31,
+            2647,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            318,
+            0,
+            0,
+            247,
+            141,
+            67,
+            1604,
+            610,
+            0,
+            0,
+            0,
+            44,
+            3
+          ],
+          [
+            272,
+            0,
+            17,
+            31,
+            118,
+            60,
+            1090,
+            0,
+            1269,
+            0,
+            0,
+            15,
+            376
+          ],
+          [
+            451,
+            0,
+            0,
+            56,
+            10,
+            0,
+            855,
+            0,
             2,
-            59,
-            571,
-            1103,
+            1737,
             0,
             0,
-            71,
+            1
+          ],
+          [
+            261,
             0,
-            462,
-            38
+            0,
+            0,
+            1,
+            5,
+            484,
+            0,
+            0,
+            0,
+            2147,
+            0,
+            0
+          ],
+          [
+            407,
+            0,
+            2,
+            102,
+            115,
+            362,
+            1937,
+            0,
+            0,
+            12,
+            0,
+            318,
+            40
           ],
           [
             0,
@@ -936,27 +1017,96 @@
       }
     },
     "health_index": {
-      "health_index_mae_pct": 31.94,
-      "health_index_mae_pct_faults_only": 29.24,
-      "health_index_mean_during_sensor_drift": 59.96
+      "health_index_mae_pct": 22.38,
+      "health_index_mae_pct_faults_only": 19.77,
+      "health_index_mean_during_sensor_drift": 70.54
     },
     "rul": {
       "target": "hours to functional failure (severity = 1) under assumed degradation priors",
-      "mae_hours": 36.52,
-      "median_abs_error_hours": 16.96,
-      "median_abs_pct_error": 39.6,
-      "interval_95_coverage": 0.8832,
+      "mae_hours": 37.31,
+      "median_abs_error_hours": 16.23,
+      "median_abs_pct_error": 41.3,
+      "interval_95_coverage": 0.8303,
       "mae_hours_by_class": {
-        "CYL3_INJECTOR": 20.3,
-        "BLOW_BY": 52.45,
-        "OIL_PUMP_CAVITATION": 8.04,
-        "TURBO_WASTEGATE_STUCK": 29.03,
-        "COOLING_DEGRADATION": 25.41,
-        "GENERATOR_FAILURE": 21.61,
-        "PRGB_DEGRADATION": 58.88,
-        "MISFIRE": 16.51,
-        "COMBUSTION_INSTABILITY": 18.8,
-        "INJECTOR_COKING": 114.28
+        "CYL3_INJECTOR": 23.24,
+        "BLOW_BY": 58.62,
+        "OIL_PUMP_CAVITATION": 9.36,
+        "TURBO_WASTEGATE_STUCK": 40.13,
+        "COOLING_DEGRADATION": 27.74,
+        "GENERATOR_FAILURE": 25.58,
+        "PRGB_DEGRADATION": 41.88,
+        "MISFIRE": 11.5,
+        "COMBUSTION_INSTABILITY": 18.51,
+        "INJECTOR_COKING": 119.11
+      }
+    },
+    "flight_condition": {
+      "by_altitude_ft": {
+        "0-5000": {
+          "samples": 9987,
+          "fault_detection_recall": 0.9123,
+          "classifier_accuracy_on_faults": 0.5336,
+          "nominal_false_alarms_per_hour": 3145.21,
+          "health_mae_pct": 22.4
+        },
+        "5000-10000": {
+          "samples": 11408,
+          "fault_detection_recall": 0.9044,
+          "classifier_accuracy_on_faults": 0.5483,
+          "nominal_false_alarms_per_hour": 3211.07,
+          "health_mae_pct": 22.16
+        },
+        "10000-15000": {
+          "samples": 10111,
+          "fault_detection_recall": 0.8823,
+          "classifier_accuracy_on_faults": 0.4354,
+          "nominal_false_alarms_per_hour": 3189.29,
+          "health_mae_pct": 22.19
+        },
+        "15000-20000": {
+          "samples": 10948,
+          "fault_detection_recall": 0.9123,
+          "classifier_accuracy_on_faults": 0.5493,
+          "nominal_false_alarms_per_hour": 3120.07,
+          "health_mae_pct": 22.97
+        },
+        "20000-23001": {
+          "samples": 6466,
+          "fault_detection_recall": 0.892,
+          "classifier_accuracy_on_faults": 0.5535,
+          "nominal_false_alarms_per_hour": 2960.45,
+          "health_mae_pct": 22.08
+        }
+      },
+      "by_isa_deviation_c": {
+        "-21..-5": {
+          "samples": 15499,
+          "fault_detection_recall": 0.8944,
+          "classifier_accuracy_on_faults": 0.5177,
+          "nominal_false_alarms_per_hour": 3194.76,
+          "health_mae_pct": 22.35
+        },
+        "-5..+5": {
+          "samples": 11260,
+          "fault_detection_recall": 0.9026,
+          "classifier_accuracy_on_faults": 0.5381,
+          "nominal_false_alarms_per_hour": 3056.94,
+          "health_mae_pct": 22.36
+        },
+        "+5..+15": {
+          "samples": 11516,
+          "fault_detection_recall": 0.8946,
+          "classifier_accuracy_on_faults": 0.5344,
+          "nominal_false_alarms_per_hour": 3096.77,
+          "health_mae_pct": 22.63
+        },
+        "+15..+26": {
+          "samples": 10645,
+          "fault_detection_recall": 0.9177,
+          "classifier_accuracy_on_faults": 0.4975,
+          "nominal_false_alarms_per_hour": 3186.73,
+          "health_mae_pct": 22.19
+        }
       }
     },
     "description": "Test episodes re-scored after adding constant per-episode offsets (ranges: {'gen_voltage': (-0.8, 0.3), 'gen_current': (-5.0, 5.0), 'cht_common': (-3.0, 12.0), 'egt_common': (-10.0, 15.0), 'oil_temp': (-3.0, 5.0), 'oil_pressure': (-0.2, 0.1), 'coolant_temp': (-3.0, 5.0), 'vibration': (-0.02, 0.08), 'map_bar': (-0.03, 0.03), 'lambda': (-0.02, 0.02)}) that the simulator never produces, e.g. bus-voltage sag and common-mode CHT/EGT shifts. Quantifies sensitivity to uncalibrated sensors; a deployed twin needs per-engine baseline calibration."
