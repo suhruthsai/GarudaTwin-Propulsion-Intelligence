@@ -327,7 +327,7 @@ If the AI service is not running, the UI shows an **"AI service offline"** banne
 
 ### 3b. (Optional) Regenerate the dataset and retrain the models
 ```bash
-node training/generate_dataset.mjs        # ~265k labelled samples -> training/data/ (gitignored)
+node training/generate_dataset.mjs        # 378,618 labelled samples -> training/data/ (gitignored)
 python training/train_models.py           # trains, calibrates, evaluates, writes model_card.json
 ```
 
