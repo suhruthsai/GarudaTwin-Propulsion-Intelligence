@@ -84,20 +84,20 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // Keyboard navigation shortcuts (1-8, D, K, Esc) for Mission Control
+  // Keyboard navigation shortcuts (1-9, D, K, Esc). Keep keyMap in the same order as `tabs` below.
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
       const keyMap = {
         '1': 'BLUEPRINT',
-        '2': 'TELEMETRY',
-        '3': 'PROGNOSTICS',
+        '2': 'PROGNOSTICS',
+        '3': 'TELEMETRY',
         '4': 'MISSION_MAP',
         '5': 'FLEET',
-        '6': 'SANDBOX',
-        '7': 'DEBRIEF',
-        '8': 'FLIGHT_CONTROLLER',
-        '9': 'DATA',
+        '6': 'DATA',
+        '7': 'FLIGHT_CONTROLLER',
+        '8': 'SANDBOX',
+        '9': 'DEBRIEF',
       };
       if (keyMap[e.key]) {
         setActiveTab(keyMap[e.key]);
@@ -120,17 +120,19 @@ export default function App() {
   const isNoData = health.status === 'NO_DATA';
   const srcMode = telemetry.source?.mode ?? 'SIM';
 
-  // Tabs Configuration (Consolidated: Tab 7 integrates Mission Debrief (demo scenario), Tab 8 FCS Autopilot)
+  // Tabs in demo order: inject & see (1) -> AI diagnosis (2) -> evidence (3) -> decision (4) -> fleet (5)
+  // -> real-data path (6) -> aircraft (7) -> manual bench (8); the hand-authored demo scenario is last (9).
+  // Hotkeys must match keyMap above.
   const tabs = [
     { id: 'BLUEPRINT', hotkey: '1', label: '3D CAD BLUEPRINT', icon: Box, component: UavBlueprintTab },
-    { id: 'TELEMETRY', hotkey: '2', label: 'LIVE TELEMETRY', icon: Activity, component: TelemetryTab },
-    { id: 'PROGNOSTICS', hotkey: '3', label: 'AI PROGNOSTICS & XAI', icon: Brain, component: PrognosticsTab },
+    { id: 'PROGNOSTICS', hotkey: '2', label: 'AI PROGNOSTICS & XAI', icon: Brain, component: PrognosticsTab },
+    { id: 'TELEMETRY', hotkey: '3', label: 'LIVE TELEMETRY', icon: Activity, component: TelemetryTab },
     { id: 'MISSION_MAP', hotkey: '4', label: 'RTB CONTINGENCY PLANNER', icon: Map, component: MissionMapTab },
     { id: 'FLEET', hotkey: '5', label: 'FLEET HEALTH', icon: Users, component: FleetTab },
-    { id: 'SANDBOX', hotkey: '6', label: "WHAT-IF TEST BENCH", icon: Sliders, component: JudgesSandboxTab },
-    { id: 'DEBRIEF', hotkey: '7', label: 'MISSION DEBRIEF (DEMO SCENARIO)', icon: RotateCcw, component: UnifiedDebriefTab },
-    { id: 'FLIGHT_CONTROLLER', hotkey: '8', label: '6-DOF FLIGHT CONTROLLER', icon: Compass, component: FlightControllerTab },
-    { id: 'DATA', hotkey: '9', label: 'DATA SOURCE & REPLAY', icon: Database, component: DataSourceTab },
+    { id: 'DATA', hotkey: '6', label: 'DATA SOURCE & REPLAY', icon: Database, component: DataSourceTab },
+    { id: 'FLIGHT_CONTROLLER', hotkey: '7', label: '6-DOF FLIGHT CONTROLLER', icon: Compass, component: FlightControllerTab },
+    { id: 'SANDBOX', hotkey: '8', label: "WHAT-IF TEST BENCH", icon: Sliders, component: JudgesSandboxTab },
+    { id: 'DEBRIEF', hotkey: '9', label: 'MISSION DEBRIEF (DEMO SCENARIO)', icon: RotateCcw, component: UnifiedDebriefTab },
   ];
 
   const ActiveComponent = tabs.find(t => t.id === activeTab)?.component || (activeTab === 'REPLAY' || activeTab === 'COPILOT' || activeTab === 'DEBRIEF' ? UnifiedDebriefTab : UavBlueprintTab);
@@ -264,7 +266,7 @@ export default function App() {
           {/* Engine data source (gateway link + which source feeds the twin) */}
           <button
             onClick={() => setActiveTab('DATA')}
-            title="Engine data source: open Data Source & Replay [9]"
+            title="Engine data source: open Data Source & Replay [6]"
             className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md border text-xs font-mono shadow-xs ${
               srcMode === 'REPLAY' ? 'bg-amber-50 border-amber-300' : srcMode === 'LIVE' ? 'bg-sky-50 border-sky-300' : 'bg-white border-slate-200'}`}
           >

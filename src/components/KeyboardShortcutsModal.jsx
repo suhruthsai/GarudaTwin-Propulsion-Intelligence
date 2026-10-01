@@ -10,14 +10,14 @@ export const KeyboardShortcutsModal = ({ isOpen, onClose }) => {
       icon: Monitor,
       items: [
         { key: '1', label: '3D CAD Blueprint & Digital Twin', desc: 'Rotax 915 iS airframe & engine assembly' },
-        { key: '2', label: 'Live Telemetry Annunciator', desc: '25 engine, electrical, injection and air-data channels' },
-        { key: '3', label: 'AI Prognostics & XAI Engine', desc: 'XGBoost diagnosis, health and RUL with TreeSHAP explanations' },
+        { key: '2', label: 'AI Prognostics & XAI Engine', desc: 'XGBoost diagnosis, health and RUL with TreeSHAP explanations' },
+        { key: '3', label: 'Live Telemetry Annunciator', desc: '25 engine, electrical, injection and air-data channels' },
         { key: '4', label: 'RTB Contingency Planner', desc: 'Rule-based divert decision, airfield distances, glide reach' },
         { key: '5', label: 'Fleet Health', desc: 'Per-vehicle engine simulator + AI health, RUL and diagnosis' },
-        { key: '6', label: 'What-If Test Bench', desc: 'Manual engine inputs and simulator-generated profiles → one-shot AI assessment' },
-        { key: '7', label: 'Mission Debrief (demo scenario)', desc: 'Hand-authored 8-phase sortie, scripted assistant, demo PDF' },
-        { key: '8', label: '6-DOF Flight Control System', desc: 'TECS, PFD, L1 guidance & control surfaces' },
-        { key: '9', label: 'Data Source & Replay', desc: 'Simulator / live ingest / CAN, flight recordings, CSV import & replay' },
+        { key: '6', label: 'Data Source & Replay', desc: 'Simulator / live ingest / CAN, flight recordings, CSV import & replay' },
+        { key: '7', label: '6-DOF Flight Control System', desc: 'TECS, PFD, L1 guidance & control surfaces' },
+        { key: '8', label: 'What-If Test Bench', desc: 'Manual engine inputs and simulator-generated profiles → one-shot AI assessment' },
+        { key: '9', label: 'Mission Debrief (demo scenario)', desc: 'Hand-authored 8-phase sortie, scripted assistant, demo PDF' },
       ]
     },
     {

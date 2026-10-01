@@ -558,7 +558,7 @@ export const JudgesSandboxTab = () => {
                 WHAT-IF TEST BENCH (MANUAL INPUTS → AI)
               </h2>
               <p className="text-[11px] font-mono text-slate-500">
-                Set engine readings by hand or load a simulator-generated profile; the AI assesses each frame on its own (fresh session, no persistence), so earlier profiles cannot influence it. The diagnosis is reliable; health from a single noise-free frame is less precise than the live 8-sample stream (measured: nominal profile ≈ 89, fault profiles 17–31 vs ≈ 15 true). No hardware is in the loop.
+                Set engine readings by hand or load a simulator-generated profile; the AI assesses each frame on its own (fresh session, no persistence), so earlier profiles cannot influence it. The diagnosis is reliable; health from a single noise-free frame is less precise than the live 8-sample stream (measured: nominal profile 99.5, fault profiles 0–34 vs ≈ 15 true). No hardware is in the loop.
               </p>
             </div>
           </div>

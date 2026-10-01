@@ -4,6 +4,8 @@
 
 ## Before the judges arrive (5 min)
 
+Tab hotkeys: 1 Blueprint · 2 AI Prognostics · 3 Telemetry · 4 RTB Planner · 5 Fleet · 6 Data & Replay · 7 Flight Controller · 8 What-If Bench · 9 Debrief (demo).
+
 1. Start everything:
    ```bash
    npm run start:all
@@ -11,8 +13,8 @@
    Open http://localhost:5173.
 2. Header checks:
    - Header shows **SIMULATOR** and **NOMINAL**.
-   - **Tab 3** shows the AI as online, not `AI OFFLINE`.
-3. Reset the sortie (Tab 8 · 6-DOF Flight Controller → **RESET**). Wait ~30 s for the AI to settle at `NONE`.
+   - **Tab 2** shows the AI as online, not `AI OFFLINE`.
+3. Reset the sortie (Tab 7 · 6-DOF Flight Controller → **RESET**). Wait ~30 s for the AI to settle at `NONE`.
 4. Select **Vahak-1** in Tab 1. In the component inspector, select **CYL 3** so the inject buttons are visible.
 5. Keep `demo/VALIDATION_AND_LIMITATIONS.md` open in a second window.
 
@@ -22,7 +24,7 @@
 
 > "A MALE UAV is lost when its single engine fails over hostile terrain. GarudaTwin is a digital twin of the Rotax 915 iS. A physics model — ISA air data, turbo limit, cooling, ECU fuel trim, injection, alternator and battery — predicts what every sensor *should* read. Our AI models look only at the difference between measured and predicted (residuals), so they detect, identify and size faults across altitude and temperature, and estimate remaining useful life with a 95 % interval. Everything you will see is computed live; the data is from our simulator, not a real engine — I'll be explicit about that at the end."
 
-## 0:45 – 1:30 · Tab 2 · Live Telemetry (nominal)
+## 0:45 – 1:30 · Tab 3 · Live Telemetry (nominal)
 
 Point at the three panels:
 - **Engine:** EGT/CHT ×4, MAP, oil, vibration.
@@ -43,7 +45,7 @@ Click **Cyl 3 Clog**.
 - **Telemetry:** cylinder 3 EGT is ~137 °C hotter than the median. The ECU richens all cylinders (fuel trim +15 %, injection time 14.4 → 16.5 ms).
 - **Thrust:** 93 % (lean cylinder loses power); the autopilot holds altitude.
 
-**Then switch to Tab 3 · AI Prognostics & XAI:**
+**Then switch to Tab 2 · AI Prognostics & XAI:**
 - **Top cause (TreeSHAP):** "hottest cylinder 3 +137 °C vs median".
 - **Health / RUL:** health ≈ 10, RUL ≈ 4–6 h with its 95 % interval.
 
@@ -57,7 +59,7 @@ Click **Gen Failure**.
 
 **What happens (~2 s):**
 - **AI:** `GENERATOR_FAILURE`.
-- **Electrical (Tab 2):** bus 28.4 → 23.8 V. Battery current goes from +1 A to **−30 A** (discharging), and SOC is visibly falling.
+- **Electrical (Tab 3):** bus 28.4 → 23.8 V. Battery current goes from +1 A to **−30 A** (discharging), and SOC is visibly falling.
 - **Thrust:** stays **100 %**.
 
 > "An electrical fault drains the battery but does not reduce propeller thrust — the twin keeps propulsion and electrical separate. The operator sees battery endurance, not a false engine alarm."
@@ -95,9 +97,9 @@ Click **Sensor Drift (CHT2)**.
 
 Click **Clear All (Nominal)**.
 
-## 5:30 – 6:15 · Tab 9 · Data Source & Replay, then Tab 5 · Fleet
+## 5:30 – 6:15 · Tab 6 · Data Source & Replay, then Tab 5 · Fleet
 
-**Tab 9:**
+**Tab 6:**
 - Load the rehearsal recording (or import `demo/backup_sortie.csv`).
 - Press play at 5×.
 
@@ -118,7 +120,7 @@ Click **Clear All (Nominal)**.
 | Problem | Fix |
 | :--- | :--- |
 | AI shows `AI OFFLINE` | The L1 threshold monitor and the GCS keep running. Say so, then restart the stack: `npm run stop` then `npm run start:all` (~20 s). |
-| Live fault behaves unexpectedly | Tab 9: import `demo/backup_sortie.csv` and replay it. It contains the whole sequence above (rehearsal of 1 Oct 2026) with the original AI results. |
+| Live fault behaves unexpectedly | Tab 6: import `demo/backup_sortie.csv` and replay it. It contains the whole sequence above (rehearsal of 1 Oct 2026) with the original AI results. |
 | UI frozen | Reload the browser. The gateway keeps state. |
 | Laptop fails | Use the screen recording of this script (record it yourself on the demo laptop after a final rehearsal). |
 
