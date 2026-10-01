@@ -60,6 +60,17 @@ export const PHYS = {
   HEATER_A_PER_C: 0.2,         // de-ice / payload heaters below 0 °C OAT
 };
 
+// Shaft-power loss of the plant per engine fault at severity s (engineering assumptions, not Rotax data).
+// Only faults that remove combustion work reduce power; oil, cooling, gearbox, alternator and sensor
+// faults do not by themselves (protecting the engine is the operator's / RTB planner's decision).
+export const FAULT_POWER_LOSS = {
+  MISFIRE: (s) => (0.6 * s) / 4,          // one cylinder's quarter share x fraction of its cycles not firing
+  CYL3_INJECTOR: (s) => 0.25 * 0.3 * s,   // cylinder 3 runs lean: up to ~30 % of its power lost
+  BLOW_BY: (s) => 0.08 * s,               // compression loss on two cylinders
+  COMBUSTION_INSTABILITY: (s) => 0.03 * s,
+  INJECTOR_COKING: (s) => 0.02 * s,       // ECU restores fuel quantity; spray quality loss only
+};
+
 export function isaPressureBar(altFt) {
   return PHYS.P0_BAR * Math.pow(1 - 6.8756e-6 * altFt, 5.2559);
 }
@@ -392,6 +403,10 @@ export class EngineSimulator {
     e.fuelTrimPct = parseFloat((this.trim * 100).toFixed(1));
     e.lambda = parseFloat((lambdaTrue + g(0, 0.003)).toFixed(3));
     e.wastegateDutyPct = parseFloat(af.wastegatePct.toFixed(1));
+    // True power available from the plant (turbo altitude limit x fault power loss). Simulator-internal:
+    // not a sensor channel, never recorded, sent over CAN or given to the AI; drives the 6-DOF thrust.
+    const powerLoss = FAULT_POWER_LOSS[this.fault.activeFault]?.(this.fault.severity) ?? 0;
+    e.powerAvailFrac = parseFloat((af.pf * (1 - powerLoss)).toFixed(3));
     e.coolantTempC = parseFloat((this.thermal.coolant + coolantOffset + g(0, 0.2)).toFixed(1));
 
     // Electrical: payload load wanders slowly; heaters switch in below 0 °C OAT

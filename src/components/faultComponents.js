@@ -16,12 +16,14 @@ export const FAULT_COMPONENTS = {
   COMBUSTION_INSTABILITY: CYLS,
   INJECTOR_COKING: ['FUEL_RAIL', ...CYLS],
 };
-/** Component that hosts the sensor the AI flagged (sensor faults are localised by suspect_sensor). */
-function sensorComponent(sensor) {
-  const m = /^(egt|cht)([1-4])$/.exec(sensor || '');
-  if (m) return `CYL_0${m[2]}`;
-  if (/^oil/.test(sensor || '')) return 'OIL_SYSTEM';
-  if (/^coolant/.test(sensor || '')) return 'COOLANT_RADIATOR';
+/** Component that hosts the sensor the AI flagged. suspect_sensor is e.g. "CHT cylinder 2 (+8.1 °C vs other
+ *  cylinders)", "oil pressure", "coolant temperature" (drift) or raw channel names such as "oil_pressure, cht3" (stuck). */
+export function sensorComponent(sensor) {
+  const s = String(sensor || '').toLowerCase();
+  const m = /(?:egt|cht)\s*(?:cylinder\s*)?([1-4])/.exec(s);
+  if (m) return `CYL_0${m[1]}`;
+  if (/oil/.test(s)) return 'OIL_SYSTEM';
+  if (/coolant/.test(s)) return 'COOLANT_RADIATOR';
   return null;
 }
 /** True when the AI diagnosis in tel.health implicates this component. */

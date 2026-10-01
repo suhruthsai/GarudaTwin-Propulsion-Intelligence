@@ -65,12 +65,12 @@ ISA deviation bands (−20…−5, −5…+5, +5…+15, +15…+25 °C): accuracy
 
 `SENSOR_FAILURE` is a rule, not an ML class: a stuck value is defined exactly by "no change", and its thresholds are measured from nominal simulator data (`training/measure_noise_floor.py`).
 
-**Decision chain (identical in training evaluation and live service, `ai_health_rul/inference/decision.py`):** classifier posterior ≥ 0.5 → known fault; else detector firing → `UNCLASSIFIED_ANOMALY`; a fault is reported only when the same raw diagnosis occurs on 2 consecutive samples (false alarms 5.5/h → 0.68/h, ~1.2 s latency); for up to 8 samples after a known fault, an `UNCLASSIFIED_ANOMALY` is attributed to that fault (the rolling window still holds its samples).
+**Decision chain (identical in training evaluation and live service, `ai_health_rul/inference/decision.py`):** classifier posterior ≥ 0.5 → known fault; else detector firing → `UNCLASSIFIED_ANOMALY`; a fault is reported only when the same raw diagnosis occurs on 2 consecutive samples (previous model version: false alarms 5.5/h → 0.68/h; current models: 0 in 15,225 healthy test samples; ~1.2 s latency); for up to 8 samples after a known fault, an `UNCLASSIFIED_ANOMALY` is attributed to that fault (the rolling window still holds its samples).
 
 **Known limitations (reported, not hidden):**
 * The simulator's sensor noise is small relative to fault signatures, which makes the task easier than on a real engine.
 * **Weak sensor drift** (bias below ~5–10 % of the channel's full scale) is sometimes missed — it is within normal operating scatter. The unsupervised detector alone catches only ~65 % of combustion-instability and injector-coking samples; the trained classifier recovers them, but an *unseen* fault of that subtlety could be missed.
-* **After a fault is cleared** the diagnosis takes ~8 s to return to `NONE`; in live tests a different fault class occasionally flickered briefly during that window (e.g. after clearing injector coking).
+* **After a fault is cleared** the diagnosis takes a median 8.2 s (p90 12.4 s) to return to `NONE`; in live tests a different fault class occasionally flickered briefly during that window (e.g. after clearing injector coking).
 * **Fault severity is set by the operator/scenario**, not grown from usage: a cleared fault does not leave residual wear in the simulator.
 * **Stress test:** re-scoring the same test episodes with uncalibrated sensor offsets the simulator never produces (bus-voltage sag, common-mode CHT/EGT shifts) drops classifier macro F1 to 0.52 and the detector flags 96.7% of offset-nominal samples. A deployed twin needs per-engine baseline calibration and real engine data.
 * RUL uses assumed degradation-life priors per fault mode (see `training/generate_dataset.mjs`); its error is dominated by life-to-life variability, which the 95 % interval reflects.
@@ -181,6 +181,10 @@ Alternator capacity $70\,\text{A}\cdot\min(1,\max(0,(N-1500)/1500))$; 28.4 V reg
 #### F. Residuals
 $$\text{Residual}_i = \text{Sensor}_{\text{measured},i} - \text{Sensor}_{\text{twin},i}(\theta, N, p, T, \text{thermal state})$$
 
+#### G. Power available to the flight model
+$$T = \delta_{\text{throttle}}\,T_{\max}\cdot pf\cdot(1 - L_{\text{fault}})$$
+$pf$ from B; $L_{\text{fault}}$ (assumed): misfire $\tfrac14\cdot 0.6\,s$, cylinder-3 injector clog $0.075\,s$, blow-by $0.08\,s$, combustion instability $0.03\,s$, injector coking $0.02\,s$; oil, cooling, gearbox, alternator and sensor faults remove no combustion work ($L = 0$). This uses the simulator's *true* engine state, never the monitor or the AI, so a faulty sensor cannot cut thrust. In replay / live mode the flight model assumes full power.
+
 *(`src/prognostics/feature_engineering.js` contains an older, simpler formula set used only for the browser-side estimate shown before the first AI result and while the AI service is offline.)*
 
 ---
@@ -267,7 +271,7 @@ When $RUL < 2.0\text{ hours}$, Health Index $< 40\%$, or Fuel $\le 22.0\text{ Li
 * **Purpose**: Engine data source (simulator / replay / live ingest), golden twin + L1 threshold monitor, 1 Hz live AI loop, CAN frame encoder, SQLite WAL database.
 * **Database Architecture**: Uses `better-sqlite3` writing to `data/garudatwin.db`: FCS tables (`fcs_telemetry`, `control_surfaces`, `autopilot_guidance`, `sorties`) and the engine flight recorder (`recordings`, `engine_frames`, see *Engine Data Sources* below).
 * **CAN frames**: `0x100` RPM/throttle/fuel flow/lambda, `0x200` EGT 1–4, `0x210` CHT 1–4, `0x300` MAP/oil pressure/oil temperature/vibration, `0x310` generator voltage/current + coolant temperature, `0x320` injection time / fuel trim / battery current / SOC, `0x330` ambient pressure / OAT. Scaling and offsets are defined once in `tools/can/garudatwin_engine.dbc`; a test checks the gateway's bytes against it.
-* **Fault Injection Engine**: Simulates live failure scenarios (*Cylinder 3 Lean Clog, Piston Ring Blow-By, Oil Pump Cavitation, Turbocharger Wastegate Surge, Cooling Loss*).
+* **Fault Injection Engine**: Simulates live failure scenarios (all 12 engine and sensor fault types: cylinder-3 injector clog, blow-by, oil-pump cavitation, wastegate stuck closed (overboost), cooling degradation, alternator failure, gearbox wear, misfire, combustion instability, injector coking, sensor drift / stuck sensor), per vehicle.
 
 ---
 

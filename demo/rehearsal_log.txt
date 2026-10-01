@@ -1,0 +1,52 @@
+
+== Nominal loiter
+  t+ 0 s  AI NONE 96% | health 99.9 RUL 751.4 h | L1 NOMINAL | thrust 100% alt 14497 ft | bus 28.5 V batt 0.8 A SOC 97.9% | trim 0% inj 14.41 ms
+  t+10 s  AI NONE 97% | health 100 RUL 751.4 h | L1 NOMINAL | thrust 100% alt 14488 ft | bus 28.4 V batt 1 A SOC 98.1% | trim 0% inj 14.54 ms
+  t+20 s  AI NONE 98% | health 100 RUL 751.4 h | L1 NOMINAL | thrust 100% alt 14489 ft | bus 28.4 V batt 0.8 A SOC 98.1% | trim 0% inj 14.45 ms
+  t+30 s  AI NONE 98% | health 100 RUL 751.4 h | L1 NOMINAL | thrust 100% alt 14492 ft | bus 28.4 V batt 0.8 A SOC 98.1% | trim 0% inj 14.36 ms
+  t+40 s  AI NONE 97% | health 100 RUL 751.4 h | L1 NOMINAL | thrust 100% alt 14496 ft | bus 28.4 V batt 1.3 A SOC 98.1% | trim 0% inj 14.22 ms
+
+== Cyl 3 Clog (button, 0.9)
+  t+ 0 s  AI NONE 97% | health 100 RUL 751.4 h | L1 NOMINAL | thrust 100% alt 14496 ft | bus 28.4 V batt 1.3 A SOC 98.1% | trim 0% inj 14.22 ms
+  t+ 2 s  AI CYL3_INJECTOR 100% | health 6.4 RUL 5.8 h | L1 DEGRADED | thrust 93% alt 14495 ft | bus 28.4 V batt 1.1 A SOC 98.1% | trim 14.4% inj 16.17 ms
+  t+10 s  AI CYL3_INJECTOR 100% | health 11 RUL 5 h | L1 CRITICAL | thrust 93% alt 14495 ft | bus 28.4 V batt 1 A SOC 98.1% | trim 15% inj 16.27 ms
+  t+20 s  AI CYL3_INJECTOR 100% | health 9 RUL 3.7 h | L1 CRITICAL | thrust 93% alt 14494 ft | bus 28.4 V batt 0.9 A SOC 98.2% | trim 15% inj 16.43 ms
+  t+30 s  AI CYL3_INJECTOR 100% | health 8.1 RUL 5.6 h | L1 CRITICAL | thrust 93% alt 14494 ft | bus 28.4 V batt 1 A SOC 98.1% | trim 15% inj 16.55 ms
+  t+40 s  AI CYL3_INJECTOR 100% | health 9 RUL 4.3 h | L1 CRITICAL | thrust 93% alt 14494 ft | bus 28.4 V batt 1.2 A SOC 98.2% | trim 15% inj 16.54 ms
+  -> first correct diagnosis at ~2 s; top cause: EGT residual -27.5°C mean; hottest cylinder 3 +136.8°C, coldest cylinder 2 -2.5°C vs median; EGT fluctuation σ 2.0°C — TreeSHAP contribution to diagnosis CYL3_INJECTOR
+  -> cleared; AI back to NONE after 4.5 s
+
+== Generator failure (button, 0.9) - battery discharging
+  t+ 0 s  AI NONE 3% | health 53.6 RUL 751.4 h | L1 NOMINAL | thrust 100% alt 14495 ft | bus 28.4 V batt 0.9 A SOC 98.1% | trim 0.2% inj 14.45 ms
+  t+ 2 s  AI GENERATOR_FAILURE 100% | health 2.3 RUL 14.5 h | L1 CRITICAL | thrust 100% alt 14495 ft | bus 23.8 V batt -29.9 A SOC 98.1% | trim 0% inj 14.4 ms
+  t+10 s  AI GENERATOR_FAILURE 100% | health 10.7 RUL 11.5 h | L1 CRITICAL | thrust 100% alt 14496 ft | bus 23.8 V batt -30.7 A SOC 97.7% | trim 0% inj 14.28 ms
+  t+20 s  AI GENERATOR_FAILURE 100% | health 27 RUL 11.9 h | L1 CRITICAL | thrust 100% alt 14496 ft | bus 23.9 V batt -28.1 A SOC 97.2% | trim 0% inj 14.2 ms
+  t+30 s  AI GENERATOR_FAILURE 100% | health 16.2 RUL 12 h | L1 CRITICAL | thrust 100% alt 14497 ft | bus 23.8 V batt -29.9 A SOC 96.6% | trim 0% inj 14.27 ms
+  t+40 s  AI GENERATOR_FAILURE 100% | health 15.6 RUL 10.9 h | L1 CRITICAL | thrust 100% alt 14497 ft | bus 23.7 V batt -30.1 A SOC 96.3% | trim 0% inj 14.4 ms
+  t+50 s  AI GENERATOR_FAILURE 100% | health 15.4 RUL 10.9 h | L1 CRITICAL | thrust 100% alt 14497 ft | bus 23.7 V batt -32 A SOC 95.7% | trim 0% inj 14.47 ms
+  t+60 s  AI GENERATOR_FAILURE 100% | health 8.8 RUL 10.9 h | L1 CRITICAL | thrust 100% alt 14497 ft | bus 23.7 V batt -33.5 A SOC 95% | trim 0% inj 14.49 ms
+  -> first correct diagnosis at ~2 s; top cause: Bus voltage residual -4.7 V, battery current residual -35.2 A (negative = discharging) — TreeSHAP contribution to diagnosis GENERATOR_FAILURE
+  -> cleared; AI back to NONE after 8.1 s
+
+== Oil Cavitation (button, 0.95) - RTB case
+  t+ 0 s  AI NONE 97% | health 100 RUL 751.4 h | L1 NOMINAL | thrust 100% alt 14497 ft | bus 28.5 V batt 2.2 A SOC 95.1% | trim 0% inj 14.4 ms
+  t+ 2 s  AI OIL_PUMP_CAVITATION 100% | health 17.5 RUL 5.7 h | L1 CRITICAL | thrust 100% alt 14497 ft | bus 28.5 V batt 2.3 A SOC 95.2% | trim 0% inj 14.36 ms
+  t+10 s  AI OIL_PUMP_CAVITATION 100% | health 7.1 RUL 1.3 h | L1 CRITICAL | thrust 100% alt 14497 ft | bus 28.4 V batt 2.1 A SOC 95.2% | trim 0% inj 14.21 ms
+  t+20 s  AI OIL_PUMP_CAVITATION 100% | health 4.9 RUL 1.5 h | L1 CRITICAL | thrust 100% alt 14497 ft | bus 28.4 V batt 2 A SOC 95.3% | trim 0% inj 14.21 ms
+  t+30 s  AI OIL_PUMP_CAVITATION 100% | health 6.6 RUL 1.8 h | L1 CRITICAL | thrust 100% alt 14497 ft | bus 28.4 V batt 2.3 A SOC 95.3% | trim 0% inj 14.35 ms
+  t+40 s  AI OIL_PUMP_CAVITATION 100% | health 8 RUL 2.1 h | L1 CRITICAL | thrust 100% alt 14497 ft | bus 28.4 V batt 2.2 A SOC 95.3% | trim 0% inj 14.47 ms
+  -> first correct diagnosis at ~2 s; top cause: Oil pressure residual -2.01 bar; oil-pressure fluctuation σ 0.37 bar — TreeSHAP contribution to diagnosis OIL_PUMP_CAVITATION
+  -> cleared; AI back to NONE after 3.5 s
+
+== Sensor Drift (CHT2) (button, 0.8) - engine healthy
+  t+ 0 s  AI NONE 0% | health 46.3 RUL 751.4 h | L1 NOMINAL | thrust 100% alt 14497 ft | bus 28.4 V batt 2.2 A SOC 95.3% | trim 0% inj 14.43 ms
+  t+ 6 s  AI SENSOR_DRIFT 100% | health 100 RUL 751.4 h | L1 NOMINAL | thrust 100% alt 14497 ft | bus 28.3 V batt 2.1 A SOC 95.3% | trim 0% inj 14.5 ms
+  t+10 s  AI SENSOR_DRIFT 100% | health 100 RUL 751.4 h | L1 NOMINAL | thrust 100% alt 14497 ft | bus 28.4 V batt 2.3 A SOC 95.4% | trim 0% inj 14.48 ms
+  t+20 s  AI SENSOR_DRIFT 100% | health 100 RUL 751.4 h | L1 DEGRADED | thrust 100% alt 14497 ft | bus 28.4 V batt 2.2 A SOC 95.4% | trim 0% inj 14.35 ms
+  t+30 s  AI SENSOR_DRIFT 100% | health 100 RUL 751.4 h | L1 DEGRADED | thrust 100% alt 14497 ft | bus 28.4 V batt 2.2 A SOC 95.4% | trim 0% inj 14.29 ms
+  t+40 s  AI SENSOR_DRIFT 100% | health 99.1 RUL 751.4 h | L1 DEGRADED | thrust 100% alt 14497 ft | bus 28.3 V batt 2.1 A SOC 95.5% | trim 0% inj 14.25 ms
+  -> first correct diagnosis at ~6 s; top cause: CHT residual +6.1°C mean; hottest cylinder 2 +23.5°C, coldest cylinder 1 -0.3°C vs median — TreeSHAP contribution to diagnosis SENSOR_DRIFT
+  -> cleared; AI back to NONE after 1.0 s
+
+Backup recording #42 (Sortie #49 simulator 18:18:09) exported: demo/backup_sortie.csv, 2664 frames
+Total 4.0 min

@@ -589,11 +589,13 @@ function physicsTick() {
       east_m:    fcsState.east_m       ?? 0,
     };
 
-    const ctrlCmd = autopilot.update(fcsInput, engineTelemetry.health);
+    // The autopilot's throttle authority is not capped by the monitor (a sensor fault must not cut power);
+    // the 6-DOF thrust follows the power the plant actually delivers.
+    const ctrlCmd = autopilot.update(fcsInput, 100);
     fcsControls = ctrlCmd;
 
     // Run 6-DOF dynamics step with new control commands
-    const derived = fcs6dof.step(ctrlCmd, engineTelemetry.health);
+    const derived = fcs6dof.step(ctrlCmd, appliedThrustFactor() * 100);
     fcsState = { ...derived };
     fcsState.health_from_engine = engineTelemetry.health;
 
@@ -612,10 +614,11 @@ function physicsTick() {
   }
 }
 
-/** Thrust fraction the 6-DOF model actually applies for the current propulsion health. */
+/** Fraction of rated thrust the 6-DOF model applies: the simulated plant's true available power.
+ *  In REPLAY / LIVE the engine's real power is unknown, so the flight model assumes full power. */
 function appliedThrustFactor() {
-  const h = typeof fcsState.health_from_engine === 'number' ? fcsState.health_from_engine : 98;
-  return 0.5 + 0.5 * Math.max(0, Math.min(1, h / 100));
+  const f = source.mode === 'SIM' ? engineState.powerAvailFrac : null;
+  return typeof f === 'number' ? Math.max(0, Math.min(1, f)) : 1;
 }
 
 /** Keep Vahak-1 inside the operating area and clear of the border; return to the station orbit if not. */
@@ -783,8 +786,8 @@ setInterval(() => {
       alt_sp_ft:        Math.round(autopilot.sp.alt_m * 3.28084),
       ias_sp_kts:       Math.round(autopilot.sp.ias_ms * 1.94384),
       heading_sp_deg:   Math.round(((autopilot.sp.heading_rad * 180 / Math.PI) % 360 + 360) % 360),
-      // What is actually APPLIED: the 6-DOF model scales thrust by 0.5 + 0.5 x propulsion health
-      // (FlightDynamics6DOF.js). The interlock's own derate table / authority factor are not applied.
+      // What is actually APPLIED: the 6-DOF thrust x the plant's available power (turbo altitude limit and
+      // fault power loss). The interlock's own derate table / authority factor are not applied.
       thrust_factor:    appliedThrustFactor(),
       authority_factor: 1.0,
       propulsion_health: typeof fcsState.health_from_engine === 'number' ? fcsState.health_from_engine : null,

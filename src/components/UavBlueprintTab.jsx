@@ -1547,7 +1547,7 @@ const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, se
                 className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${injAf==='OIL_PUMP_CAVITATION' ? 'bg-red-600 text-white border-red-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-red-50 hover:border-red-300 hover:text-red-700'}`}>Oil Cavitation</button>
 
               <button onClick={() => injectFault('TURBO_WASTEGATE_STUCK', 0.8)}
-                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${injAf==='TURBO_WASTEGATE_STUCK' ? 'bg-purple-600 text-white border-purple-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300 hover:text-purple-800'}`}>Turbo Surge</button>
+                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${injAf==='TURBO_WASTEGATE_STUCK' ? 'bg-purple-600 text-white border-purple-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300 hover:text-purple-800'}`}>Wastegate Stuck</button>
 
               <button onClick={() => injectFault('COOLING_DEGRADATION', 0.85)}
                 className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${injAf==='COOLING_DEGRADATION' ? 'bg-sky-600 text-white border-sky-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-sky-50 hover:border-sky-300 hover:text-sky-800'}`}>Cooling Decay</button>

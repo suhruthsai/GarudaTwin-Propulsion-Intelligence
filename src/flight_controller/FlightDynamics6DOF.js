@@ -116,7 +116,8 @@ function stateDerivative(state, controls, engineHealth) {
   const { throttle } = controls;
   const alt = -state.x_d;
   const atm = atmosphere(Math.max(0, alt));
-  const hf = 0.5 + 0.5 * clamp(engineHealth / 100, 0, 1);
+  // engineHealth here = % of rated power the plant can deliver (EngineSimulator powerAvailFrac x 100)
+  const hf = clamp(engineHealth / 100, 0, 1);
   const thrustN = clamp(throttle, 0, 1) * PARAMS.T_max * hf;
 
   const aero = aerodynamics(state, controls, atm);
