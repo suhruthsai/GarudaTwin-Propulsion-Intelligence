@@ -13,9 +13,9 @@ import { thermalTargets, nominalFuelLph, isaPressureBar } from '../engine/Engine
 
 // Scripted anomalies of the demo sortie, added on top of the twin's nominal values (hand-authored)
 const SCRIPTED_FAULT = {
-  3: { egt: 12, cht: 3, oil: 1 },     // ISR orbit: injector #2 pulse irregularity
-  4: { egt: 35, cht: 16, oil: 12 },   // evasive / high load: transient thermal surge
-  5: { egt: 0, cht: 4, oil: 6 },      // RTB: 2X vibration harmonic (bearing) — mainly vibration
+  3: { egt: 12, cht: 3, oil: 1, vib: 0.05 },    // ISR orbit: injector #2 pulse irregularity
+  4: { egt: 35, cht: 16, oil: 12, vib: 0.10 },  // evasive / high load: transient thermal surge
+  5: { egt: 0, cht: 4, oil: 6, vib: 0.45 },     // RTB: gearbox bearing vibration (mainly vibration)
 };
 
 export class MissionPredictor {
@@ -65,7 +65,7 @@ export class MissionPredictor {
       `En route climb through FL${Math.round((altitudeFt * 0.65) / 100)}. Transitioning to cruise mixture. Boost pressure stable at ${aerothermal.turboCompensatorRatio}:1 PR.`,
       `Station established at FL${Math.round(altitudeFt / 100)}. Sensor payload active. Fuel delivery micro-pulsation logged on Injector #2.`,
       `High-G evasion maneuver. Throttle commanded to 94% TOGA. Transient thermal surge on CHT and oil cooler (${ambientTempC > 30 ? 'High thermal stress' : 'Normal dissipation'}).`,
-      `2X harmonic vibration anomaly detected (+0.048 IPS). FADEC commanding derated cruise (68% throttle) to preserve bearing.`,
+      `Gearbox bearing vibration anomaly (+0.45 g above the twin, scripted). Derated cruise (68% throttle) commanded to protect the bearing.`,
       `Controlled idle descent through FL${Math.round((altitudeFt * 0.28) / 100)}. Cabin alt depressurization nominal. Airspeed stabilized at 115 kts.`,
       `Autonomous touchdown, runway rollout & 3-minute post-flight engine cooldown scavenge at ${ambientTempC}°C ambient.`
     ];
@@ -87,11 +87,10 @@ export class MissionPredictor {
 
       // Twin physics at this phase's altitude / OAT / throttle / RPM (OAT held at the scenario value)
       const tw = thermalTargets(phaseThr, phaseRpm, isaPressureBar(phaseAlt), ambientTempC);
-      const sf = SCRIPTED_FAULT[idx] || { egt: 0, cht: 0, oil: 0 };
+      const sf = SCRIPTED_FAULT[idx] || { egt: 0, cht: 0, oil: 0, vib: 0 };
 
       // Scripted scenario curves (hand-authored)
-      const nominalOilPs= [0.0, 68.2, 58.0, 52.4, 45.2, 42.0, 46.5, 48.1];
-const nominalVibs = [0.000, 0.042, 0.035, 0.038, 0.058, 0.082, 0.036, 0.038];
+      const nominalOilPs = [0.0, 68.2, 58.0, 52.4, 45.2, 42.0, 46.5, 48.1];
       const nominalHealths = [100.0, 99.0, 98.0, 94.0, 86.0, 76.0, 72.0, 70.0];
       const nominalMses = [0.00, 0.01, 0.02, 0.08, 0.28, 0.54, 0.22, 0.14];
       const nominalRuls = [850.0, 848.0, 840.0, 810.0, 720.0, 550.0, 480.0, 401.2];
@@ -127,11 +126,11 @@ const nominalVibs = [0.000, 0.042, 0.035, 0.038, 0.058, 0.082, 0.036, 0.038];
         // Fuel flow: twin's nominal fuel model at this throttle and delivered power fraction
         phaseFfGph = nominalFuelLph(phaseThr, tw.pf) / 3.78541;
 
-        // Vibration scales with turbulence / headwind
-        const windVibEffect = (headwindKts - 38.0) * 0.0003;
-        phaseVib = Math.max(0.015, nominalVibs[idx] + windVibEffect);
+        // Vibration (broadband g-RMS): twin nominal at this RPM + scripted fault offset + small gust term (scenario heuristic)
+        const windVibEffect = (headwindKts - 38.0) * 0.001;
+        phaseVib = Math.max(0.1, 0.28 + ((phaseRpm - 4800) / 5800) * 0.12 + sf.vib + windVibEffect);
 
-        // Anomaly MSE autoencoder score
+        // Scripted scenario anomaly score (hand-authored curve, not a model output)
         const envMseOffset = Math.max(0, deltaTEnv * 0.0015) + (loadRatio - 1.0) * 0.02;
         phaseMse = Math.max(0.01, nominalMses[idx] + envMseOffset);
 
@@ -142,7 +141,7 @@ const nominalVibs = [0.000, 0.042, 0.035, 0.038, 0.058, 0.082, 0.036, 0.038];
         const actualDegradation = nominalDegradation * fatigueAccel;
         phaseHealth = Math.max(48.0, Number((100.0 - actualDegradation).toFixed(1)));
 
-        // Bi-LSTM RUL Prediction:
+        // Scripted scenario RUL (hand-authored heuristic, not a model output):
         // RUL scales proportionally from nominal curve with health headroom to 50% MEL limit
         const nominalMargin = Math.max(1.0, nominalHealths[idx] - 50.0);
         const currentMargin = Math.max(1.0, phaseHealth - 50.0);
@@ -168,11 +167,11 @@ const nominalVibs = [0.000, 0.042, 0.035, 0.038, 0.058, 0.082, 0.036, 0.038];
         cht: `${phaseCht.toFixed(1)} °C`,
         chtSub: phaseCht > 130 ? 'OVER-TEMP REDLINE' : 'Nom: <130°C',
         egt: `${Math.round(phaseEgt)} °C`,
-        egtSub: phaseEgt > 900 ? 'THERMAL HIGH' : 'Nom: 700-820°C',
+        egtSub: phaseEgt > 930 ? 'ABOVE CAUTION (930 °C)' : 'Caution 930 / limit 950 °C (L1)',
         oilP: `${phaseOilP.toFixed(1)} PSI`,
         oilPSub: `${(phaseOilP * 0.0689476).toFixed(2)} bar`,
         oilT: `${phaseOilT.toFixed(1)} °C`,
-        vib: `${phaseVib.toFixed(3)} IPS`,
+        vib: `${phaseVib.toFixed(2)} g`,
         map: `${phaseMap.toFixed(2)} BAR`,
         health: `${phaseHealth.toFixed(0)}%`,
         healthVal: phaseHealth,

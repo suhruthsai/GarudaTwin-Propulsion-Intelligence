@@ -50,14 +50,14 @@ export const JudgesSandboxTab = () => {
   const [throttlePct, setThrottlePct] = useState(78.5);
 
   // EGT 1-4 (°C)
-  const [egt, setEgt] = useState([842, 840, 844, 841]);
+  const [egt, setEgt] = useState([840, 840, 840, 840]);
   // CHT 1-4 (°C)
-  const [cht, setCht] = useState([106, 107, 106, 108]);
+  const [cht, setCht] = useState([106, 106, 106, 106]);
 
   // Pressures, Fluids & Dynamics
   const [mapBar, setMapBar] = useState(1.42);
   const [oilPressBar, setOilPressBar] = useState(3.85);
-  const [oilTempC, setOilTempC] = useState(98.4);
+  const [oilTempC, setOilTempC] = useState(98);
   const [vibrationGrms, setVibrationGrms] = useState(0.28);
   const [fuelPressureBar, setFuelPressureBar] = useState(3.12);
   const [genVoltageV, setGenVoltageV] = useState(28.4);
@@ -80,7 +80,7 @@ export const JudgesSandboxTab = () => {
   const [aiResult, setAiResult] = useState(null);
   // Channels the bench has no slider for (fuel flow, lambda, injection time, ECU trim, battery…):
   // taken from the selected simulator profile so the AI sees a physically consistent frame
-  const [extraChannels, setExtraChannels] = useState(null);
+  const [extraChannels, setExtraChannels] = useState({ fuel_flow: 26.0, lambda: 0.939, gen_current: 41.1, coolant_temp: 88.5, inj_pw_ms: 14.36, fuel_trim_pct: 0.0, battery_current_a: 0.9, battery_soc_pct: 98.4 });
   const [aiConnected, setAiConnected] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
 
@@ -194,7 +194,7 @@ export const JudgesSandboxTab = () => {
       id: 'TURBO_SURGE',
       profileCode: 'PROFILE E',
       standard: 'Simulator-generated',
-      label: 'Profile E: Turbo Overboost Surge',
+      label: 'Profile E: Wastegate Stuck Closed (Overboost)',
       tag: 'AIR/BOOST',
       badgeClass: 'border-purple-300 bg-purple-50 text-purple-700',
       summary: 'Simulator TURBO_WASTEGATE_STUCK @ 0.85: MAP 1.91 bar (overboost), EGT ~878 °C on all cylinders, RPM 5098.',
@@ -415,7 +415,7 @@ export const JudgesSandboxTab = () => {
     let airworthinessStatus = 'NOMINAL';
     let airworthinessBadge = 'border-emerald-300 bg-emerald-50 text-emerald-800';
     let airworthinessColor = 'text-emerald-700 font-bold';
-    let airworthinessDesc = 'Rotax 915 iS engine operating well within certified EASA/FAA flight envelopes. Safe for sustained mission loiter.';
+    let airworthinessDesc = 'Inputs are within the modelled normal operating envelope (simulator-derived limits, not certified limits).';
 
     const hi = aiResult?.rul?.healthIndexScore ?? aiResult?.engine_health_index ?? (pipelineOut?.health?.index ?? 100);
     const rulH = aiResult?.rul?.rulHours ?? aiResult?.rul_hours_mean ?? (pipelineOut?.rul?.hours ?? 750);
@@ -526,21 +526,13 @@ export const JudgesSandboxTab = () => {
       throttlePct
     });
 
-    setBroadcastNotice(`Conditions Committed! 100 Hz CAN Telemetry updated: RPM=${rpm}, MAP=${mapBar}b, Vib=${vibrationGrms}g.`);
+    setBroadcastNotice(`Applied to the live simulator (Vahak-1): RPM ${rpm}, throttle ${throttlePct} %, fault ${activeFaultTag}. Other bench sliders are not pushed to the live engine.`);
     setTimeout(() => setBroadcastNotice(null), 4500);
   };
 
   const handleResetNominal = () => {
-    const nom = BENCHMARKS[0];
-    handleApplyBenchmark(nom);
-    clearFault();
-    updateManualConditions({
-      altitudeFt: 14500,
-      airspeedKts: 110,
-      targetRpm: 4800,
-      throttlePct: 78.5
-    });
-    setBroadcastNotice('All engine parameters restored to certified nominal baseline.');
+    handleApplyBenchmark(BENCHMARKS[0]);   // bench only; the live aircraft is changed only by "Apply to live simulator"
+    setBroadcastNotice('Bench inputs restored to the nominal profile (live aircraft unchanged).');
     setTimeout(() => setBroadcastNotice(null), 3500);
   };
 
@@ -1240,7 +1232,7 @@ export const JudgesSandboxTab = () => {
                   <div className="flex items-center gap-2">
                     <Activity className="w-4 h-4 text-sky-600" />
                     <h3 className="font-display font-bold text-xs tracking-wider text-slate-900 uppercase">
-                      HEALTH INDEX & MULTI-STRESS DEGRADATION (XGBOOST)
+                      HEALTH INDEX & DEGRADATION (XGBOOST)
                     </h3>
                   </div>
                   <span className="text-[10px] font-mono text-slate-500">
@@ -1274,7 +1266,7 @@ export const JudgesSandboxTab = () => {
                   </div>
 
                   <div className="p-3 rounded border border-slate-200 bg-slate-50 flex flex-col justify-center">
-                    <span className="text-[9px] text-slate-500 uppercase font-medium">FATIGUE STRESS</span>
+                    <span className="text-[9px] text-slate-500 uppercase font-medium">LARGEST STRESS INDEX</span>
                     <span className={`text-2xl font-black font-display my-0.5 tabular-nums ${
                       evalResult.metrics.stress.combinedStress > 3.0 ? 'text-red-600' :
                       evalResult.metrics.stress.combinedStress > 1.5 ? 'text-amber-600' :

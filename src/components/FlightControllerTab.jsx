@@ -283,7 +283,7 @@ function TacticalNavDisplay({ fcs }) {
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
         <span style={{ color: '#334155', fontSize: '11px', fontWeight: 'bold', letterSpacing: '0.08em' }}>
-          🎯 TACTICAL NAVIGATION DISPLAY (50 Hz RADAR)
+          🎯 NAVIGATION DISPLAY (6-DOF POSITION, NOT RADAR)
         </span>
         <span style={{ color: fcs.ap_mode === 'AUTO_MISSION' ? '#0284C7' : '#94A3B8', fontSize: '10px', fontWeight: 'bold' }}>
           {fcs.ap_mode === 'AUTO_MISSION' ? '● LIVE DYNAMIC TRACKING' : '○ STANDBY'}
@@ -662,7 +662,7 @@ function FadecInterlockPanel({ fcs, injectFault, clearFault }) {
           display: 'flex', justifyContent: 'space-between', alignItems: 'center'
         }}>
           <span style={{ color: isEmergency ? '#B91C1C' : '#0369A1', fontSize: '10px', fontWeight: 'bold' }}>
-            {isEmergency ? 'EMERGENCY GLIDE REACH' : 'MAX GLIDE RANGE (L/D 14.5)'}
+            {isEmergency ? 'EMERGENCY GLIDE REACH' : `MAX GLIDE RANGE (L/D ${fcs.alt_ft > 0 ? (fcs.glide_range_m / (fcs.alt_ft * 0.3048)).toFixed(1) : '—'})`}
           </span>
           <span style={{ color: isEmergency ? '#DC2626' : '#0284C7', fontSize: '11px', fontWeight: 'bold' }}>
             {(fcs.glide_range_m / 1000).toFixed(1)} km

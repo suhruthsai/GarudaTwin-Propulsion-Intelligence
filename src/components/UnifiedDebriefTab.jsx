@@ -156,7 +156,7 @@ export const UnifiedDebriefTab = () => {
       `Explain ${currentPhase.name} status`,
       `Audit CHT thermal load (${activeTelemetry.cht})`,
       `Why is oil pressure ${activeTelemetry.oilP}?`,
-      'Compile airworthiness debrief'
+      'Compile demo debrief summary'
     ];
     if (activePhaseIndex === 3) {
       base.unshift('Diagnose Injector #2 pulsation');
@@ -187,7 +187,7 @@ export const UnifiedDebriefTab = () => {
       const qLower = query.toLowerCase();
 
       if (qLower.includes('anomaly') || qLower.includes('vibration') || qLower.includes('2x harmonic') || qLower.includes('bearing')) {
-        aiResponseText = `[AEROSPACE DIAGNOSTIC ROOT CAUSE - PHASE 5 RTB]:\n1. Root Cause: Sensor channel VIB-1 detected 2X shaft harmonic peak (+0.048 IPS surge) at 4400 RPM cruise.\n2. Physics Mechanism: Propeller reduction gearbox (PRGB) pinion bearing micro-spalling under aerodynamic buffeting.\n3. FADEC Response: FADEC derated throttle from 85% to 68% TOGA to limit alternating stress amplitude.\n4. Maintenance Work Order: Ground crew must perform boroscopic inspection of PRGB internal gear teeth and drain oil through a 10-micron filter screen to inspect for ferromagnetic particulate.`;
+        aiResponseText = `[AEROSPACE DIAGNOSTIC ROOT CAUSE - PHASE 5 RTB]:\n1. Root Cause: Vibration channel rose +0.45 g above the twin (scripted gearbox-bearing fault) at 4400 RPM.\n2. Physics Mechanism: Propeller reduction gearbox (PRGB) pinion bearing micro-spalling under aerodynamic buffeting.\n3. FADEC Response: Scenario derated throttle from 85% to 68% TOGA to limit alternating stress amplitude.\n4. Maintenance Work Order: Ground crew must perform boroscopic inspection of PRGB internal gear teeth and drain oil through a 10-micron filter screen to inspect for ferromagnetic particulate.`;
       } else if (qLower.includes('thermal') || qLower.includes('cht') || qLower.includes('evasive') || qLower.includes('over-temp')) {
         aiResponseText = `[THERMODYNAMIC HEAT BALANCE AUDIT - ${currentPhase.name}]:\n1. Active CHT: ${activeTelemetry.cht} (Nominal redline limit: 130.0°C).\n2. Forced Convection Rejection: Ambient air density is ${aerothermal.airDensityKgM3} kg/m³ with radiator flux at ${aerothermal.radiatorHeatFluxKw} kW.\n3. Thermal Stress Factor: Environment (${deltaIsaTempC}°C ambient) generates a convective dissipation margin of ${aerothermal.airDensityKgM3 > 0.8 ? 'SUFFICIENT' : 'MARGINAL'}.\n4. Recommendation: Maintain airspeed above 110 KTS to maximize mass airflow through belly cowl radiator ducts.`;
       } else if (qLower.includes('oil') || qLower.includes('pressure') || qLower.includes('viscosity')) {
@@ -229,7 +229,7 @@ export const UnifiedDebriefTab = () => {
       doc.setTextColor(148, 163, 184);
       doc.setFontSize(8.5);
       doc.setFont('helvetica', 'normal');
-      doc.text(`Propulsion: Rotax 915 iS Turbocharged (1414cc Boxer) | Tail: VAHAK-1 | NATO GCS Bravo`, 14, 23);
+      doc.text(`Propulsion: Rotax 915 iS turbocharged (1352 cc) | Tail: VAHAK-1 | Demo scenario (hand-authored)`, 14, 23);
       doc.text(`Sortie: Tactical ISR 8-Phase Mission | Scenario: ${activePreset.replace(/_/g, ' ')} | Generated: ${timestamp}`, 14, 29);
 
       // Section 1: Executive Prognostics
@@ -247,9 +247,9 @@ export const UnifiedDebriefTab = () => {
         body: [
           ['Overall Health Index', activeTelemetry.health, '100% Nominal', activeTelemetry.healthVal < 60 ? 'CRITICAL DECAY' : activeTelemetry.healthVal < 80 ? 'DEGRADED' : 'AIRWORTHY'],
           ['Estimated RUL (scenario model)', activeTelemetry.rul,'> 400.0 Flight Hours', parseFloat(activeTelemetry.rul) < 50 ? 'EXPEDITED OVERHAUL' : 'MISSION READY'],
-          ['Scenario anomaly score', activeTelemetry.anomalyScore,'< 0.08500 MSE', parseFloat(activeTelemetry.anomalyScore) > 0.25 ? 'ANOMALY CONFIRMED' : 'NOMINAL RESIDUALS'],
-          ['Engine Speed / Propeller', `${activeTelemetry.rpm} (${activeTelemetry.rpmSub})`, '4800 / 1890 RPM', 'FADEC SYNCHRONIZED'],
-          ['Structural Vibration', activeTelemetry.vib, '< 0.045 IPS', parseFloat(activeTelemetry.vib) > 0.06 ? 'EXCEEDANCE CAUTION' : 'VIBRATION NORMAL']
+          ['Scenario anomaly score', activeTelemetry.anomalyScore,'< 0.25 (scripted)', parseFloat(activeTelemetry.anomalyScore) > 0.25 ? 'ANOMALY CONFIRMED' : 'NOMINAL RESIDUALS'],
+          ['Engine Speed / Propeller', `${activeTelemetry.rpm} (${activeTelemetry.rpmSub})`, '4800 / 1890 RPM (2.54:1)', 'SCENARIO VALUE'],
+          ['Structural Vibration', activeTelemetry.vib, '< 0.45 g (caution)', parseFloat(activeTelemetry.vib) > 0.45 ? 'EXCEEDANCE CAUTION' : 'VIBRATION NORMAL']
         ]
       });
 
@@ -272,12 +272,12 @@ export const UnifiedDebriefTab = () => {
           ['4. Engine Speed', activeTelemetry.rpm, activeTelemetry.rpmSub, '5800 RPM Redline Limit'],
           ['5. Fuel Flow Rate', activeTelemetry.fuelFlow, activeTelemetry.fuelFlowSub, '2.0 - 11.5 GPH Envelope'],
           ['6. Max Cylinder Head Temp', activeTelemetry.cht, activeTelemetry.chtSub, '< 130.0°C Continuous Limit'],
-          ['7. Max Exhaust Gas Temp', activeTelemetry.egt, activeTelemetry.egtSub, '< 920.0°C Thermal Limit'],
+          ['7. Max Exhaust Gas Temp', activeTelemetry.egt, activeTelemetry.egtSub, '930 °C caution / 950 °C limit (L1)'],
           ['8. Oil Lubrication Pressure', activeTelemetry.oilP, activeTelemetry.oilPSub, '28.0 - 75.0 PSI Hydraulic Range'],
           ['9. Oil Sump Temperature', activeTelemetry.oilT, 'Viscosity Monitored', '50.0°C - 130.0°C'],
-          ['10. Vibration Severity', activeTelemetry.vib, 'Piezoelectric FFT', '< 0.080 IPS Caution Limit'],
+          ['10. Vibration (broadband)', activeTelemetry.vib, 'g-RMS', '< 0.45 g caution'],
           ['11. Manifold Absolute Press', activeTelemetry.map, 'Turbo Boost', '1.00 - 1.70 BAR MAP'],
-          ['12. Health Degradation Index', activeTelemetry.health, 'Multi-Stress Fatigue', '50% Minimum Overhaul Limit'],
+          ['12. Health Index', activeTelemetry.health, 'Scripted scenario curve', '50% overhaul limit'],
           ['13. Anomaly Score', activeTelemetry.anomalyScore, 'Scenario model', '< 0.25 Nominal Envelope'],
           ['14. Estimated RUL', activeTelemetry.rul, 'Scenario model', '> 20.0 HRS Safe Dispatch']
         ]
@@ -339,18 +339,16 @@ export const UnifiedDebriefTab = () => {
           <div>
             <div className="flex items-center gap-2.5">
               <h2 className="text-base font-bold text-slate-900 uppercase tracking-wider">
-                TACTICAL MISSION REPLAY & AIRWORTHINESS DEBRIEF STATION
+                MISSION DEBRIEF — DEMO SCENARIO
               </h2>
-              <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-300 px-2.5 py-0.5 rounded-full font-bold font-mono">
-                FADEC SYNC: 100% PASS
+              <span className="text-xs bg-amber-50 text-amber-800 border border-amber-300 px-2.5 py-0.5 rounded-full font-bold font-mono">
+                HAND-AUTHORED
               </span>
             </div>
             <div className="text-xs text-slate-500 flex items-center gap-2 mt-0.5 font-medium">
               <span className="text-slate-600">DEMO SCENARIO (HAND-AUTHORED, NOT RECORDED DATA)</span>
               <span className="text-slate-300">•</span>
-              <span className="text-sky-700 font-mono font-semibold">LAT/LONG: 34.6644°N 118.0847°W</span>
-              <span className="text-slate-300">•</span>
-              <span className="text-amber-800 font-bold font-mono">{sortie.missionId}</span>
+              <span className="text-sky-700 font-mono font-semibold">AREA: VAHAK-1 STATION 26.45°N 70.52°E (JAISALMER SECTOR)</span>
             </div>
           </div>
         </div>
@@ -535,7 +533,7 @@ export const UnifiedDebriefTab = () => {
                       DEMO SCENARIO TIMELINE • 8-PHASE SORTIE (HAND-AUTHORED; REAL RECORDINGS: DATA SOURCE &amp; REPLAY TAB)
                     </div>
                     <div className="text-xs text-slate-500 font-medium">
-                      Synchronized FADEC recorder & physics twin • Scrub timeline to inspect telemetry and causal residuals
+                      Engine values from the twin's physics at each phase + scripted faults • Scrub the timeline to inspect
                     </div>
                   </div>
                 </div>
@@ -609,7 +607,7 @@ export const UnifiedDebriefTab = () => {
             <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col gap-3 shadow-xs">
               <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-amber-800 uppercase tracking-wider">
                 <AlertTriangle className="w-4 h-4 text-amber-600" />
-                <span>MISSION ANOMALY EVENTS (SELECT TO INSPECT ROOT CAUSE & FADEC RESIDUALS)</span>
+                <span>SCRIPTED ANOMALY EVENTS (SELECT TO INSPECT)</span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -625,12 +623,12 @@ export const UnifiedDebriefTab = () => {
                   <div className="flex items-center justify-between text-xs font-bold text-amber-800 mb-1">
                     <span className="font-mono">T+01:42:00 (ISR ORBIT)</span>
                     <span className="text-[10px] font-mono bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-300 font-bold">
-                      RESIDUAL: +0.08 MSE
+                      SCENARIO SCORE 0.08
                     </span>
                   </div>
                   <div className="font-bold text-sm text-slate-900 mb-1">Minor Fuel Delivery Anomaly</div>
                   <div className="text-xs text-slate-600 leading-relaxed font-normal">
-                    Injector #2 micro-pulsation during cruise loiter. Fuel flow differential +0.4 GPH.
+                    Injector #2 pulse irregularity during loiter: EGT +12 °C above the twin (scripted).
                   </div>
                 </div>
 
@@ -646,12 +644,12 @@ export const UnifiedDebriefTab = () => {
                   <div className="flex items-center justify-between text-xs font-bold text-amber-800 mb-1">
                     <span className="font-mono">T+03:18:00 (EVASIVE)</span>
                     <span className="text-[10px] font-mono bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-300 font-bold">
-                      RESIDUAL: +0.28 MSE
+                      SCENARIO SCORE 0.28
                     </span>
                   </div>
                   <div className="font-bold text-sm text-slate-900 mb-1">Thermal Degradation Surge</div>
                   <div className="text-xs text-slate-600 leading-relaxed font-normal">
-                    High-G turn thermal transient. CHT surged to 132.8°C; oil radiator dissipation throttled.
+                    High-load thermal transient: CHT +16 °C, oil +12 °C above the twin (scripted).
                   </div>
                 </div>
 
@@ -667,12 +665,12 @@ export const UnifiedDebriefTab = () => {
                   <div className="flex items-center justify-between text-xs font-bold text-red-700 mb-1">
                     <span className="font-mono">T+04:05:00 (RTB CLIMB)</span>
                     <span className="text-[10px] font-mono bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-300 font-bold">
-                      ALERT: +0.54 MSE
+                      SCENARIO SCORE 0.54
                     </span>
                   </div>
                   <div className="font-bold text-sm text-slate-900 mb-1">2X Harmonic Vibration Spike</div>
                   <div className="text-xs text-slate-600 leading-relaxed font-normal">
-                    Vibration surged to 0.082 IPS (+0.048 spike). PRGB reduction gear bearing micro-spalling.
+                    Vibration +0.45 g above the twin: gearbox bearing distress (scripted).
                   </div>
                 </div>
               </div>
@@ -767,7 +765,7 @@ export const UnifiedDebriefTab = () => {
                   <div className={`text-lg font-bold font-mono ${parseFloat(activeTelemetry.vib) > 0.05 ? 'text-amber-600' : 'text-slate-900'}`}>
                     {activeTelemetry.vib}
                   </div>
-                  <div className="text-xs font-mono text-slate-500 font-medium">Nom: &lt;0.050 IPS</div>
+                  <div className="text-xs font-mono text-slate-500 font-medium">g-RMS · caution &gt; 0.45 g</div>
                 </div>
 
                 {/* 11. BOOST / MAP */}
@@ -783,7 +781,7 @@ export const UnifiedDebriefTab = () => {
                   <div className={`text-lg font-bold font-mono ${activeTelemetry.healthVal < 80 ? 'text-amber-600' : 'text-emerald-700'}`}>
                     {activeTelemetry.health}
                   </div>
-                  <div className="text-xs font-mono text-slate-500 font-medium">Prognostic Twin</div>
+                  <div className="text-xs font-mono text-slate-500 font-medium">Scripted scenario</div>
                 </div>
 
                 {/* 13. ANOMALY SCORE */}
@@ -836,7 +834,7 @@ export const UnifiedDebriefTab = () => {
               </div>
 
               <p className="text-xs text-slate-500 -mt-1 font-medium">
-                Continuous multi-stress fatigue degradation curve with dynamic physics & ML projections • Click anywhere to scrub
+                Scripted scenario health curve (hand-authored, not a model output) • Click anywhere to scrub
               </p>
 
               {/* SVG Curve */}

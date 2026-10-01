@@ -320,11 +320,11 @@ class HealthRulService:
                 level="CRITICAL",
                 action_plan=[
                     f"1. EMERGENCY: Fault [{fault}] diagnosed. Initiate Return-to-Base (RTB) or divert.",
-                    f"2. Reduce throttle to 65% MCP to preserve remaining {rul_h:.1f} h estimated RUL.",
-                    "3. Pitch down to maintain 115 kts airspeed for ram-air cooling.",
-                    "4. Notify GCS mission commander and declare UAV emergency to ATC.",
+                    f"2. RTB planner emergency profile: 58% throttle, 4200 rpm, 95 kt, -350 fpm to the nearest airfield (estimated RUL {rul_h:.1f} h).",
+                    "3. Monitor oil pressure, CHT and vibration trends during the recovery.",
+                    "4. Notify the GCS mission commander and declare a UAV emergency to ATC.",
                 ],
-                derate_throttle_pct=65.0, recommended_rpm=4200.0, target_recovery_field="Auxiliary Recovery Strip 04",
+                derate_throttle_pct=58.0, recommended_rpm=4200.0, target_recovery_field="Nearest airfield (RTB planner)",
             )
         if health.severity_level == "ELEVATED":
             return PilotAdvisoryOutput(
@@ -335,12 +335,12 @@ class HealthRulService:
                     "3. Monitor oil pressure and cylinder head temperature trends closely.",
                     f"4. Plan mission termination within {rul_h:.1f} flight hours.",
                 ],
-                derate_throttle_pct=75.0, recommended_rpm=4600.0, target_recovery_field="Forward Operating Base Bravo",
+                derate_throttle_pct=68.0, recommended_rpm=4400.0, target_recovery_field="Nearest airfield (RTB planner)",
             )
         return PilotAdvisoryOutput(
             level="NOMINAL",
             action_plan=[
-                "All engine subsystems operating within certified Rotax 915/916 iS limits.",
+                "All monitored engine parameters agree with the golden twin within normal scatter (simulator-derived limits).",
                 "Propulsion state nominal. No pilot intervention required.",
             ],
         )

@@ -1,6 +1,6 @@
 /**
  * GarudaTwin MALE UAV - Flight Data Recorder (FDR) Engine
- * DO-178C / STANAG 4671 Compliant Black-Box Telemetry Logger
+ * Legacy browser-side telemetry logger (the gateway's server/recorder.js is the flight recorder; no DO-178C / STANAG compliance claimed)
  * 
  * Captures 100 Hz binary CAN bus packets, thermodynamic state vectors,
  * first-principles residuals, and AI prognostics with zero memory leakage.
@@ -63,7 +63,7 @@ class FlightDataRecorder {
       startTime: Date.now(),
       endTime: null,
       initialFlightHours: 415.0,
-      engineModel: 'Rotax 915 iS Turbocharged Piston (1414cc)',
+      engineModel: 'Rotax 915 iS Turbocharged Piston (1352cc)',
       events: [
         { time: Date.now(), type: 'MISSION_START', label: 'Engine Ignition & FDR Recording Engaged' }
       ],

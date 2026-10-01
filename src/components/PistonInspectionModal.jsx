@@ -752,7 +752,7 @@ export const PistonInspectionModal = ({ isOpen, onClose, tel }) => {
                   <div className="flex justify-between text-slate-600">
                     <span>Piston Ring Sealing Status:</span>
                     <span className={`font-bold ${isBlowBy ? 'text-rose-600' : 'text-emerald-600'}`}>
-                      {isBlowBy ? '64.2% (Combustion Blow-By)' : '99.8% (Aero Certified)'}
+                      {isBlowBy ? '64.2% (Combustion Blow-By)' : '99.8% (nominal, illustrative)'}
                     </span>
                   </div>
                   <div className="flex justify-between text-slate-600">

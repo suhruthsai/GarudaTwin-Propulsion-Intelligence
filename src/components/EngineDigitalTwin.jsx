@@ -198,7 +198,7 @@ export function computeRingSealing(cylIdx, tel) {
 
 export const PropellerAssembly = ({ rpm = 4800, isSelected, onClick, basePos, ef = 0 }) => {
   const propRef = useRef();
-  const propRpm = Math.max(0, rpm / 2.43);
+  const propRpm = Math.max(0, rpm / 2.54);
 
   useFrame((_, dt) => {
     if (propRef.current) {
@@ -248,7 +248,7 @@ export const PropellerAssembly = ({ rpm = 4800, isSelected, onClick, basePos, ef
 };
 
 // ─────────────────────────────────────────────────────────────
-// CRANKSHAFT ASSEMBLY — 42CrMo4 Forged Nitrided Flat-4 Crankshaft
+// CRANKSHAFT ASSEMBLY (illustrative geometry)
 // Rotating assembly with main journals, counterweights & crankpins
 // ─────────────────────────────────────────────────────────────
 export const CrankshaftAssembly = ({ rpm = 4800, oilPress = 3.85, isHighlight = false }) => {
@@ -544,7 +544,7 @@ export const CrankcaseAssembly = ({ isSelected, onClick, basePos, ef = 0, tel, v
             { label: 'Crank Speed', value: `${Math.round(tel?.engine?.rpm || 4800)} RPM (${((tel?.engine?.rpm || 4800) / 60).toFixed(1)} Hz)` },
             { label: 'Bearing Wedge', value: '4.8 µm (3.85 bar nominal)' },
             { label: 'Harmonic Vib.', value: `${(tel?.engine?.vibrationGrms || 0.28).toFixed(3)} g (1X/2X orders)` },
-            { label: 'Material', value: 'Forged 42CrMo4 Nitrided Steel' },
+            { label: 'Geometry', value: 'Illustrative (not CAD)' },
           ]} />
         </>
       )}

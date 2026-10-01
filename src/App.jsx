@@ -214,11 +214,11 @@ export default function App() {
           <button
             onClick={() => setIsInspectorOpen(true)}
             className="px-2.5 py-1.5 rounded-md bg-white hover:bg-slate-50 border border-slate-200 hover:border-sky-400 text-slate-700 hover:text-slate-900 transition-colors text-xs font-mono font-medium flex items-center gap-1.5 shadow-xs"
-            title="Inspect 71 AI Diagnostic Features"
+            title="Inspect the AI model input features (live)"
           >
             <Sliders className="w-3.5 h-3.5 text-sky-600" />
             <span className="hidden sm:inline">AI METRICS</span>
-            <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 text-[10px] font-mono font-semibold">71</span>
+            <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 text-[10px] font-mono font-semibold">{aiPrognostics?.modelMetadata?.num_features ?? '—'}</span>
           </button>
 
           {/* Split-Screen Dual Docking Toggle */}

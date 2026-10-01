@@ -79,7 +79,7 @@ missionDemandHours,
   if (hasLiveData) {
     baseHealth = unitAi?.engine_health_index ?? unitTel.health?.index ?? 100;
     baseRul = unitAi?.rul_hours_mean ?? 750;
-    degradationRate = unitAi?.degradation_rate_pct_per_hour || 0.045;
+    degradationRate = unitAi?.degradation_rate_pct_per_hour ?? 0;
     stressBreakdown = unitAi?.stressBreakdown || stressBreakdown;
     combinedStress = stressBreakdown.combinedStress || 1.0;
     subsystemsDegradation = unitAi?.subsystem_degradation || subsystemsDegradation;
@@ -127,37 +127,39 @@ missionDemandHours,
       const chtSpread = Math.max(...(unitTel.engine?.cht || [106, 106, 106, 106])) - Math.min(...(unitTel.engine?.cht || [106, 106, 106, 106]));
       const oilP = unitTel.engine?.oilPressBar ?? 3.85;
       const vib = unitTel.engine?.vibrationGrms ?? 0.28;
+      // No AI evidence (no fault diagnosed): show the measured values against the nominal band only.
+      // Deviation = measured - nominal reference; no diagnostic weight is claimed.
       parameterEvidence = [
         {
           parameter: 'Exhaust Gas Temp (EGT) Spread',
           goldenModel: '< 18.0 °C spread',
           liveTelemetry: `${egtSpread.toFixed(1)} °C spread`,
-          residual: egtSpread > 18.0 ? `+${(egtSpread - 18.0).toFixed(1)} °C` : '-22%',
-          diagnosticWeight: egtSpread > 25.0 ? '95%' : '88%',
+          residual: `${egtSpread > 18.0 ? '+' : ''}${(egtSpread - 18.0).toFixed(1)} °C vs limit`,
+          diagnosticWeight: '—',
           status: egtSpread > 40.0 ? 'CRITICAL' : egtSpread > 20.0 ? 'WARNING' : 'NOMINAL'
         },
         {
           parameter: 'Cylinder CHT Thermal Spread',
           goldenModel: '< 10.0 °C spread',
           liveTelemetry: `${chtSpread.toFixed(1)} °C spread`,
-          residual: chtSpread > 10.0 ? `+${(chtSpread - 10.0).toFixed(1)} °C` : '-45%',
-          diagnosticWeight: chtSpread > 15.0 ? '94%' : '86%',
+          residual: `${chtSpread > 10.0 ? '+' : ''}${(chtSpread - 10.0).toFixed(1)} °C vs limit`,
+          diagnosticWeight: '—',
           status: chtSpread > 20.0 ? 'CRITICAL' : chtSpread > 12.0 ? 'WARNING' : 'NOMINAL'
         },
         {
-          parameter: 'Hydrodynamic Oil Pressure',
+          parameter: 'Oil Pressure',
           goldenModel: '3.85 bar ± 0.35',
           liveTelemetry: `${oilP.toFixed(2)} bar`,
-          residual: Math.abs(oilP - 3.85) > 0.4 ? `${(oilP - 3.85).toFixed(2)} bar` : '±0.04 bar',
-          diagnosticWeight: oilP < 2.5 ? '98%' : '84%',
+          residual: `${oilP - 3.85 >= 0 ? '+' : ''}${(oilP - 3.85).toFixed(2)} bar`,
+          diagnosticWeight: '—',
           status: oilP < 2.0 ? 'CRITICAL' : oilP < 2.8 ? 'WARNING' : 'NOMINAL'
         },
         {
-          parameter: 'Engine Block Vibration (g-RMS)',
+          parameter: 'Engine Vibration (broadband g-RMS)',
           goldenModel: '< 0.35 g-RMS',
           liveTelemetry: `${vib.toFixed(2)} g-RMS`,
-          residual: vib > 0.35 ? `+${(vib - 0.35).toFixed(2)} g` : '-18%',
-          diagnosticWeight: vib > 0.6 ? '96%' : '82%',
+          residual: `${vib - 0.35 >= 0 ? '+' : ''}${(vib - 0.35).toFixed(2)} g vs limit`,
+          diagnosticWeight: '—',
           status: vib > 1.0 ? 'CRITICAL' : vib > 0.5 ? 'WARNING' : 'NOMINAL'
         }
       ];
@@ -252,7 +254,7 @@ missionDemandHours,
       whyReasoning: whyReasoning,
       recommendationText: recommendationText,
       operationalWindow: operationalWindow,
-      fadecStatus: activeFault === 'NONE' ? 'FADEC Status: ALL CHANNELS NOMINAL * CLOSED-LOOP AUTO-TRIM ACTIVE' : `FADEC Status: CONTINGENCY DERATE ENGAGED [${activeFault}]`,
+      fadecStatus: activeFault === 'NONE' ? 'ECU: closed-loop fuel trim active; no engine fault diagnosed' : `AI diagnosis ${activeFault}: no automatic derate; power reduction / RTB is decided by the operator or the RTB planner`,
       affectedSubsystems: activeFault === 'NONE' ? ['NOMINAL'] : [activeFault],
       parameterEvidence: parameterEvidence,
       missionMarginHours: dynamicMissionMargin,
@@ -264,14 +266,21 @@ missionDemandHours,
       telemetryAgeMs: unitAi?.dataQuality?.telemetry_age_ms ?? null 
     },
     xaiAttributions: xaiAttributions,
+    // Model card values as served by the AI service (ai_health_rul/models/model_card.json); empty while offline
     modelMetadata: {
-      name: unitAi?.modelMetadata?.model_name || 'Mahalanobisresidual detector + XGBoost (TreeSHAP)',
-      version: unitAi?.modelMetadata?.version || '2.0.0',
-      dataset: unitAi?.modelMetadata?.training_dataset || 'GarudaTwinengine simulator (synthetic)',
-      featuresCount: unitAi?.modelMetadata?.num_features || 41,
-      tboHours: 2000,
-      melThresholdPct: 50,
-      disclaimer: 'AI-assisted prototype decision support only. Follow Rotax 915-iS AMM statutory procedures.'
+      live: !!unitAi?.modelMetadata?.model_name,
+      name: unitAi?.modelMetadata?.model_name || 'Mahalanobis residual detector + XGBoost (TreeSHAP)',
+      version: unitAi?.modelMetadata?.version || null,
+      dataset: unitAi?.modelMetadata?.training_dataset || 'GarudaTwin engine simulator',
+      featuresCount: unitAi?.modelMetadata?.num_features ?? null,
+      featureEngineering: unitAi?.modelMetadata?.feature_engineering ?? null,
+      rulMaeHours: unitAi?.modelMetadata?.validation_mae_hours ?? null,
+      detectionPrecision: unitAi?.modelMetadata?.anomaly_precision ?? null,
+      detectionRecall: unitAi?.modelMetadata?.anomaly_recall ?? null,
+      latencyMs: unitAi?.modelMetadata?.inference_latency_ms ?? null,
+      tboHours: unitAi?.modelMetadata?.tbo_hours ?? 2000,
+      melThresholdPct: unitAi?.modelMetadata?.mel_threshold ?? 50,
+      disclaimer: unitAi?.modelMetadata?.data_source_note || 'AI-assisted prototype decision support only, trained on simulator data.'
     }
   };
 
@@ -408,11 +417,11 @@ missionDemandHours,
                   : 'EXPLAINABLE DIAGNOSTICS & CAUSAL REASONING'}
               </h2>
               <span className="text-[9px] font-mono bg-slate-100 border border-slate-200 text-slate-700 px-1.5 py-0.2 rounded font-medium">
-                PHYSICS-INFORMED AI
+                XGBOOST ON PHYSICS RESIDUALS
               </span>
             </div>
             <div className="text-[11px] font-mono text-slate-500 flex items-center gap-1.5 mt-0.5">
-              <span>Fatigue modeling for:</span>
+              <span>AI prognostics for:</span>
               <span className="text-slate-800 font-semibold">{selectedUnit}</span>
               <span className="text-slate-300">•</span>
               <span>{unitInfo.callsign}</span>
@@ -544,10 +553,10 @@ missionDemandHours,
                 <span className="text-xs font-mono font-bold text-slate-500">HOURS</span>
               </div>
               <div className="text-[11px] font-mono text-slate-600 mt-1 font-medium">
-                Until MEL Overhaul Limit (50% Health)
+                {data.health.activeFault === 'NONE' ? 'No engine fault: hours left to the 2,000 h TBO' : 'Hours to functional failure (diagnosed fault)'}
               </div>
               <div className="flex justify-between text-[10px] font-mono text-slate-500 mt-2.5 pt-2 border-t border-slate-100 tabular-nums">
-                <span>Degradation: -{data.degradation.ratePerHour}%/hr</span>
+                <span>Health loss: {data.degradation.ratePerHour}%/hr</span>
                 <span className="text-slate-700 font-semibold">TBO: 2000h</span>
               </div>
             </div>
@@ -601,11 +610,13 @@ missionDemandHours,
                 </span>
               </div>
               <div className="text-[11px] font-mono text-slate-600 mt-2 font-medium">
-                Moderate RUL reduction under thermal/mechanical stress
+                {data.degradation.ratePerHour > 0
+                  ? `Health falling ${data.degradation.ratePerHour} %/h under the diagnosed fault`
+                  : 'No engine fault diagnosed: no health loss'}
               </div>
               <div className="flex justify-between text-[10px] font-mono text-slate-500 mt-2.5 pt-2 border-t border-slate-100 tabular-nums">
-                <span>Stress Factor: {data.degradation.stressBreakdown.combinedStress}x</span>
-                <span className="text-amber-700 font-semibold">Active Fatigue</span>
+                <span>Largest stress index: {data.degradation.stressBreakdown.combinedStress}</span>
+                <span className="text-slate-600 font-semibold">descriptive</span>
               </div>
             </div>
 
@@ -631,8 +642,8 @@ missionDemandHours,
               </div>
 
               <div className="flex justify-between text-[10px] font-mono text-slate-500 mt-2.5 pt-2 border-t border-slate-100 tabular-nums">
-                <span>Sensor Agreement: High</span>
-                <span className="text-slate-700 font-semibold">±1.8h Margin</span>
+                <span>Sensor confidence: {data.dataQuality.sensorConfidence != null ? `${data.dataQuality.sensorConfidence}%` : '—'}</span>
+                <span className="text-slate-700 font-semibold">RUL 95%: {data.rul.lower95.toFixed(0)}–{data.rul.upper95.toFixed(0)} h</span>
               </div>
             </div>
 
@@ -650,7 +661,7 @@ missionDemandHours,
                     TIME → HEALTH INDEX (%)
                   </h3>
                   <div className="text-[10px] font-mono text-slate-500 font-medium">
-                    Historical degradation log (T-50h → NOW) & 50h forecast envelope
+                    Model backcast (T-50h → NOW, not recorded history) & 50 h forecast envelope
                   </div>
                 </div>
                 <div className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-800 text-xs font-mono font-bold tabular-nums">
@@ -789,7 +800,7 @@ missionDemandHours,
                     TIME → ESTIMATED RUL (HOURS)
                   </h3>
                   <div className="text-[10px] font-mono text-slate-500 font-medium">
-                    RUL progression across operational history & dynamic stress reduction
+                    RUL: model backcast and current estimate
                   </div>
                 </div>
                 <div className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-800 text-xs font-mono font-bold tabular-nums">
@@ -901,10 +912,10 @@ missionDemandHours,
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="w-3 h-0.5 bg-[#059669]"></span>
-                  <span className="font-medium">Active Degradation Slope</span>
+                  <span className="font-medium">Health loss rate</span>
                 </div>
                 <div className="text-slate-700 font-mono font-bold tabular-nums">
-                  Rate: -{data.degradation.ratePerHour}%/hr
+                  Rate: {data.degradation.ratePerHour}%/hr
                 </div>
               </div>
             </div>
@@ -912,22 +923,17 @@ missionDemandHours,
           </div>
 
           {/* ─────────────────────────────────────────────────────────────
-              4. MULTI-STRESS INFLUENCE FACTORS (Screenshot 3)
-             ───────────────────────────────────────────────────────────── */}
-          {/* ─────────────────────────────────────────────────────────────
-              4. MULTI-STRESS INFLUENCE FACTORS
-             ───────────────────────────────────────────────────────────── */}
-          {/* ─────────────────────────────────────────────────────────────
-              4. MULTI-STRESS INFLUENCE FACTORS
+              4. DESCRIPTIVE STRESS INDICES (rul_predictor._stress: absolute sensor levels, 1.0 = nominal;
+                 shown for context, not inputs to the RUL model)
              ───────────────────────────────────────────────────────────── */}
           <div className="gcs-panel rounded-lg border border-slate-200 bg-white p-3.5 shadow-xs">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
               <h3 className="font-mono text-xs font-bold tracking-wider text-slate-900 uppercase flex items-center gap-2">
                 <Zap className="w-4 h-4 text-sky-600" />
-                PHYSICS-INFORMED MULTI-STRESS INFLUENCE FACTORS
+                DESCRIPTIVE STRESS INDICES (1.00 = NOMINAL)
               </h3>
               <span className="text-xs font-mono text-slate-600 font-medium">
-                Combined Fatigue Acceleration: <span className="text-sky-700 font-bold tabular-nums">{data.degradation.stressBreakdown.combinedStress}x</span>
+                Largest index: <span className="text-sky-700 font-bold tabular-nums">{data.degradation.stressBreakdown.combinedStress}</span>
               </span>
             </div>
 
@@ -939,7 +945,7 @@ missionDemandHours,
                 <div className="text-xl font-mono font-bold text-amber-600 my-1 tabular-nums">
                   {data.degradation.stressBreakdown.thermalStress.toFixed(2)}x
                 </div>
-                <span className="text-[9px] font-mono text-slate-500 font-medium">CHT / Oil Heat</span>
+                <span className="text-[9px] font-mono text-slate-500 font-medium">CHT &gt; 118 °C, oil &gt; 105 °C, EGT &gt; 900 °C</span>
               </div>
 
               <div className="gcs-card p-3 rounded-lg border border-slate-200 bg-white flex flex-col justify-between shadow-xs">
@@ -947,7 +953,7 @@ missionDemandHours,
                 <div className="text-xl font-mono font-bold text-amber-600 my-1 tabular-nums">
                   {data.degradation.stressBreakdown.mechanicalStress.toFixed(2)}x
                 </div>
-                <span className="text-[9px] font-mono text-slate-500 font-medium">IPS / 2X Harmonics</span>
+                <span className="text-[9px] font-mono text-slate-500 font-medium">Broadband vibration &gt; 0.35 g</span>
               </div>
 
               <div className="gcs-card p-3 rounded-lg border border-slate-200 bg-white flex flex-col justify-between shadow-xs">
@@ -957,7 +963,7 @@ missionDemandHours,
                 }`}>
                   {data.degradation.stressBreakdown.lubricationStress.toFixed(2)}x
                 </div>
-                <span className="text-[9px] font-mono text-slate-500 font-medium">Film / Oil PSI</span>
+                <span className="text-[9px] font-mono text-slate-500 font-medium">Oil pressure &lt; 2.8 bar</span>
               </div>
 
               <div className="gcs-card p-3 rounded-lg border border-slate-200 bg-white flex flex-col justify-between shadow-xs">
@@ -967,7 +973,7 @@ missionDemandHours,
                 }`}>
                   {data.degradation.stressBreakdown.combustionStress.toFixed(2)}x
                 </div>
-                <span className="text-[9px] font-mono text-slate-500 font-medium">Rail / Knock RMS</span>
+                <span className="text-[9px] font-mono text-slate-500 font-medium">EGT &gt; 920 °C</span>
               </div>
 
               <div className="gcs-card p-3 rounded-lg border border-slate-200 bg-white flex flex-col justify-between shadow-xs">
@@ -975,17 +981,14 @@ missionDemandHours,
                 <div className="text-xl font-mono font-bold text-slate-900 my-1 tabular-nums">
                   {data.degradation.stressBreakdown.operatingStress.toFixed(2)}x
                 </div>
-                <span className="text-[9px] font-mono text-slate-500 font-medium">RPM / MAP Boost</span>
+                <span className="text-[9px] font-mono text-slate-500 font-medium">RPM &gt; 5200, MAP &gt; 1.65 bar</span>
               </div>
 
             </div>
 
             {/* Scenario Response Logic Legend */}
             <div className="mt-3 p-2.5 gcs-card rounded border border-slate-200 bg-slate-50/80 flex flex-wrap items-center justify-between text-[10px] font-mono text-slate-600">
-              <span className="text-slate-900 font-bold">RESPONSE CRITERIA:</span>
-              <span className="text-emerald-700 font-medium">Normal Operation → Degradation Rate ~0.045%/hr</span>
-              <span className="text-amber-700 font-medium">Mild Fault Mode → RUL Acceleration ~1.4x - 1.8x</span>
-              <span className="text-red-700 font-medium">Severe Fault Mode → RUL Acceleration ~3.8x - 7.5x</span>
+              <span className="text-slate-700 font-medium">Indices rise above 1.00 only when a sensor passes the level shown. They describe operating stress for the operator and are not inputs to the RUL model.</span>
             </div>
           </div>
 
@@ -993,8 +996,8 @@ missionDemandHours,
           <div className="p-3 rounded-lg bg-sky-50 border border-sky-200 text-[11px] leading-relaxed text-slate-700 flex items-start gap-2.5 shadow-xs">
             <Info className="w-4 h-4 text-sky-600 mt-0.5 shrink-0" />
             <div>
-              <span className="font-bold text-slate-900">RESEARCH BENCHMARK & ESTIMATION NOTICE: </span>
-              This Remaining Useful Life (RUL) computation is a <span className="text-sky-700 font-semibold">physics-informed fatigue estimation</span> generated by multi-stress Weibull damage accumulation models and sensor residual attribution. In-flight authority and dispatch decisions remain strictly subject to the official Rotax 915-iS Aircraft Maintenance Manual (AMM) and statutory Time Between Overhaul (TBO: 2000 hours) compliance.
+              <span className="font-bold text-slate-900">HOW RUL IS ESTIMATED: </span>
+              When an engine fault is diagnosed, an <span className="text-sky-700 font-semibold">XGBoost multi-quantile model</span> (2.5 / 50 / 97.5 %) predicts hours to functional failure from the golden-twin residual features; the interval is widened by a conformal margin (held-out simulator test: MAE 22.9 h, 95 % interval coverage 94.5 %). With no engine fault, RUL is the time left to the assumed 2,000 h TBO. Trained on simulator data; maintenance and dispatch decisions follow the Rotax 915 iS maintenance manual.
             </div>
           </div>
 
@@ -1110,16 +1113,16 @@ missionDemandHours,
                 <span className="text-2xl font-mono font-bold text-emerald-600 tabular-nums">
                   {data.health.overallAnomalyScore.toFixed(2)}
                 </span>
-                <span className="text-xs font-mono text-slate-500 font-medium">σ Residual</span>
+                <span className="text-xs font-mono text-slate-500 font-medium">Mahalanobis score (0.5 = alarm threshold)</span>
               </div>
               <div className="w-full bg-slate-100 h-1.5 rounded mt-2.5 overflow-hidden border border-slate-200">
                 <div 
-                  className={`h-full transition-all duration-300 ${data.health.overallAnomalyScore <= 0.15 ? 'bg-emerald-500' : 'bg-red-500'}`}
-                  style={{ width: `${Math.min(100, data.health.overallAnomalyScore * 70)}%` }}
+                  className={`h-full transition-all duration-300 ${data.health.overallAnomalyScore < 0.5 ? 'bg-emerald-500' : 'bg-red-500'}`}
+                  style={{ width: `${Math.min(100, data.health.overallAnomalyScore * 100)}%` }}
                 />
               </div>
               <div className="text-[10px] font-mono text-slate-500 mt-2 font-medium">
-                {data.health.overallAnomalyScore <= 0.15 ? 'Within Nominal (≤0.15 σ)' : 'Exceeds Nominal (>0.15 σ)'}
+                {data.health.overallAnomalyScore < 0.5 ? 'Below detector threshold' : 'Above detector threshold'}
               </div>
             </div>
 
@@ -1198,7 +1201,7 @@ missionDemandHours,
                 PARAMETER EVIDENCE (GOLDEN TWIN VS. LIVE TELEMETRY DEVIATION)
               </h3>
               <span className="text-[10px] font-mono text-slate-500 font-medium">
-                Ranked by Mahalanobis influence metric
+                {data.health.activeFault === 'NONE' ? 'Measured vs nominal band (no fault diagnosed)' : 'AI evidence; weight = TreeSHAP share'}
               </span>
             </div>
 

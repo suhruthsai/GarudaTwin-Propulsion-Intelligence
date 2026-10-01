@@ -38,7 +38,7 @@
 1. **Simulator data only.**
    - The physics constants are engineering assumptions, not Rotax data. No thermostat or ignition timing is modelled.
    - Simulator sensor noise is small relative to the fault signatures, which makes the task easier than on a real engine.
-2. **Not robust to calibration offsets.** Adding sensor offsets the simulator never produces drops classifier macro F1 to **0.52**. A deployed twin needs a per-engine baseline calibration and real data.
+2. **Not robust to calibration offsets.** Adding sensor offsets the simulator never produces drops classifier macro F1 to **0.50**. A deployed twin needs a per-engine baseline calibration and real data.
 3. **Hard cases.**
    - Weak sensor drift (below ~5–10 % of full scale) can be missed.
    - After a fault is cleared, the diagnosis takes a median 8.2 s (p90 12.4 s) to return to normal.

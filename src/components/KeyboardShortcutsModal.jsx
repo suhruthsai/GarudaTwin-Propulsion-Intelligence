@@ -10,8 +10,8 @@ export const KeyboardShortcutsModal = ({ isOpen, onClose }) => {
       icon: Monitor,
       items: [
         { key: '1', label: '3D CAD Blueprint & Digital Twin', desc: 'Rotax 915 iS airframe & engine assembly' },
-        { key: '2', label: 'Live Telemetry Annunciator', desc: '14-parameter real-time sensor array' },
-        { key: '3', label: 'AI Prognostics & XAI Engine', desc: 'SHAP / XGBoost / Autoencoder health' },
+        { key: '2', label: 'Live Telemetry Annunciator', desc: '25 engine, electrical, injection and air-data channels' },
+        { key: '3', label: 'AI Prognostics & XAI Engine', desc: 'XGBoost diagnosis, health and RUL with TreeSHAP explanations' },
         { key: '4', label: 'RTB Contingency Planner', desc: 'Rule-based divert decision, airfield distances, glide reach' },
         { key: '5', label: 'Fleet Health', desc: 'Per-vehicle engine simulator + AI health, RUL and diagnosis' },
         { key: '6', label: 'What-If Test Bench', desc: 'Manual engine inputs and simulator-generated profiles → one-shot AI assessment' },
@@ -25,17 +25,17 @@ export const KeyboardShortcutsModal = ({ isOpen, onClose }) => {
       icon: Command,
       items: [
         { key: 'D', label: 'Toggle Split-Screen Dual Dock', desc: 'Side-by-side comparative monitoring' },
-        { key: 'K / ?', label: 'Operator Keybindings Matrix', desc: 'Display this MIL-STD flight deck legend' },
+        { key: 'K / ?', label: 'Operator Keybindings Matrix', desc: 'Display this shortcut list' },
         { key: 'ESC', label: 'Dismiss Active Overlay / Modal', desc: 'Close open inspection dialogues' },
       ]
     },
     {
-      group: 'AVIONICS & DEFENSE COMPLIANCE STANDARDS',
+      group: 'STANDARDS (DESIGN REFERENCES ONLY, NOT ASSESSED OR CERTIFIED)',
       icon: ShieldCheck,
       items: [
-        { key: 'MIL-STD-1472H', label: 'Human Engineering Standard', desc: 'Daylight high-contrast symbology layout' },
-        { key: 'DO-178C', label: 'Airborne Systems Software', desc: 'Level B determinism & audit trail' },
-        { key: 'STANAG 4586', label: 'NATO UAV Interoperability', desc: 'FCS 6-DOF & L1 waypoint protocol' },
+        { key: 'MIL-STD-1472H', label: 'Human engineering', desc: 'Reference for high-contrast symbology; no compliance assessment done' },
+        { key: 'DO-178C', label: 'Airborne software', desc: 'Target process for a production version; no objectives executed' },
+        { key: 'STANAG 4586', label: 'UAV interoperability', desc: 'Not implemented; reference only' },
       ]
     }
   ];
@@ -60,12 +60,9 @@ export const KeyboardShortcutsModal = ({ isOpen, onClose }) => {
                 <h2 className="text-sm font-bold tracking-wider text-slate-900 uppercase">
                   OPERATOR KEYBOARD SHORTCUTS MATRIX
                 </h2>
-                <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-50 border border-amber-300 text-amber-800 font-bold">
-                  MIL-STD-1472H
-                </span>
               </div>
               <p className="text-[11px] text-slate-500">
-                GarudaTwin MALE UAV Ground Control Station Quick-Action Flight Deck
+                GarudaTwin MALE UAV ground control station
               </p>
             </div>
           </div>

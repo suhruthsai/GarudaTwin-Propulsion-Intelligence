@@ -24,7 +24,7 @@ export class AtmosphericPhysicsEngine {
   static R_SPECIFIC = 287.058;// Specific gas constant for dry air (J/(kg·K))
   static FT_TO_M = 0.3048;    // Feet to meters conversion
 
-  // 9 Aerospace-Grade Environmental Mission Scenarios
+  // 9 environmental demo-scenario presets
   static SCENARIO_PRESETS = [
     {
       id: 'HIGH_ALT_FL220',
@@ -284,13 +284,13 @@ export class AtmosphericPhysicsEngine {
       }
     } else if (scenarioId === 'MONSOON') {
       const vibVal = parseFloat(t.vib) || 0.038;
-      t.vib = `${(vibVal + 0.012).toFixed(3)} IPS`;
+      t.vib = `${(vibVal + 0.03).toFixed(2)} g`;
     } else if (scenarioId === 'TERRAIN_MASK') {
       if (activePhaseId >= 2 && activePhaseId <= 6) {
         t.alt = '500 FT';
         t.flTag = 'AGL';
         const vibVal = parseFloat(t.vib) || 0.038;
-        t.vib = `${(vibVal + 0.009).toFixed(3)} IPS`;
+        t.vib = `${(vibVal + 0.02).toFixed(2)} g`;
       }
     } else if (scenarioId === 'HIGH_ALT_FL200') {
       if (activePhaseId >= 3 && activePhaseId <= 5) {

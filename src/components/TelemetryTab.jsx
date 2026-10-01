@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 
 // ---------------------------------------------------------
-// PRECISION AVIONICS RADIAL DIAL GAUGE (STANAG 4586 / MIL-STD-1472H)
+// Radial dial gauge
 // ---------------------------------------------------------
 const RadialDial = ({ label, value, unit, min, max, warn, crit, isHighCrit = true, icon: Icon }) => {
   let statusColor = 'text-emerald-700';
@@ -243,7 +243,6 @@ export const TelemetryTab = () => {
                 const isEgtCrit = cylEgt > 950;
                 const isAlarm = isChtCrit || isEgtCrit;
                 
-                const peakP = 92.5 + (cylEgt - 840) * 0.05 + rEgt * 0.1;
 
                 return (
                   <div 
@@ -267,7 +266,6 @@ export const TelemetryTab = () => {
                     <MetricRow label="CHT Δ AVG" value={(cylCht - th.chtAvg).toFixed(1)} unit="°C" statusStr={Math.abs(rCht) > 10 ? 'WARN' : null} />
                     <MetricRow label="EGT" value={cylEgt.toFixed(1)} unit="°C" highlight={cylEgt > 900} />
                     <MetricRow label="EGT Δ AVG" value={(cylEgt - th.egtAvg).toFixed(1)} unit="°C" statusStr={Math.abs(rEgt) > 20 ? 'WARN' : null} />
-                    <MetricRow label="PEAK PRESS" value={peakP.toFixed(1)} unit="bar" />
                   </div>
                 );
               })}
@@ -278,10 +276,10 @@ export const TelemetryTab = () => {
           <div className="gcs-panel rounded-lg border border-slate-200 p-3.5 shadow-xs">
             <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200">
               <h3 className="font-mono text-xs font-bold tracking-wider text-slate-900 uppercase flex items-center gap-2">
-                <Radio className="w-4 h-4 text-emerald-600" /> CAN 2.0B TELEMETRY BUS SNIFFER
+                <Radio className="w-4 h-4 text-emerald-600" /> CAN 2.0B FRAMES (DBC-ENCODED BY THE GATEWAY)
               </h3>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-50 border border-emerald-300 text-emerald-800 font-semibold">
-                100 HZ ACTIVE STREAM
+                ~20 HZ, WITH EACH TELEMETRY FRAME
               </span>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">

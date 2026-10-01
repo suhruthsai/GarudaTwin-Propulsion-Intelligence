@@ -316,7 +316,7 @@ def get_service_health():
 def detect_anomaly(telemetry: TelemetryInput):
     """
     LEGACY single-frame endpoint (PyTorch autoencoder on 12 raw inputs). Kept for compatibility only:
-    the GCS uses /api/health-rul/predict. Held-out recall is 14 % (see model_card.json); do not use
+    the GCS uses /api/health-rul/predict. Held-out recall is 17 % (see model_card.json); do not use
     it for decisions.
     """
     # 1. Physics Baseline Evaluation

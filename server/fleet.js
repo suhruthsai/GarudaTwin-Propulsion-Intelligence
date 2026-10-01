@@ -15,7 +15,7 @@ export const FLEET_SPEC = [
   { id: 'Vahak-2', callsign: 'Vahak-2 (ESCORT LEAD)', engine: 'Rotax 915 iS', serial: 'RTX-0819', flightHours: 415.0,
     role: 'Escort lead, sector south', station: { lat: 25.95, lon: 70.85, altitudeFt: 15200, airspeedKts: 118 },
     op: { rpm: 4950, throttle: 80.0 }, initialFault: null },
-  { id: 'Vahak-3', callsign: 'Vahak-3 (RELAY ORBIT)', engine: 'Rotax 916 iS', serial: 'RTX-0902', flightHours: 80.0,
+  { id: 'Vahak-3', callsign: 'Vahak-3 (RELAY ORBIT)', engine: 'Rotax 915 iS', serial: 'RTX-0902', flightHours: 80.0,
     role: 'Communications relay orbit', station: { lat: 26.70, lon: 71.30, altitudeFt: 18000, airspeedKts: 125 },
     op: { rpm: 5100, throttle: 82.5 }, initialFault: null },
   { id: 'Vahak-4', callsign: 'Vahak-4 (PERIMETER PATROL)', engine: 'Rotax 915 iS', serial: 'RTX-0754', flightHours: 780.0,

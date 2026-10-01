@@ -2,6 +2,38 @@
 
 Tested on Windows 11, Node 24.13, Python 3.12, commit `0ee7897`. Every finding below was reproduced against the running system (gateway :5002, AI service :8001, Vite UI :5173), not inferred from code alone.
 
+> **Update 12 — final full audit (every tab, every README number).**
+> - **Numbers:** every README metric was re-checked against `model_card.json`. One stale value was corrected: the stress-test macro F1 is 0.50, not 0.52 (also in the validation page and demo script).
+> - **Model card drawer (Tab 3, "Explain model"):** it was entirely hard-coded and wrong — "XGBoost + Bi-LSTM", "Isolation Forest + Autoencoder", "71 features", RUL MAE 14.2 h, "96.4 % precision, 7-fault classifier". It now renders the AI service's own model card (45 features, 100 % / 96.5 %, RUL MAE 22.87 h, measured latency). The header badge "AI METRICS 71" now shows the live feature count.
+> - **Tab 3 RUL view:**
+>   - The RUL notice claimed "multi-stress Weibull damage accumulation"; it now describes the real XGBoost quantile + conformal model.
+>   - A `||` bug turned the AI's 0 %/h health loss (no fault) into an invented 0.045 %/h.
+>   - The stress panel's labels ("Rail / Knock RMS", "IPS / 2X harmonics", "RUL acceleration 1.4–7.5×") described sensors and rules that do not exist. The values are real but descriptive, and are now labelled with their actual thresholds.
+>   - "±1.8 h margin" was a constant; it now shows the RUL interval.
+> - **Tab 3 diagnostics:**
+>   - With no fault, the evidence table showed invented "diagnostic weights" (88/86/84/82 %) and deviations like "−45 %"; it now shows measured deviations only.
+>   - The anomaly score was labelled in σ; it is a scaled Mahalanobis distance with 0.5 = alarm threshold.
+>   - "FADEC contingency derate engaged" was shown for any fault although no automatic derate exists.
+>   - "Certified Rotax limits" text was removed (AI service).
+> - **Tab 6 bench:** it opened on a hand-typed frame without fuel, lambda, injection or battery channels, which the AI diagnosed as SENSOR_DRIFT. It now opens on Profile A (AI: NONE, health 99.5). "Reset nominal" no longer changes the live aircraft.
+> - **Other fabrications removed:**
+>   - Per-cylinder "peak pressure" (a formula on EGT; no sensor exists).
+>   - A "100 Hz" CAN label (it is ~20 Hz).
+>   - Vahak-5's map card claiming an oil-pump fault, RUL 120 h and ECU lockout (it is a hangar reserve with no engine data).
+>   - Component texts claiming STANAG 4671 compliance, generator "payload shedding", and unverified crankshaft materials.
+>   - The Debrief's California coordinates, "FADEC SYNC 100 % PASS", "MSE" residuals and IPS vibration units (now g-RMS from the twin, like every other tab).
+>   - "Certified EASA/FAA envelope" text.
+>   - "MIL-STD / DO-178C Level B" listed as if met.
+> - **Corrections:**
+>   - The 915 iS gearbox ratio is 2.54:1 (Rotax data), not 2.43:1, in the 3D model.
+>   - The flight controller's glide label said L/D 14.5 while 26.2 is used.
+>   - Vahak-3 was listed as a 916 iS although every engine runs the 915 iS model.
+>   - Old-format recordings now show "old format" instead of a Replay button that would be refused.
+>   - The AI service's critical advisory said "65 % throttle, 115 kt" while the RTB planner commands 58 %, 95 kt, −350 fpm; it now quotes the planner's profiles and no longer names two fictional airfields.
+>   - Engine displacement was given as 1414 cc in the README and the PDF; the 915 iS is 1352 cc (84 mm × 61 mm × 4).
+> - **Checks:** all 9 tabs render with no console errors. The final rehearsal ran at the inject-button severities, giving the backup recording `demo/backup_sortie.csv` (2,711 frames). All faults were diagnosed correctly in 2–6 s and cleared in 1–9 s. Thrust was 93 % for the injector clog and 100 % otherwise. Tab 3 showed the AI's own evidence (oil pressure −2.86 bar, vibration +1.20 g, oil temperature +23.9 °C, with TreeSHAP weights).
+> - **Tests on the final code:** pytest 23/23, AI/physics 6/6, FCS 5/5, security 13/13, data 21/21, fleet 19/19, geofence 11/11.
+
 > **Update 11 — demo preparation and rehearsal.** `demo/DEMO_SCRIPT.md` (7 min, with the values a judge will see), `demo/VALIDATION_AND_LIMITATIONS.md` (one page), and `demo/rehearse.mjs`, which runs the demo's fault sequence against the live system at the UI buttons' severities and exports a backup recording (`demo/backup_sortie.csv`; re-import verified: 2,664 frames, 235 AI frames, replay shows the same sequence). Rehearsal results:
 > - **Faults:** all four diagnosed correctly in 2 s; CHT drift in 6 s (the bias ramps in over 20 s).
 > - **Recovery:** back to `NONE` 1–8 s after clearing.

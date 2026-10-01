@@ -163,10 +163,10 @@ class PilotAdvisoryOutput(BaseModel):
 
 class ModelMetadata(BaseModel):
     """Model versioning and validation metrics for judge-facing transparency."""
-    model_name: str = "IsolationForest + XGBoost"
+    model_name: str = "Mahalanobis residual detector + XGBoost"
     version: str = "2.0.0"
     training_dataset: str = "GarudaTwin engine simulator"
-    num_features: int = 32
+    num_features: int = 45
     feature_engineering: str = "Golden-twin physics residuals + rolling mean/std"
     validation_mae_hours: float = 0.0
     validation_rmse_hours: Optional[float] = None

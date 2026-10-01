@@ -109,7 +109,7 @@ Click **Clear All (Nominal)**.
 
 ## 6:15 – 7:00 · Validation and honesty (`demo/VALIDATION_AND_LIMITATIONS.md`)
 
-> "On held-out simulator episodes: 100 % precision, 96.5 % recall, 0 false alarms in 15,225 healthy samples, macro F1 0.98, 95.8–97 % accuracy at every altitude and temperature band. What it is **not**: it has never seen a real engine. When we add calibration offsets the simulator doesn't produce, F1 drops to 0.52 — so the next step is test-cell data from a 915 iS to calibrate the twin per engine. The physics constants are stated assumptions; the debrief tab is a hand-authored demo; the planner is rule-based, not reinforcement learning."
+> "On held-out simulator episodes: 100 % precision, 96.5 % recall, 0 false alarms in 15,225 healthy samples, macro F1 0.98, 95.8–97 % accuracy at every altitude and temperature band. What it is **not**: it has never seen a real engine. When we add calibration offsets the simulator doesn't produce, F1 drops to 0.50 — so the next step is test-cell data from a 915 iS to calibrate the twin per engine. The physics constants are stated assumptions; the debrief tab is a hand-authored demo; the planner is rule-based, not reinforcement learning."
 
 ---
 

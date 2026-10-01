@@ -98,7 +98,7 @@ export const FeaturesInspectorModal = ({ isOpen, onClose }) => {
           <div className="p-2.5 rounded-lg border border-slate-200 bg-white shadow-2xs">
             <span className="text-slate-500 text-[10px] font-bold">TOTAL FEATURE SPACE:</span>
             <div className="font-bold text-sm text-sky-600 tabular-nums mt-0.5">
-              {featureCols.length || meta.num_features || 32} FEATURES
+              {featureCols.length || meta.num_features || '—'} FEATURES
             </div>
           </div>
         </div>

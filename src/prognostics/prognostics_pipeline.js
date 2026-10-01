@@ -133,10 +133,10 @@ export class PrognosticsPipeline {
       features,
       xaiAttributions,
       modelMetadata: {
-        name: 'PINN Autoencoder + Multi-Stress Fatigue RUL',
+        name: 'Browser physics fallback (AI service offline; not the trained models)',
         version: '1.2.0',
-        dataset: 'Rotax 915-iS Hardware-in-the-Loop Telemetry & Physics Baseline',
-        featuresCount: 71,
+        dataset: 'None (rule/physics heuristics in the browser)',
+        featuresCount: null,
         tboHours: 2000,
         melThresholdPct: 50,
         disclaimer: 'AI-assisted prototype decision support only. Follow Rotax 915-iS AMM statutory procedures.'

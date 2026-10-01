@@ -264,7 +264,9 @@ export function DataSourceTab() {
                   <td className="pr-2">{r.has_truth ? 'yes' : '—'}</td>
                   <td className="pr-2 text-slate-500">{new Date(r.created_at).toLocaleString()}</td>
                   <td className="py-1 flex gap-1 justify-end">
-                    <Btn onClick={() => load(r.id)} disabled={busy || r.ai_frame_count < 2} title="Replay through the twin and AI"><Play className="w-3 h-3" /> Replay</Btn>
+                    {(r.schema_version ?? 1) < 2
+                      ? <span className="text-[10px] text-slate-500" title="Recorded before the 25-channel format; kept for export, not replayable with the current models">old format</span>
+                      : <Btn onClick={() => load(r.id)} disabled={busy || r.ai_frame_count < 2} title="Replay through the twin and AI"><Play className="w-3 h-3" /> Replay</Btn>}
                     <Btn onClick={() => exportCsv(r)} title="Download as CSV (re-importable)"><Download className="w-3 h-3" /></Btn>
                     <Btn danger onClick={() => remove(r)} disabled={busy || r.recording || replay?.id === r.id} title="Delete recording"><Trash2 className="w-3 h-3" /></Btn>
                   </td>

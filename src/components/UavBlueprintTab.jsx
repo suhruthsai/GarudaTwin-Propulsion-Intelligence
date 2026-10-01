@@ -233,11 +233,11 @@ const InlineLabel = ({ pos, rows }) => (
 // ─────────────────────────────────────────────────────────────
 // PROPELLER ASSEMBLY
 // Only the blade group (propRef) rotates. Hub and cone are static.
-// RPM driven via Rotax 2.43:1 planetary reduction gear ratio.
+// RPM driven via Rotax 2.54:1 planetary reduction gear ratio.
 // ─────────────────────────────────────────────────────────────
 const PropellerAssembly = ({ rpm, isSelected, onClick, basePos, ef }) => {
   const propRef = useRef();
-  const propRpm = Math.max(0, rpm / 2.43);
+  const propRpm = Math.max(0, rpm / 2.54);
 
   useFrame((_, dt) => {
     if (propRef.current) {
@@ -287,7 +287,7 @@ const PropellerAssembly = ({ rpm, isSelected, onClick, basePos, ef }) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// CRANKSHAFT ASSEMBLY — 42CrMo4 Forged Nitrided Flat-4 Crankshaft
+// CRANKSHAFT ASSEMBLY (illustrative geometry)
 // Rotating assembly with main journals, counterweights & crankpins
 // ─────────────────────────────────────────────────────────────
 const CrankshaftAssembly = ({ rpm = 4800, oilPress = 3.85, isHighlight = false }) => {
@@ -586,7 +586,7 @@ const CrankcaseAssembly = ({ isSelected, onClick, basePos, ef, tel, vm }) => {
             { label: 'Crank Speed', value: `${Math.round(tel.engine.rpm)} RPM (${(tel.engine.rpm / 60).toFixed(1)} Hz)` },
             { label: 'Bearing Wedge', value: '4.8 µm (3.85 bar nominal)' },
             { label: 'Harmonic Vib.', value: `${tel.engine.vibrationGrms.toFixed(3)} g (1X/2X orders)` },
-            { label: 'Material', value: 'Forged 42CrMo4 Nitrided Steel' },
+            { label: 'Geometry', value: 'Illustrative (not CAD)' },
           ]} />
         </>
       )}
@@ -1048,7 +1048,7 @@ const PrgbAssembly = ({ isSelected, onClick, basePos, ef, tel, vm }) => {
           </mesh>
           <InlineLabel pos={[1.2, 0, 0]} rows={[
             { value: 'PRGB_GEARBOX' },
-            { label: 'Ratio', value: '2.43:1' },
+            { label: 'Ratio', value: '2.54:1' },
             { label: 'Vibration', value: `${tel.engine.vibrationGrms.toFixed(2)} g` }
           ]} />
         </>
@@ -1319,20 +1319,20 @@ const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, se
   const injAf = tel.health.injectedFault ?? 'NONE'; // injected scenario (bench buttons)
 
   const DESCS = {
-    PROP_01:      'Two-blade propeller driven via 2.43:1 planetary reduction gearbox. RPM monitored by FADEC crankshaft encoder. Blade pitch is fixed.',
-    ENGINE_BLOCK: 'Rotax 915 iS flat-4 turbocharged powertrain core. Features a nitrided 42CrMo4 forged crankshaft with 8 dynamic counterweights, hydrodynamic tri-metal bearings, and a 2.43:1 PRGB drive pinion.',
-    CYL_01:       'Left-forward cylinder. 84 mm bore × 61 mm stroke, NiCaSil-plated bore. Dual spark ignition, port fuel injection.',
-    CYL_02:       'Right-forward cylinder. Paired with CYL_01 on crank pin. Correlation with charge air temperature under boost.',
-    CYL_03:       'Left-aft cylinder. Critical fault indicator — injector restriction causes EGT excursions >960°C (lean burn). Primary CYL3_INJECTOR sensor.',
-    CYL_04:       'Right-aft cylinder. Monitored for thermal symmetry and exhaust manifold backpressure balance.',
-    TURBO_01:     'Exhaust-driven turbocharger. Maintains sea-level MAP to 15,000 ft. FADEC-regulated electronic wastegate ±0.02 bar. Overspeed or stuck wastegate causes over-boost.',
+    PROP_01:      'Propeller driven through the 2.54:1 reduction gearbox (prop RPM = engine RPM / 2.54). The propeller itself is not modelled in detail.',
+    ENGINE_BLOCK: 'Rotax 915 iS: turbocharged, horizontally opposed four-cylinder engine with 2.54:1 propeller reduction gearbox. Internal parts are drawn for illustration only.',
+    CYL_01:       'Left-forward cylinder (84 mm bore × 61 mm stroke). Dual ignition, port fuel injection. Monitored: EGT1, CHT1.',
+    CYL_02:       'Right-forward cylinder. Monitored: EGT2, CHT2 (default channel for the sensor-drift test).',
+    CYL_03:       'Left-aft cylinder. An injector restriction runs it lean and hot: in the simulator its EGT rises ~120–140 °C above the other cylinders, while the ECU fuel trim richens (cools) the rest. Monitored for CYL3_INJECTOR.',
+    CYL_04:       'Right-aft cylinder. Monitored: EGT4, CHT4 (cylinder-to-cylinder spread is a key AI feature).',
+    TURBO_01:     'Exhaust-driven turbocharger with electronically controlled wastegate. In the twin, MAP is held until ambient pressure × 3.0 runs out (~20,000 ft at loiter); a wastegate stuck closed causes over-boost.',
     INTERCOOLER:  'Charge air cooler. Reduces post-compressor air temperature, increasing charge density and reducing knock risk.',
-    OIL_SYSTEM:   'Dry sump lubrication. Mechanical pump with thermostatically-controlled cooler. Pressure collapse indicates cavitation or bearing seizure risk.',
-    FUEL_RAIL:    'Dual redundant electric fuel pumps. 3.0 bar regulated rail pressure. Multi-point port injection. Avgas 100LL / Mogas 95.',
-    FADEC_A:      'Primary FADEC Lane A (left ECU). Controls ignition, injection, boost, mixture. Monitors all sensors at 100 Hz.',
-    FADEC_B:      'Redundant FADEC Lane B (right ECU). Mirrors Lane A. Auto-switches on Lane A fault. STANAG 4671 compliant.',
-    PRGB_GEARBOX: 'Propeller Reduction Gearbox (2.43:1). Includes overload clutch and torsional vibration damper to protect crank from prop strikes and harmonics.',
-    UAV_GENERATOR_28V: 'High-Output 28V DC payload generator. Powers SAR radar, EO/IR turret, and avionics. Loss of generator triggers AI payload-shedding and RTB.',
+    OIL_SYSTEM:   'Dry-sump lubrication with an engine-driven oil pump. Pressure collapse with fluctuation indicates pump cavitation (OIL_PUMP_CAVITATION).',
+    FUEL_RAIL:    'Two electric fuel pumps, ~3 bar rail, port injection. The twin models injection time and ECU fuel trim.',
+    FADEC_A:      'Engine control unit, lane A: ignition, injection, boost and mixture. In the twin it is represented by the closed-loop fuel trim and wastegate logic.',
+    FADEC_B:      'Engine control unit, lane B (redundant). Lane switching is not modelled.',
+    PRGB_GEARBOX: 'Propeller Reduction Gearbox (2.54:1). Includes overload clutch and torsional vibration damper to protect crank from prop strikes and harmonics.',
+    UAV_GENERATOR_28V: 'Alternator feeding the 28 V bus (avionics and payload, ~38 A modelled). Failure is diagnosed as GENERATOR_FAILURE; the battery then carries the load and Live Telemetry shows battery-only endurance.',
     COOLANT_RADIATOR: 'Liquid cooling heat exchanger for cylinder heads. Blockage or water pump failure leads to thermal runaway and detonation risk.',
   };
 
@@ -1341,7 +1341,7 @@ const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, se
       case 'PROP_01':
         return [
           { label:'Engine RPM', value:tel.engine.rpm,          unit:'RPM',p:0 },
-          { label:'Prop RPM',   value:tel.engine.rpm/2.43,     unit:'RPM',p:0 },
+          { label:'Prop RPM',   value:tel.engine.rpm/2.54,     unit:'RPM',p:0 },
           { label:'Throttle',   value:tel.engine.throttlePct,  unit:'%',  p:1 },
         ];
       case 'ENGINE_BLOCK':
@@ -1399,7 +1399,7 @@ const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, se
       case 'PRGB_GEARBOX':
         return [
           { label:'Input RPM', value:tel.engine.rpm, unit:'RPM', p:0 },
-          { label:'Prop RPM',  value:tel.engine.rpm/2.43, unit:'RPM', p:0 },
+          { label:'Prop RPM',  value:tel.engine.rpm/2.54, unit:'RPM', p:0 },
           { label:'Vibration', value:tel.engine.vibrationGrms, unit:'g', p:3, res:tel.residuals.vibrationResidual }
         ];
       case 'UAV_GENERATOR_28V':
@@ -1476,7 +1476,7 @@ const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, se
           <BarChart2 className="w-3.5 h-3.5 text-sky-600" /> ENGINE HEALTH &amp; ANOMALY
         </div>
         {[
-          { label:'Health Index',  val:tel.health.index,           col:tel.health.index < 70 ? '#DC2626' : tel.health.index < 85 ? '#D97706' : '#059669' },
+          { label:'L1 Health Index',  val:tel.health.index,           col:tel.health.index < 70 ? '#DC2626' : tel.health.index < 85 ? '#D97706' : '#059669' },
           { label:'Anomaly Score', val:aiProg.anomaly_score*100,   col:aiProg.anomaly_score>0.5?'#DC2626':aiProg.anomaly_score>0.2?'#D97706':'#059669' },
         ].map((bar,bi) => (
           <div key={bi} className="flex items-center gap-2 mb-1.5">

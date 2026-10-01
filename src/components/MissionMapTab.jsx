@@ -1254,18 +1254,17 @@ glideConeRadiusNm: 0.0,
           </div>
 
           {isGrounded ? (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs font-mono flex flex-col gap-1.5 shadow-2xs">
-              <div className="flex items-center justify-between text-red-700 font-bold text-[11px] border-b border-red-200/80 pb-1">
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs font-mono flex flex-col gap-1.5 shadow-2xs">
+              <div className="flex items-center justify-between text-slate-700 font-bold text-[11px] border-b border-slate-200 pb-1">
                 <span className="flex items-center gap-1.5">
-                  <ShieldAlert className="w-4 h-4 text-red-600" /> RED-X GROUNDING ORDER
+                  <ShieldAlert className="w-4 h-4 text-slate-500" /> ON GROUND (RESERVE)
                 </span>
-                <span className="text-[9px] bg-red-100 text-red-800 border border-red-300 px-1.5 py-0.5 rounded font-bold">STANAG 4671</span>
+                <span className="text-[9px] bg-red-100 text-red-800 border border-red-300 px-1.5 py-0.5 rounded font-bold">HANGAR RESERVE</span>
               </div>
               <div className="text-slate-700 text-[10px]">LOCATION: <span className="font-bold text-slate-900">AFS Uttarlai — Hangar Bay 3 (Concrete Ramp)</span></div>
-              <div className="text-slate-700 text-[10px]">CRITICAL FAULT: <span className="font-bold text-red-700">OIL_PUMP_CAVITATION (RUL: 120.0h)</span></div>
-              <div className="text-slate-700 text-[10px]">FADEC STATUS: <span className="font-bold text-sky-700">ECU LOCKOUT / INJECTION DISABLED</span></div>
-              <div className="text-slate-600 text-[9px] mt-1 pt-1 border-t border-red-200/80 font-medium">
-                * Flight operations suspended pending depot-level mechanical oil scavenge pump replacement and hydrodynamic lubrication loop flush.
+              <div className="text-slate-700 text-[10px]">ENGINE: <span className="font-bold text-slate-900">Off: no engine data, so no AI assessment</span></div>
+              <div className="text-slate-600 text-[9px] mt-1 pt-1 border-t border-slate-200 font-medium">
+                * Hangar reserve in the fleet model; no route is planned for a vehicle on the ground.
               </div>
             </div>
           ) : (

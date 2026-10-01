@@ -16,6 +16,8 @@ import {
 
 export const PrognosticsDetailDrawer = ({ isOpen, onClose, modelMetadata }) => {
   if (!isOpen) return null;
+  const m = modelMetadata || {};
+  const pct = (v) => (v != null ? `${(v * 100).toFixed(1)}%` : '—');
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40 backdrop-blur-xs transition-all duration-300">
@@ -26,7 +28,7 @@ export const PrognosticsDetailDrawer = ({ isOpen, onClose, modelMetadata }) => {
           <div className="flex items-center gap-2.5 text-sky-600">
             <Brain className="w-4 h-4 text-sky-600" />
             <h2 className="font-display font-bold text-sm tracking-wider text-slate-900 uppercase">
-              PROGNOSTICS & PHM MODEL AUDIT // DEFENSE REVIEW
+              PROGNOSTICS MODEL CARD
             </h2>
           </div>
           <button 
@@ -44,40 +46,38 @@ export const PrognosticsDetailDrawer = ({ isOpen, onClose, modelMetadata }) => {
           <div className="p-3.5 rounded-lg border border-sky-200 bg-sky-50/80 text-slate-800 flex items-start gap-3 shadow-xs">
             <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0 text-sky-600" />
             <div className="text-[11px] leading-relaxed">
-              <span className="font-bold text-sky-700">DEFENSIBLE METHODOLOGY: </span>
-              This system does not output static or arbitrary numbers. RUL, Degradation Index (EDI), and Failure Risk are computed continuously through physics fatigue integration and trained ML regressors.
+              <span className="font-bold text-sky-700">HOW THE NUMBERS ARE MADE: </span>
+              Diagnosis, health index and RUL are computed every second by the trained models from golden-twin physics residuals.
+              The values below are read from the AI service's model card (held-out simulator test episodes), not typed into the UI.
+              {!m.live && <span className="font-bold text-amber-700"> AI service offline: model card not available.</span>}
             </div>
           </div>
 
           {/* Model Architecture & Provenance */}
           <div>
             <h3 className="text-slate-900 font-display font-bold tracking-wider uppercase mb-3 flex items-center gap-2 border-b border-slate-100 pb-1.5">
-              <Layers className="w-3.5 h-3.5 text-sky-600" /> 1. PROGNOSTICS ARCHITECTURE & SPECIFICATION
+              <Layers className="w-3.5 h-3.5 text-sky-600" /> 1. MODELS & DATA
             </h3>
             <div className="grid grid-cols-2 gap-2.5 p-3.5 rounded-lg border border-slate-200 bg-slate-50 shadow-xs">
-              <div>
-                <span className="text-slate-500 block text-[10px] font-semibold">PRIMARY RUL MODEL:</span>
-                <span className="font-bold text-slate-900">RUL-XGBoost Regressor + Bi-LSTM</span>
+              <div className="col-span-2">
+                <span className="text-slate-500 block text-[10px] font-semibold">MODELS (v{m.version ?? '—'}):</span>
+                <span className="font-bold text-slate-900">{m.name ?? '—'}</span>
+              </div>
+              <div className="col-span-2">
+                <span className="text-slate-500 block text-[10px] font-semibold">TRAINING DATA:</span>
+                <span className="font-bold text-slate-900">{m.dataset ?? '—'}</span>
+              </div>
+              <div className="col-span-2">
+                <span className="text-slate-500 block text-[10px] font-semibold">FEATURES:</span>
+                <span className="font-bold text-slate-900">{m.featuresCount ?? '—'} · {m.featureEngineering ?? '—'}</span>
               </div>
               <div>
-                <span className="text-slate-500 block text-[10px] font-semibold">ANOMALY DETECTOR:</span>
-                <span className="font-bold text-slate-900">Isolation Forest + Autoencoder</span>
+                <span className="text-slate-500 block text-[10px] font-semibold">ENGINE:</span>
+                <span className="font-bold text-slate-900">Rotax 915 iS (turbocharged flat-four)</span>
               </div>
               <div>
-                <span className="text-slate-500 block text-[10px] font-semibold">ENGINE SPECIFICATION:</span>
-                <span className="font-bold text-slate-900">Rotax 915/916 iS (1414cc, Turbo)</span>
-              </div>
-              <div>
-                <span className="text-slate-500 block text-[10px] font-semibold">ENGINEERED FEATURES:</span>
-                <span className="font-bold text-slate-900 tabular-nums">71 Rolling Features (30s / 60s)</span>
-              </div>
-              <div>
-                <span className="text-slate-500 block text-[10px] font-semibold">BASE TBO INTERVAL:</span>
-                <span className="font-bold text-slate-900 tabular-nums">2000.0 Operating Hours</span>
-              </div>
-              <div>
-                <span className="text-slate-500 block text-[10px] font-semibold">MEL OVERHAUL CUTOFF:</span>
-                <span className="font-bold text-amber-600 tabular-nums">50.0% Engine Health Index</span>
+                <span className="text-slate-500 block text-[10px] font-semibold">TBO USED FOR RUL (ASSUMPTION):</span>
+                <span className="font-bold text-slate-900 tabular-nums">{m.tboHours ?? '—'} h</span>
               </div>
             </div>
           </div>
@@ -85,25 +85,26 @@ export const PrognosticsDetailDrawer = ({ isOpen, onClose, modelMetadata }) => {
           {/* Validation Metrics */}
           <div>
             <h3 className="text-slate-900 font-display font-bold tracking-wider uppercase mb-3 flex items-center gap-2 border-b border-slate-100 pb-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> 2. VALIDATION BENCHMARKS & ACCURACY
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> 2. HELD-OUT TEST RESULTS (SIMULATOR)
             </h3>
             <div className="grid grid-cols-3 gap-2.5">
               <div className="p-3 rounded-lg border border-slate-200 bg-white text-center shadow-xs">
+                <div className="text-[10px] text-slate-500 font-bold uppercase">Detection precision / recall</div>
+                <div className="text-lg font-display font-bold text-emerald-600 tabular-nums">{pct(m.detectionPrecision)} / {pct(m.detectionRecall)}</div>
+                <div className="text-[9px] text-slate-500">End-to-end, as served</div>
+              </div>
+              <div className="p-3 rounded-lg border border-slate-200 bg-white text-center shadow-xs">
                 <div className="text-[10px] text-slate-500 font-bold uppercase">RUL MAE</div>
-                <div className="text-lg font-display font-bold text-emerald-600 tabular-nums">14.2 hr</div>
-                <div className="text-[9px] text-slate-500">Holdout validation</div>
+                <div className="text-lg font-display font-bold text-emerald-600 tabular-nums">{m.rulMaeHours != null ? `${m.rulMaeHours} h` : '—'}</div>
+                <div className="text-[9px] text-slate-500">Hours to functional failure</div>
               </div>
               <div className="p-3 rounded-lg border border-slate-200 bg-white text-center shadow-xs">
-                <div className="text-[10px] text-slate-500 font-bold uppercase">RUL RMSE</div>
-                <div className="text-lg font-display font-bold text-emerald-600 tabular-nums">18.6 hr</div>
-                <div className="text-[9px] text-slate-500">50-hour envelope</div>
-              </div>
-              <div className="p-3 rounded-lg border border-slate-200 bg-white text-center shadow-xs">
-                <div className="text-[10px] text-slate-500 font-bold uppercase">FAULT PRECISION</div>
-                <div className="text-lg font-display font-bold text-slate-900 tabular-nums">96.4%</div>
-                <div className="text-[9px] text-slate-500">7-fault classifier</div>
+                <div className="text-[10px] text-slate-500 font-bold uppercase">Inference latency</div>
+                <div className="text-lg font-display font-bold text-slate-900 tabular-nums">{m.latencyMs != null ? `${Math.round(m.latencyMs)} ms` : '—'}</div>
+                <div className="text-[9px] text-slate-500">Last request, measured</div>
               </div>
             </div>
+            <div className="text-[10px] text-slate-500 mt-1.5">Full metrics (per class, by altitude and temperature, stress test): ai_health_rul/models/model_card.json and the README.</div>
           </div>
 
           {/* Centralized Advisory State Machine */}
@@ -139,9 +140,9 @@ export const PrognosticsDetailDrawer = ({ isOpen, onClose, modelMetadata }) => {
           <div className="p-3.5 rounded-lg bg-amber-50/70 border border-amber-200 text-[11px] leading-relaxed text-slate-700 shadow-xs">
             <div className="font-bold text-amber-900 mb-1 flex items-center gap-1.5">
               <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-              STATUTORY AIRWORTHINESS DISCLAIMER
+              PROTOTYPE DISCLAIMER
             </div>
-            This AI Prognostics & Health Management advisory system is engineered as an AI-assisted decision support prototype. Predictions are derived from multi-stress physics fatigue integration, physics residuals, and trained machine learning estimators. All maintenance actions and return-to-service authorizations must comply with Rotax 915-iS Aircraft Maintenance Manual (AMM) and statutory civil/military airworthiness authority requirements.
+            {m.disclaimer} The models were trained on simulator data and have not been validated on a real engine. All maintenance and return-to-service decisions must follow the Rotax 915 iS maintenance manual and the applicable airworthiness authority.
           </div>
 
         </div>
@@ -152,7 +153,7 @@ export const PrognosticsDetailDrawer = ({ isOpen, onClose, modelMetadata }) => {
             onClick={onClose}
             className="px-3.5 py-1.5 rounded-md bg-white border border-slate-200 text-slate-700 hover:text-slate-900 hover:bg-slate-100 text-xs font-mono font-bold transition-all shadow-xs"
           >
-            CLOSE AUDIT DRAWER
+            CLOSE
           </button>
         </div>
 
