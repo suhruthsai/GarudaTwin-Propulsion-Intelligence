@@ -377,10 +377,12 @@ export const JudgesSandboxTab = () => {
         coolantTempC: Math.max(...cht) * 0.85
       },
       health: {
-        // Status/index from the AI's assessment of these inputs; the chosen fault tag is only the
-        // scenario shown on the 3D model (ground truth), never an input to any estimate.
+        // Status, index and the 3D component highlights come from the AI's assessment of these inputs;
+        // the chosen profile's fault tag is ground truth only (injectedFault), never an input to any estimate.
         status: aiResult?.health?.severity_level === 'CRITICAL' ? 'CRITICAL' : aiResult?.health?.severity_level === 'ELEVATED' ? 'DEGRADED' : 'NOMINAL',
-        activeFault: activeFaultTag,
+        activeFault: (aiResult?.health?.diagnosed_fault && aiResult.health.diagnosed_fault !== 'NONE') ? aiResult.health.diagnosed_fault : 'NONE',
+        suspectSensor: aiResult?.health?.suspect_sensor ?? null,
+        injectedFault: activeFaultTag,
         severity: activeFaultTag === 'NONE' ? 0.0 : 0.85,
         index: aiResult?.rul?.healthIndexScore ?? 100
       },

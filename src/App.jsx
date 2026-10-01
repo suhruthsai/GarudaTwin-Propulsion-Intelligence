@@ -120,7 +120,7 @@ export default function App() {
   const isNoData = health.status === 'NO_DATA';
   const srcMode = telemetry.source?.mode ?? 'SIM';
 
-  // Tabs Configuration (Consolidated: Tab 7 integrates Mission Replay & AI Debrief, Tab 8 FCS Autopilot)
+  // Tabs Configuration (Consolidated: Tab 7 integrates Mission Debrief (demo scenario), Tab 8 FCS Autopilot)
   const tabs = [
     { id: 'BLUEPRINT', hotkey: '1', label: '3D CAD BLUEPRINT', icon: Box, component: UavBlueprintTab },
     { id: 'TELEMETRY', hotkey: '2', label: 'LIVE TELEMETRY', icon: Activity, component: TelemetryTab },
@@ -128,7 +128,7 @@ export default function App() {
     { id: 'MISSION_MAP', hotkey: '4', label: 'RTB CONTINGENCY PLANNER', icon: Map, component: MissionMapTab },
     { id: 'FLEET', hotkey: '5', label: 'FLEET HEALTH', icon: Users, component: FleetTab },
     { id: 'SANDBOX', hotkey: '6', label: "WHAT-IF TEST BENCH", icon: Sliders, component: JudgesSandboxTab },
-    { id: 'DEBRIEF', hotkey: '7', label: 'MISSION REPLAY & AI DEBRIEF', icon: RotateCcw, component: UnifiedDebriefTab },
+    { id: 'DEBRIEF', hotkey: '7', label: 'MISSION DEBRIEF (DEMO SCENARIO)', icon: RotateCcw, component: UnifiedDebriefTab },
     { id: 'FLIGHT_CONTROLLER', hotkey: '8', label: '6-DOF FLIGHT CONTROLLER', icon: Compass, component: FlightControllerTab },
     { id: 'DATA', hotkey: '9', label: 'DATA SOURCE & REPLAY', icon: Database, component: DataSourceTab },
   ];

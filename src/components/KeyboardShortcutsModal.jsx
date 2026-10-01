@@ -15,7 +15,7 @@ export const KeyboardShortcutsModal = ({ isOpen, onClose }) => {
         { key: '4', label: 'RTB Contingency Planner', desc: 'Rule-based divert decision, airfield distances, glide reach' },
         { key: '5', label: 'Fleet Health', desc: 'Per-vehicle engine simulator + AI health, RUL and diagnosis' },
         { key: '6', label: 'What-If Test Bench', desc: 'Manual engine inputs and simulator-generated profiles → one-shot AI assessment' },
-        { key: '7', label: 'Mission Replay & AI Debrief', desc: '8-Phase black-box replay & DO-178C dossier' },
+        { key: '7', label: 'Mission Debrief (demo scenario)', desc: 'Hand-authored 8-phase sortie, scripted assistant, demo PDF' },
         { key: '8', label: '6-DOF Flight Control System', desc: 'TECS, PFD, L1 guidance & control surfaces' },
         { key: '9', label: 'Data Source & Replay', desc: 'Simulator / live ingest / CAN, flight recordings, CSV import & replay' },
       ]

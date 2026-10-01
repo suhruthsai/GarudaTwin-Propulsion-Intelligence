@@ -583,7 +583,7 @@ function FadecInterlockPanel({ fcs, injectFault, clearFault }) {
     { key: 'fuel_bingo',     label: 'FUEL BINGO',  crit: false },
   ];
   const derate = fcs.engine_derate ?? 'NOMINAL';
-  const isEmergency = fcs.engine_out || fcs.ap_mode === 'EMERGENCY_GLIDE' || derate === 'FLAMEOUT' || derate === 'CRITICAL';
+  const isEmergency = fcs.engine_out || fcs.ap_mode === 'EMERGENCY_GLIDE' || derate === 'ENGINE OUT' || (fcs.thrust_factor ?? 1) < 0.6;
   const derateCol = derate === 'NOMINAL' ? '#059669' : isEmergency ? '#DC2626' : '#D97706';
 
   return (
@@ -608,7 +608,7 @@ function FadecInterlockPanel({ fcs, injectFault, clearFault }) {
 
       {/* Derate label */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-        <span style={{ color: '#64748B', fontSize: '10px', fontWeight: '600' }}>ENGINE DERATE STATUS:</span>
+        <span style={{ color: '#64748B', fontSize: '10px', fontWeight: '600' }}>ENGINE THRUST STATUS:</span>
         <span style={{ color: derateCol, fontWeight: 'bold', fontSize: '12px' }}>{derate}</span>
       </div>
 
@@ -637,18 +637,18 @@ function FadecInterlockPanel({ fcs, injectFault, clearFault }) {
         })}
       </div>
 
-      {/* FADEC Authority and Thrust Limit Telemetry */}
+      {/* What the 6-DOF model actually applies: thrust x (0.5 + 0.5 x propulsion health / 100) */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '8px' }}>
         <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '4px', padding: '4px 6px' }}>
-          <div style={{ color: '#64748B', fontSize: '8px', fontWeight: '600' }}>THRUST CEILING</div>
+          <div style={{ color: '#64748B', fontSize: '8px', fontWeight: '600' }}>THRUST AVAILABLE (APPLIED)</div>
           <div style={{ color: isEmergency ? '#DC2626' : '#059669', fontSize: '11px', fontWeight: 'bold' }}>
             {Math.round((fcs.thrust_factor ?? 1) * 100)}%
           </div>
         </div>
         <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '4px', padding: '4px 6px' }}>
-          <div style={{ color: '#64748B', fontSize: '8px', fontWeight: '600' }}>CONTROL AUTHORITY</div>
+          <div style={{ color: '#64748B', fontSize: '8px', fontWeight: '600' }}>PROPULSION HEALTH (L1, excl. electrical)</div>
           <div style={{ color: '#0284C7', fontSize: '11px', fontWeight: 'bold' }}>
-            {Math.round((fcs.authority_factor ?? 1) * 100)}%
+            {typeof fcs.propulsion_health === 'number' ? `${Math.round(fcs.propulsion_health)}` : '—'}
           </div>
         </div>
       </div>
@@ -678,7 +678,7 @@ function FadecInterlockPanel({ fcs, injectFault, clearFault }) {
             flex: 1, padding: '5px', background: '#FFF7ED', border: '1px solid #F97316',
             color: '#C2410C', borderRadius: '4px', fontSize: '9px', cursor: 'pointer', fontFamily: 'monospace', fontWeight: 'bold'
           }}>
-          INJECT FLAMEOUT (CYL 3)
+          INJECT CYL 3 INJECTOR CLOG (0.95)
         </button>
         <button
           onClick={() => clearFault && clearFault()}

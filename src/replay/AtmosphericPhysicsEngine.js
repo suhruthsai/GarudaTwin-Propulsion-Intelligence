@@ -6,6 +6,12 @@
  * and environmental scenario compensations for Rotax 915/916 iS MALE UAVs.
  */
 
+import { PHYS, ambientFactors } from '../engine/EngineSimulator.js';
+
+// ISA deviation range the AI models were trained and validated on (training/generate_dataset.mjs)
+export const AI_VALIDATED_ISA_DEV_C = [-20, 25];
+export const AI_VALIDATED_ALT_FT = [0, 23000];
+
 export class AtmosphericPhysicsEngine {
   // ISA 1976 Physical Constants
   static P0 = 1013.25;        // Sea level standard atmospheric pressure (hPa)
@@ -135,7 +141,7 @@ export class AtmosphericPhysicsEngine {
       payload: '70 kg (Endurance Pod)',
       headwindKts: 15,
       humidityPct: 20,
-      description: '24-hour maximum endurance cruise with ultra-lean-burn lambda tuning.'
+      description: 'Long-endurance loiter at FL220 (scenario; lambda held at the ECU target, no lean-burn mode modelled).'
     }
   ];
 
@@ -184,12 +190,13 @@ export class AtmosphericPhysicsEngine {
     const airDensityKgM3 = Number((pressurePa / (this.R_SPECIFIC * tempK)).toFixed(3));
     const densityRatio = Number((airDensityKgM3 / this.RHO0).toFixed(2));
 
-    // 3. Turbocharger Compensator Pressure Ratio (PR)
-    // Rotax 915 iS target continuous manifold absolute pressure = 1.48 bar
-    const targetMapBar = 1.48;
-    const rawPr = targetMapBar / Math.max(0.25, atmosphericPressureBar);
-    // Electronic wastegate clamp: 1.0 to 2.55 max ratio
-    const turboCompensatorRatio = Number(Math.min(2.55, Math.max(1.0, rawPr)).toFixed(2));
+    // 3. Turbo pressure ratio at the ISR-orbit operating point (75 % throttle), same model as the twin:
+    // MAP is held at target until ambient x PR_MAX runs out, then delivered power falls
+    const af = ambientFactors(75, atmosphericPressureBar, ambientTempC);
+    const requiredPr = af.mapTarget / atmosphericPressureBar;
+    const turboCompensatorRatio = Number(Math.min(PHYS.PR_MAX, Math.max(1.0, requiredPr)).toFixed(2));
+    const achievableMapBar = Number(af.map.toFixed(2));
+    const powerFractionPct = Math.round(af.pf * 100);
 
     // 4. Radiator Forced-Convection Heat Flux (kW)
     // Rotax 915 iS heat rejection: Q_nominal ~ 24 kW at cruise
@@ -210,6 +217,10 @@ export class AtmosphericPhysicsEngine {
       airDensityKgM3,
       densityRatio,
       turboCompensatorRatio,
+      requiredPr: Number(requiredPr.toFixed(2)),
+      prMax: PHYS.PR_MAX,
+      achievableMapBar,
+      powerFractionPct,
       radiatorHeatFluxKw
     };
   }
@@ -242,15 +253,8 @@ export class AtmosphericPhysicsEngine {
         t.cht = `${recoveryCht}.0 °C`;
         t.oilT = `${recoveryOilT}.0 °C`;
       }
-    } else {
-      // In flight: Dynamic CHT and Oil Temp responding to heat exchange
-      const baseChtNum = parseFloat(baseTelemetry.cht) || 110;
-      const baseOilTNum = parseFloat(baseTelemetry.oilT) || 95;
-      const adjustedCht = (baseChtNum + ambientDelta * 0.32).toFixed(1);
-      const adjustedOilT = (baseOilTNum + ambientDelta * 0.26).toFixed(1);
-      t.cht = `${adjustedCht} °C`;
-      t.oilT = `${adjustedOilT} °C`;
     }
+    // In flight, CHT / oil temperature already include OAT and air density (twin physics in MissionPredictor)
 
     // 2. Oil Pressure responding to viscosity
     // Cold oil is thick -> higher pressure; Hot oil is thin -> lower pressure
@@ -292,19 +296,16 @@ export class AtmosphericPhysicsEngine {
       if (activePhaseId >= 3 && activePhaseId <= 5) {
         t.alt = '20000 FT';
         t.flTag = 'FL200';
-        t.fuelFlow = '5.6 GPH';
       }
     } else if (scenarioId === 'FL230_CEILING') {
       if (activePhaseId >= 3 && activePhaseId <= 5) {
         t.alt = '23000 FT';
         t.flTag = 'FL230';
-        t.map = '1.48 BAR';
       }
     } else if (scenarioId === 'ULTRA_LOITER') {
       if (activePhaseId >= 3 && activePhaseId <= 5) {
         t.alt = '22000 FT';
         t.flTag = 'FL220';
-        t.fuelFlow = '4.8 GPH';
       }
     }
 

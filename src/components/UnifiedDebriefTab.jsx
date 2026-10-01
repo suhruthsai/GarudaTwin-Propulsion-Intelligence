@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTelemetry } from '../context/TelemetryContext';
 import { TACTICAL_ISR_8PHASE_SORTIE } from '../replay/PreloadedSorties';
-import { AtmosphericPhysicsEngine } from '../replay/AtmosphericPhysicsEngine';
+import { AtmosphericPhysicsEngine, AI_VALIDATED_ISA_DEV_C, AI_VALIDATED_ALT_FT } from '../replay/AtmosphericPhysicsEngine';
 import { MissionPredictor } from '../replay/MissionPredictor';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
@@ -299,7 +299,7 @@ export const UnifiedDebriefTab = () => {
           ['Barometric Pressure p(h)', `${aerothermal.atmosphericPressureHpa} hPa`, 'ISA 1976 Barometric Lapse: p0 * (1 - L*h/T0)^5.25588'],
           ['Local Air Density (rho)', `${aerothermal.airDensityKgM3} kg/m³`, 'Ideal Gas Law: rho = (p * 100) / (R_specific * T_kelvin)'],
           ['Air Density Ratio (sigma)', aerothermal.densityRatio, 'rho / rho_sea_level (1.225 kg/m³)'],
-          ['Turbocharger Wastegate PR', `${aerothermal.turboCompensatorRatio}:1 PR`, 'Rotax 915 iS Wastegate Boost Ratio: MAP / p_ambient'],
+          ['Turbo pressure ratio (orbit)', `${aerothermal.requiredPr}:1 needed / ${aerothermal.prMax}:1 max`, `Twin model: MAP ${aerothermal.achievableMapBar} bar, power ${aerothermal.powerFractionPct}%`],
           ['Radiator Heat Flux (Q_dot)', `${aerothermal.radiatorHeatFluxKw} kW`, 'Forced Convection Cooling: m_dot * cp * Delta_T']
         ]
       });
@@ -1069,6 +1069,13 @@ export const UnifiedDebriefTab = () => {
                 </div>
               </div>
 
+              {(aerothermal.deltaIsaC < AI_VALIDATED_ISA_DEV_C[0] || aerothermal.deltaIsaC > AI_VALIDATED_ISA_DEV_C[1] || altitudeFt > AI_VALIDATED_ALT_FT[1]) && (
+                <div className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-300 rounded-md px-3 py-2">
+                  ISA {aerothermal.deltaIsaC > 0 ? '+' : ''}{aerothermal.deltaIsaC} °C at {altitudeFt} ft is outside the envelope the AI models were trained and validated on
+                  (ISA {AI_VALIDATED_ISA_DEV_C[0]}…+{AI_VALIDATED_ISA_DEV_C[1]} °C, 0–{AI_VALIDATED_ALT_FT[1].toLocaleString()} ft). Scenario values here are physics extrapolation only{aerothermal.deltaIsaC < AI_VALIDATED_ISA_DEV_C[0] ? ' (no thermostat is modelled, so cold-soak CHT / oil temperatures read lower than a real engine)' : ''}.
+                </div>
+              )}
+
               {/* ISA 1976 Physics Derivation Cards */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
@@ -1084,9 +1091,11 @@ export const UnifiedDebriefTab = () => {
                 </div>
 
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
-                  <div className="text-xs font-bold text-slate-500 uppercase">TURBO WASTEGATE RATIO</div>
-                  <div className="text-base font-bold font-mono text-slate-900 mt-1">{aerothermal.turboCompensatorRatio}:1 PR</div>
-                  <div className="text-xs text-slate-500 font-medium mt-0.5">Rotax 915 iS Wastegate</div>
+                  <div className="text-xs font-bold text-slate-500 uppercase">TURBO PRESSURE RATIO (ORBIT)</div>
+                  <div className="text-base font-bold font-mono text-slate-900 mt-1">{aerothermal.requiredPr}:1 needed</div>
+                  <div className={`text-xs font-medium mt-0.5 ${aerothermal.powerFractionPct < 100 ? 'text-amber-700' : 'text-slate-500'}`}>
+                    Max {aerothermal.prMax}:1 (model) · MAP {aerothermal.achievableMapBar} bar · power {aerothermal.powerFractionPct}%
+                  </div>
                 </div>
 
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
@@ -1213,7 +1222,7 @@ export const UnifiedDebriefTab = () => {
                 className="w-full py-3.5 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs tracking-wider rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 <FileDown className="w-4 h-4" />
-                <span>{isGeneratingPdf ? 'COMPILING DOSSIER...' : 'EXPORT AIRWORTHINESS REPORT (PDF)'}</span>
+                <span>{isGeneratingPdf ? 'COMPILING DOSSIER...' : 'EXPORT DEMO DEBRIEF (PDF)'}</span>
               </button>
             </div>
           </div>

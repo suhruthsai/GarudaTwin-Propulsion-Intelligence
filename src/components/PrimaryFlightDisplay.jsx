@@ -513,7 +513,7 @@ export default function PrimaryFlightDisplay({ fcs = {}, altSp = 14500, iasSp = 
 
     // Derate label
     if (engine_derate !== 'NOMINAL') {
-      ctx.fillStyle = engine_derate === 'CRITICAL' || engine_derate === 'FLAMEOUT' ? '#ff2222' : '#ffaa00';
+      ctx.fillStyle = engine_derate === 'ENGINE OUT' ? '#ff2222' : '#ffaa00';
       ctx.font = 'bold 10px monospace';
       ctx.textAlign = 'right';
       ctx.fillText('DERATE: ' + engine_derate, PFD_W - 10, 96);

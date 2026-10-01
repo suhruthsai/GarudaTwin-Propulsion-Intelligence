@@ -152,43 +152,44 @@ ISA deviation bands (−20…−5, −5…+5, +5…+15, +15…+25 °C): accuracy
 
 ## 🧪 Comprehensive Mathematical & Physics Foundations
 
-The digital twin combines analytical thermodynamics with deep learning architectures.
+The digital twin combines a steady-state engine physics model (with thermal lag) and gradient-boosted (XGBoost) models trained on its residuals.
 
-### 1. First-Principles Aero-Thermodynamic Engine Model
+### 1. Engine Physics Model (`src/engine/EngineSimulator.js`, mirrored in `ai_health_rul/.../feature_engineering.py`)
 
-The Rotax 915/916 iS engine is modeled using analytical fluid dynamic and thermodynamic lapse rate formulations:
+These are the equations the simulator, the golden twin and the AI features actually use. Calibration point: loiter (78.5 % throttle, 4,800 rpm) at 14,500 ft ISA. **All constants are engineering assumptions, not Rotax data.** $\theta$ = throttle %, $N$ = rpm, $p$ = ambient pressure (bar), $T$ = OAT (°C), subscript *ref* = 14,500 ft ISA.
 
-#### A. Barometric Pressure & Ambient Temperature Lapse Rate
-$$p_{\text{ambient}}(h) = 1.01325 \cdot \left( 1 - 0.0225577 \cdot h_{\text{km}} \right)^{5.25588} \quad \text{[bar]}$$
-$$T_{\text{ambient}}(h) = 15.0 - 6.5 \cdot h_{\text{km}} \quad \text{[°C]}$$
+#### A. ISA air data
+$$p(h) = 1.01325\,(1 - 6.8756\times10^{-6}\,h_{\text{ft}})^{5.2559}\ \text{[bar]}, \qquad T_{\text{ISA}}(h) = 15 - 0.0019812\,h_{\text{ft}}\ \text{[°C]}, \qquad T = T_{\text{ISA}} + \Delta_{\text{ISA}}$$
 
-#### B. Turbocharger Wastegate & Compressor Pressure Ratio (PR)
-$$\text{PR}_{\text{comp}} = 1.0 + \left(1.35 \cdot w_{\text{target}}\right) \cdot \left(\frac{\text{RPM}}{5800}\right) \quad \text{where } w_{\text{target}} = \min\left(1.0, \max\left(0.2, 1.15 \cdot \frac{\text{Throttle}}{100}\right)\right)$$
-$$\text{MAP}_{\text{nominal}} = \min\left(1.85, \max\left(0.7, p_{\text{ambient}} \cdot \text{PR}_{\text{comp}}\right)\right) \quad \text{[bar]}$$
+#### B. Turbo limit and delivered power
+$$\text{MAP}_{\text{target}} = 1.42 + 0.015(\theta - 78.5), \qquad \text{MAP} = \min(\text{MAP}_{\text{target}},\ 3.0\,p), \qquad pf = \text{MAP}/\text{MAP}_{\text{target}}$$
+Maximum manifold/ambient pressure ratio 3.0 (turbo + wastegate); at loiter the wastegate is fully closed near 20,000 ft ISA and power falls above that.
 
-#### C. Exhaust Gas Temperature (EGT) Combustion Thermal Balance
-$$\text{EGT}_{\text{nominal}} = 820.0 + 45.0 \cdot \left(\frac{\text{Throttle}}{100}\right) + 20.0 \cdot \left(\frac{\text{RPM}}{5800}\right) + 8.0 \cdot \left(\frac{h_{\text{ft}}}{10000}\right) \quad \text{[°C]}$$
+#### C. Temperatures (steady state)
+$$\text{EGT} = 840 + 1.8(\theta-78.5) + 0.03(N-4800) + 0.6\,(T - T_{\text{ref}}) - 40\,(1-pf)$$
+$$X = T + (X_{\text{cal}} - T_{\text{ref}})\cdot cf\cdot pf,\quad cf = (\sigma_{\text{ref}}/\sigma)^{0.8},\quad \sigma = \tfrac{p}{1.01325}\tfrac{288.15}{T+273.15}$$
+with $X_{\text{cal}}$ = CHT $106 + 0.6(\theta-78.5)$, oil $98 + 0.25(\theta-78.5)$, coolant $88.5$ °C (forced-convection cooling ∝ density$^{0.8}$; no thermostat modelled). The golden twin applies first-order lag ($k$ = 0.8, 0.05, 0.02, 0.05 s⁻¹ for EGT, CHT, oil, coolant).
 
-#### D. Cylinder Head Temperature (CHT) Liquid Cooling Balance
-$$\text{CHT}_{\text{nominal}} = 102.0 + 12.0 \cdot \left(\frac{\text{Throttle}}{100}\right) + 0.05 \cdot \left(\text{EGT}_{\text{nominal}} - 800.0\right) \quad \text{[°C]}$$
+#### D. Fuel, injection and ECU trim
+$$\dot V_{\text{fuel}} = (26.0 + 0.4(\theta-78.5))\cdot pf\ \text{[L/h]}, \qquad t_{\text{inj}} = \frac{\text{mm}^3\ \text{per injection}}{3.33\ \text{mm}^3/\text{ms}} + 0.8\ \text{ms}$$
+Closed-loop lambda control to 0.94 with an integrating trim (1 s⁻¹, ±15 %); richer mixture cools EGT by 380 °C per unit lambda.
 
-#### E. Lubrication Hydrodynamic Pressure & Temperature Balance
-$$T_{\text{oil, nominal}} = 94.0 + 8.0 \cdot \left(\frac{\text{Throttle}}{100}\right) + 5.0 \cdot \left(\frac{\text{RPM}}{5800}\right) \quad \text{[°C]}$$
-$$P_{\text{oil, nominal}} = \max\left(2.2, \; 4.2 - 0.018(T_{\text{oil}} - 90.0) - 0.0002(5800 - \text{RPM})\right) \quad \text{[bar]}$$
+#### E. Oil pressure, vibration, electrical
+$$P_{\text{oil}} = 3.85 - 0.015(T_{\text{oil}} - 98)\ \text{[bar]}, \qquad \text{Vib} = 0.28 + 0.12\,\frac{N-4800}{5800}\ \text{[g RMS]}$$
+Alternator capacity $70\,\text{A}\cdot\min(1,\max(0,(N-1500)/1500))$; 28.4 V regulated bus; 17 Ah battery with charge request $0.3 + 40(1-\text{SOC})$ A (≤ 8 A). If capacity < load the battery discharges and the bus falls to battery voltage.
 
-#### F. Structural Vibration Harmonic Baseline
-$$\text{Vib}_{\text{nominal}} = 0.22 + 0.16 \cdot \left(\frac{\text{RPM}}{5800}\right) + 0.05 \cdot \left(\frac{\text{Throttle}}{100}\right) \quad \text{[g-RMS]}$$
+#### F. Residuals
+$$\text{Residual}_i = \text{Sensor}_{\text{measured},i} - \text{Sensor}_{\text{twin},i}(\theta, N, p, T, \text{thermal state})$$
 
-#### G. Sensor Residual Derivation ($\Delta$)
-$$\text{Residual}_i = \text{Sensor}_{\text{actual}, i} - \text{Sensor}_{\text{nominal}, i}$$
+*(`src/prognostics/feature_engineering.js` contains an older, simpler formula set used only for the browser-side estimate shown before the first AI result and while the AI service is offline.)*
 
 ---
 
 ### 2. Golden Twin, Residual Features & Anomaly Detection
 
-The golden twin predicts each sensor from the measured throttle and RPM only, with first-order thermal lag (EGT $k=0.8\,s^{-1}$, CHT $0.05$, oil $0.02$) so throttle transients are not mistaken for faults. The same equations run in the gateway (`src/engine/EngineSimulator.js`) and the AI service (`feature_engineering.py`); a test checks they agree.
+The golden twin predicts each sensor from the measured throttle, RPM and air data (ambient pressure, OAT) only, with first-order thermal lag (EGT $k=0.8\,s^{-1}$, CHT $0.05$, oil $0.02$) so throttle transients are not mistaken for faults. The same equations run in the gateway (`src/engine/EngineSimulator.js`) and the AI service (`feature_engineering.py`); a test checks they agree.
 
-$$r_t = x_t - \hat{x}_t(\text{throttle}, \text{RPM}, \text{thermal state}), \qquad \text{features} = [\,r_t,\ \overline{r}_{t-7:t},\ \sigma(r)_{t-7:t}\,]\in\mathbb{R}^{41}$$
+$$r_t = x_t - \hat{x}_t(\text{throttle}, \text{RPM}, \text{thermal state}), \qquad \text{features} = [\,r_t,\ \overline{r}_{t-7:t},\ \sigma(r)_{t-7:t}\,]\in\mathbb{R}^{45}$$
 
 Besides per-sensor residuals the features include the hottest-minus-median and median-minus-coldest cylinder spreads for EGT and CHT (a misfiring or coked cylinder runs *cold*) and the sample-to-sample RPM step (crank-speed jitter). Rolling standard deviations are clipped to the measured sensor noise floor so noise-free inputs are not mistaken for faults.
 

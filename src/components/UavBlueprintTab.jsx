@@ -33,6 +33,7 @@ import {
   Gauge, GitBranch, BarChart2, Eye, Flame
 } from 'lucide-react';
 import { PistonInspectionModal } from './PistonInspectionModal';
+import { isComponentFaulted } from './faultComponents';
 
 // ─────────────────────────────────────────────────────────────
 // COLOR HELPERS — all driven by live telemetry, never hard-coded
@@ -606,10 +607,7 @@ const CylinderUnit = ({ compId, cylIdx, basePos, side, tel, isSelected, onClick,
   const ringInfo = computeRingSealing(cylIdx, tel);
   const speedInfo = computeMeanPistonSpeed(tel?.engine?.rpm);
 
-  const isFault =
-    (cylIdx === 2 && af === 'CYL3_INJECTOR') ||
-    ringInfo.isLeak ||
-    af === 'COOLING_DEGRADATION';
+  const isFault = isComponentFaulted(compId, tel) || ringInfo.isLeak;
   const isBlowBy = ringInfo.isLeak;
 
   const col = vm === 'THERMAL' ? thermalColor(egt, 820, 990)
@@ -770,7 +768,7 @@ const CylinderUnit = ({ compId, cylIdx, basePos, side, tel, isSelected, onClick,
             { label: 'EGT', value: `${egt.toFixed(1)}°C`, color: egtRes > 40 ? '#EF4444' : egtRes > 15 ? '#F59E0B' : '#10B981' },
             { label: 'CHT', value: `${cht.toFixed(1)}°C` },
             { label: 'Mean Piston Speed', value: `${speedInfo.speed.toFixed(2)} m/s`, color: '#0284C7' },
-            { label: 'Ring Sealing', value: `${ringInfo.pct.toFixed(1)}% (${ringInfo.status})`, color: ringInfo.isLeak ? '#EF4444' : '#10B981' },
+            { label: 'Ring Sealing (illustrative)', value: `${ringInfo.pct.toFixed(1)}% (${ringInfo.status})`, color: ringInfo.isLeak ? '#EF4444' : '#10B981' },
             ...(isFault ? [{ value: `⚠ ${af !== 'NONE' ? af : 'FAULT DETECTED'}`, color: '#EF4444' }] : []),
           ]} />
         </>
@@ -784,7 +782,7 @@ const CylinderUnit = ({ compId, cylIdx, basePos, side, tel, isSelected, onClick,
 // ─────────────────────────────────────────────────────────────
 const TurboAssembly = ({ isSelected, onClick, basePos, ef, tel, vm }) => {
   const af     = tel.health.activeFault;
-  const isFault = af === 'TURBO_WASTEGATE_STUCK';
+  const isFault = isComponentFaulted('TURBO_01', tel);
   const mapRes  = Math.abs(tel.residuals.mapResidual ?? 0);
 
   const col = vm === 'THERMAL' ? thermalColor(tel.engine.oilTempC, 80, 160)
@@ -905,7 +903,7 @@ const IntercoolerAssembly = ({ isSelected, onClick, basePos, ef, tel, vm }) => {
 // ─────────────────────────────────────────────────────────────
 const OilSystemAssembly = ({ isSelected, onClick, basePos, ef, tel, vm }) => {
   const af      = tel.health.activeFault;
-  const isFault = af === 'OIL_PUMP_CAVITATION' || af === 'BLOW_BY';
+  const isFault = isComponentFaulted('OIL_SYSTEM', tel);
   const pressRes = Math.abs(tel.residuals.oilPressResidual ?? 0);
 
   const col = vm === 'THERMAL' ? thermalColor(tel.engine.oilTempC, 80, 150)
@@ -957,7 +955,7 @@ const OilSystemAssembly = ({ isSelected, onClick, basePos, ef, tel, vm }) => {
 const FuelRailAssembly = ({ isSelected, onClick, basePos, ef, tel }) => {
   const expOff = REGISTRY.FUEL_RAIL.expOff;
   const pos = [basePos[0]+expOff[0]*ef, basePos[1]+expOff[1]*ef, basePos[2]+expOff[2]*ef];
-  const col = isSelected ? '#00F0FF' : '#0EA5E9';
+  const col = isSelected ? '#00F0FF' : isComponentFaulted('FUEL_RAIL', tel) ? '#EF4444' : '#0EA5E9';
 
   return (
     <group position={pos} onClick={e => { e.stopPropagation(); onClick('FUEL_RAIL'); }}>
@@ -1033,7 +1031,7 @@ const PrgbAssembly = ({ isSelected, onClick, basePos, ef, tel, vm }) => {
   const expOff = REGISTRY.PRGB_GEARBOX.expOff;
   const pos = [basePos[0]+expOff[0]*ef, basePos[1]+expOff[1]*ef, basePos[2]+expOff[2]*ef];
   
-  const isFault = tel.health.activeFault === 'PRGB_DEGRADATION';
+  const isFault = isComponentFaulted('PRGB_GEARBOX', tel);
   const col = vm === 'HEALTH' ? healthColor(tel.health.index) : (isFault ? '#EF4444' : '#475569');
   
   return (
@@ -1066,7 +1064,7 @@ const GeneratorAssembly = ({ isSelected, onClick, basePos, ef, tel, vm }) => {
   const expOff = REGISTRY.UAV_GENERATOR_28V.expOff;
   const pos = [basePos[0]+expOff[0]*ef, basePos[1]+expOff[1]*ef, basePos[2]+expOff[2]*ef];
   
-  const isFault = tel.health.activeFault === 'GENERATOR_FAILURE';
+  const isFault = isComponentFaulted('UAV_GENERATOR_28V', tel);
   const col = vm === 'HEALTH' ? healthColor(tel.health.index) : (isFault ? '#EF4444' : '#D97706');
 
   return (
@@ -1102,7 +1100,7 @@ const GeneratorAssembly = ({ isSelected, onClick, basePos, ef, tel, vm }) => {
 const RadiatorAssembly = ({ isSelected, onClick, basePos, ef, tel, vm }) => {
   const expOff = REGISTRY.COOLANT_RADIATOR.expOff;
   const pos = [basePos[0]+expOff[0]*ef, basePos[1]+expOff[1]*ef, basePos[2]+expOff[2]*ef];
-  const isFault = tel.health.activeFault === 'COOLING_DEGRADATION';
+  const isFault = isComponentFaulted('COOLANT_RADIATOR', tel);
   const temp = tel.engine.coolantTempC || 88.5;
   const col = vm === 'THERMAL' ? thermalColor(temp, 70, 120) : (isFault ? '#EF4444' : (isSelected ? '#00F0FF' : '#0F172A'));
 
@@ -1317,7 +1315,8 @@ const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, se
   const comp = REGISTRY[compId];
   if (!comp) return <div className="text-slate-500 text-xs font-mono p-4">Select a component.</div>;
 
-  const af = tel.health.activeFault;
+  const af = tel.health.activeFault;               // AI diagnosis
+  const injAf = tel.health.injectedFault ?? 'NONE'; // injected scenario (bench buttons)
 
   const DESCS = {
     PROP_01:      'Two-blade propeller driven via 2.43:1 planetary reduction gearbox. RPM monitored by FADEC crankshaft encoder. Blade pitch is fixed.',
@@ -1362,7 +1361,7 @@ const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, se
           { label:'EGT', value:tel.engine.egt[i], unit:'°C',p:1, res:tel.residuals.egtResiduals[i], hist:hist[`egt${i+1}`] },
           { label:'CHT', value:tel.engine.cht[i], unit:'°C',p:1, res:tel.residuals.chtResiduals[i], hist:hist[`cht${i+1}`] },
           { label:'Mean Piston Speed', value:speedInfo.speed, unit:'m/s', p:2, res:speedInfo.res },
-          { label:'Ring Sealing', value:ringInfo.pct, unit:'%', p:1, res:ringInfo.res },
+          { label:'Ring Sealing (illustr.)', value:ringInfo.pct,unit:'%', p:1, res:ringInfo.res },
         ];
       }
       case 'TURBO_01':
@@ -1418,14 +1417,7 @@ const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, se
 
   const fields = buildFields();
 
-  const compFault =
-    (compId === 'CYL_03' && af === 'CYL3_INJECTOR') ||
-    (compId === 'OIL_SYSTEM' && (af === 'OIL_PUMP_CAVITATION' || af === 'BLOW_BY')) ||
-    (['CYL_02','CYL_03'].includes(compId) && af === 'BLOW_BY') ||
-    (compId === 'TURBO_01' && af === 'TURBO_WASTEGATE_STUCK') ||
-    (['CYL_01','CYL_02','CYL_04','COOLANT_RADIATOR'].includes(compId) && af === 'COOLING_DEGRADATION') ||
-    (compId === 'PRGB_GEARBOX' && af === 'PRGB_DEGRADATION') ||
-    (compId === 'UAV_GENERATOR_28V' && af === 'GENERATOR_FAILURE');
+  const compFault = isComponentFaulted(compId, tel);
 
   const stBg = compFault
     ? 'bg-red-50 border-red-300 text-red-700 animate-pulse'
@@ -1546,25 +1538,25 @@ const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, se
             </div>
             <div className="grid grid-cols-2 gap-1.5">
               <button onClick={() => injectFault('CYL3_INJECTOR', 0.9)}
-                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${af==='CYL3_INJECTOR' ? 'bg-red-600 text-white border-red-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-red-50 hover:border-red-300 hover:text-red-700'}`}>Cyl 3 Clog</button>
+                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${injAf==='CYL3_INJECTOR' ? 'bg-red-600 text-white border-red-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-red-50 hover:border-red-300 hover:text-red-700'}`}>Cyl 3 Clog</button>
                 
               <button onClick={() => injectFault('BLOW_BY', 0.85)}
-                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${af==='BLOW_BY' ? 'bg-amber-600 text-white border-amber-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300 hover:text-amber-800'}`}>Piston Blow-By</button>
+                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${injAf==='BLOW_BY' ? 'bg-amber-600 text-white border-amber-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300 hover:text-amber-800'}`}>Piston Blow-By</button>
                 
               <button onClick={() => injectFault('OIL_PUMP_CAVITATION', 0.95)}
-                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${af==='OIL_PUMP_CAVITATION' ? 'bg-red-600 text-white border-red-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-red-50 hover:border-red-300 hover:text-red-700'}`}>Oil Cavitation</button>
+                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${injAf==='OIL_PUMP_CAVITATION' ? 'bg-red-600 text-white border-red-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-red-50 hover:border-red-300 hover:text-red-700'}`}>Oil Cavitation</button>
 
               <button onClick={() => injectFault('TURBO_WASTEGATE_STUCK', 0.8)}
-                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${af==='TURBO_WASTEGATE_STUCK' ? 'bg-purple-600 text-white border-purple-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300 hover:text-purple-800'}`}>Turbo Surge</button>
+                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${injAf==='TURBO_WASTEGATE_STUCK' ? 'bg-purple-600 text-white border-purple-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300 hover:text-purple-800'}`}>Turbo Surge</button>
 
               <button onClick={() => injectFault('COOLING_DEGRADATION', 0.85)}
-                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${af==='COOLING_DEGRADATION' ? 'bg-sky-600 text-white border-sky-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-sky-50 hover:border-sky-300 hover:text-sky-800'}`}>Cooling Decay</button>
+                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${injAf==='COOLING_DEGRADATION' ? 'bg-sky-600 text-white border-sky-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-sky-50 hover:border-sky-300 hover:text-sky-800'}`}>Cooling Decay</button>
                 
               <button onClick={() => injectFault('PRGB_DEGRADATION', 0.9)}
-                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${af==='PRGB_DEGRADATION' ? 'bg-orange-600 text-white border-orange-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-orange-50 hover:border-orange-300 hover:text-orange-800'}`}>Gearbox Wear</button>
+                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${injAf==='PRGB_DEGRADATION' ? 'bg-orange-600 text-white border-orange-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-orange-50 hover:border-orange-300 hover:text-orange-800'}`}>Gearbox Wear</button>
                 
               <button onClick={() => injectFault('GENERATOR_FAILURE', 0.9)}
-                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${af==='GENERATOR_FAILURE' ? 'bg-yellow-600 text-white border-yellow-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-yellow-50 hover:border-yellow-300 hover:text-yellow-800'}`}>Gen Failure</button>
+                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${injAf==='GENERATOR_FAILURE' ? 'bg-yellow-600 text-white border-yellow-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-yellow-50 hover:border-yellow-300 hover:text-yellow-800'}`}>Gen Failure</button>
 
               {[
                 ['MISFIRE', 0.6, 'Misfire (Cyl 2)'],
@@ -1574,11 +1566,11 @@ const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, se
                 ['SENSOR_FAILURE', 1.0, 'Sensor Stuck (Oil P)'],
               ].map(([id, sev, label]) => (
                 <button key={id} onClick={() => injectFault(id, sev)}
-                  className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${af===id ? 'bg-rose-600 text-white border-rose-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-800'}`}>{label}</button>
+                  className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${injAf===id ? 'bg-rose-600 text-white border-rose-700 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-800'}`}>{label}</button>
               ))}
 
               <button onClick={() => clearFault()}
-                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${af==='NONE' ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs' : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'}`}>Clear All (Nominal)</button>
+                className={`px-2 py-1.5 rounded text-[9px] font-mono font-bold transition-all border ${injAf==='NONE' ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs' : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'}`}>Clear All (Nominal)</button>
             </div>
           </>
         ) : (
@@ -1606,13 +1598,7 @@ const InspectorPanel = ({ compId, tel, aiProg, hist, injectFault, clearFault, se
 // ─────────────────────────────────────────────────────────────
 const SchematicPanel = ({ sel, onSel, tel }) => {
   const af = tel.health.activeFault;
-  const isFaulty = (id) =>
-    (id==='CYL_03' && af==='CYL3_INJECTOR') ||
-    (id==='OIL_SYSTEM' && (af==='OIL_PUMP_CAVITATION'||af==='BLOW_BY')) ||
-    (id==='TURBO_01' && af==='TURBO_WASTEGATE_STUCK') ||
-    (['CYL_01','CYL_02','CYL_04','COOLANT_RADIATOR'].includes(id) && af==='COOLING_DEGRADATION') ||
-    (id==='PRGB_GEARBOX' && af==='PRGB_DEGRADATION') ||
-    (id==='UAV_GENERATOR_28V' && af==='GENERATOR_FAILURE');
+  const isFaulty = (id) => isComponentFaulted(id, tel);
 
   const ns = (id) => ({
     fill:   sel===id ? '#E0F2FE' : isFaulty(id) ? '#FEF2F2' : '#FFFFFF',
@@ -1742,8 +1728,21 @@ export const UavBlueprintTab = () => {
 
   // Dynamic Fleet Telemetry & Prognostics Resolver
   const { activeTel, activeAiProg } = useMemo(() => {
+    // Component highlights follow the AI diagnosis (what the system detected), not the injected scenario
+    const aiFault = (d) => (!d || d === 'AI_OFFLINE' || d === 'NONE') ? 'NONE' : d;
     if (selectedUav === 'Vahak-1') {
-      return { activeTel: telemetry, activeAiProg: aiPrognostics };
+      return {
+        activeTel: {
+          ...telemetry,
+          health: {
+            ...telemetry.health,
+            activeFault: aiFault(aiPrognostics?.diagnosed_fault),
+            suspectSensor: aiPrognostics?.suspect_sensor ?? null,
+            injectedFault: telemetry.health?.activeFault ?? 'NONE',
+          },
+        },
+        activeAiProg: aiPrognostics,
+      };
     }
 
     // Fleet vehicle: its own engine simulator, golden-twin residuals, L1 monitor and AI session
@@ -1757,7 +1756,9 @@ export const UavBlueprintTab = () => {
         health: {
           index: m.l1?.index ?? 0,
           status: m.l1?.status ?? 'NOMINAL',
-          activeFault: m.injectedFault ?? 'NONE',     // injected scenario (ground truth), shown separately
+          activeFault: aiFault(fleetAi?.[selectedUav]?.diagnosis),
+          suspectSensor: fleetAi?.[selectedUav]?.suspectSensor ?? null,
+          injectedFault: m.injectedFault ?? 'NONE',   // injected scenario (ground truth), shown separately
           alertMessage: m.l1?.exceedances?.length ? `Residual exceedance on [${m.l1.exceedances.join(', ')}]` : 'Within limits',
           exceedances: m.l1?.exceedances ?? [],
         },
@@ -1801,14 +1802,7 @@ export const UavBlueprintTab = () => {
     {id:'COOLANT_RADIATOR',  label:'RADIATOR'},
   ];
 
-  const itemFault = (id) =>
-    (id==='CYL_03' && af==='CYL3_INJECTOR') ||
-    (id==='OIL_SYSTEM' && (af==='OIL_PUMP_CAVITATION'||af==='BLOW_BY')) ||
-    (['CYL_02','CYL_03'].includes(id) && af==='BLOW_BY') ||
-    (id==='TURBO_01' && af==='TURBO_WASTEGATE_STUCK') ||
-    (['CYL_01','CYL_02','CYL_04','COOLANT_RADIATOR'].includes(id) && af==='COOLING_DEGRADATION') ||
-    (id==='PRGB_GEARBOX' && af==='PRGB_DEGRADATION') ||
-    (id==='UAV_GENERATOR_28V' && af==='GENERATOR_FAILURE');
+  const itemFault = (id) => isComponentFaulted(id, activeTel);
 
   return (
     <div className="flex flex-col lg:flex-row gap-3 h-full w-full">
@@ -1854,7 +1848,12 @@ export const UavBlueprintTab = () => {
 
           {af !== 'NONE' && (
             <div className="px-2.5 py-1 bg-red-50 border border-red-300 rounded-lg text-[10px] font-mono text-red-700 flex items-center gap-1.5 shadow-xs">
-              <AlertTriangle className="w-3.5 h-3.5" /> <span className="font-bold">{af}</span>
+              <AlertTriangle className="w-3.5 h-3.5" /> AI: <span className="font-bold">{af}</span>
+            </div>
+          )}
+          {activeTel.health.injectedFault && activeTel.health.injectedFault !== 'NONE' && (
+            <div className="px-2.5 py-1 bg-slate-50 border border-slate-300 rounded-lg text-[10px] font-mono text-slate-600 shadow-xs">
+              INJECTED (truth): <span className="font-bold">{activeTel.health.injectedFault}</span>
             </div>
           )}
         </div>

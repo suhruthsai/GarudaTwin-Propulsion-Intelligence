@@ -612,6 +612,12 @@ function physicsTick() {
   }
 }
 
+/** Thrust fraction the 6-DOF model actually applies for the current propulsion health. */
+function appliedThrustFactor() {
+  const h = typeof fcsState.health_from_engine === 'number' ? fcsState.health_from_engine : 98;
+  return 0.5 + 0.5 * Math.max(0, Math.min(1, h / 100));
+}
+
 /** Keep Vahak-1 inside the operating area and clear of the border; return to the station orbit if not. */
 function geofenceGuard(st) {
   if (st.north_m === undefined) return;
@@ -777,10 +783,14 @@ setInterval(() => {
       alt_sp_ft:        Math.round(autopilot.sp.alt_m * 3.28084),
       ias_sp_kts:       Math.round(autopilot.sp.ias_ms * 1.94384),
       heading_sp_deg:   Math.round(((autopilot.sp.heading_rad * 180 / Math.PI) % 360 + 360) % 360),
-      thrust_factor:    interlockOut.thrustFactor ?? 1.0,
-      authority_factor: interlockOut.authorityFactor ?? 1.0,
+      // What is actually APPLIED: the 6-DOF model scales thrust by 0.5 + 0.5 x propulsion health
+      // (FlightDynamics6DOF.js). The interlock's own derate table / authority factor are not applied.
+      thrust_factor:    appliedThrustFactor(),
+      authority_factor: 1.0,
+      propulsion_health: typeof fcsState.health_from_engine === 'number' ? fcsState.health_from_engine : null,
       // FADEC interlock
-      engine_derate:    interlockOut.deRateLabel     ?? 'NOMINAL',
+      engine_derate:    interlockOut.annunciators?.ENGINE_OUT ? 'ENGINE OUT'
+        : appliedThrustFactor() >= 0.95 ? 'NOMINAL' : `${Math.round(appliedThrustFactor() * 100)}% THRUST`,
       stall_warn:       interlockOut.annunciators?.STALL_WARN     ?? false,
       overspeed_warn:   interlockOut.annunciators?.OVERSPEED      ?? false,
       engine_out:       interlockOut.annunciators?.ENGINE_OUT     ?? false,

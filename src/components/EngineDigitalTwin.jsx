@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
+import { isComponentFaulted } from './faultComponents';
 
 // ─────────────────────────────────────────────────────────────
 // COLOR HELPERS
@@ -559,10 +560,7 @@ export const CylinderUnit = ({ compId, cylIdx, basePos, side, tel, isSelected, o
   const ringInfo = computeRingSealing(cylIdx, tel);
   const speedInfo = computeMeanPistonSpeed(tel?.engine?.rpm);
 
-  const isFault =
-    (cylIdx === 2 && af === 'CYL3_INJECTOR') ||
-    ringInfo.isLeak ||
-    af === 'COOLING_DEGRADATION';
+  const isFault = isComponentFaulted(compId, tel) || ringInfo.isLeak;
   const isBlowBy = ringInfo.isLeak;
 
   const col = vm === 'THERMAL' ? thermalColor(egt, 820, 990)
@@ -723,7 +721,7 @@ export const CylinderUnit = ({ compId, cylIdx, basePos, side, tel, isSelected, o
             { label: 'EGT', value: `${egt.toFixed(1)}°C`, color: egtRes > 40 ? '#EF4444' : egtRes > 15 ? '#F59E0B' : '#10B981' },
             { label: 'CHT', value: `${cht.toFixed(1)}°C` },
             { label: 'Mean Piston Speed', value: `${speedInfo.speed.toFixed(2)} m/s`, color: '#0284C7' },
-            { label: 'Ring Sealing', value: `${ringInfo.pct.toFixed(1)}% (${ringInfo.status})`, color: ringInfo.isLeak ? '#EF4444' : '#10B981' },
+            { label: 'Ring Sealing (illustrative)', value: `${ringInfo.pct.toFixed(1)}% (${ringInfo.status})`, color: ringInfo.isLeak ? '#EF4444' : '#10B981' },
             ...(isFault ? [{ value: `⚠ ${af !== 'NONE' ? af : 'FAULT DETECTED'}`, color: '#EF4444' }] : []),
           ]} />
         </>
@@ -734,7 +732,7 @@ export const CylinderUnit = ({ compId, cylIdx, basePos, side, tel, isSelected, o
 
 export const TurboAssembly = ({ isSelected, onClick, basePos, ef = 0, tel, vm }) => {
   const af     = tel?.health?.activeFault || 'NONE';
-  const isFault = af === 'TURBO_WASTEGATE_STUCK';
+  const isFault = isComponentFaulted('TURBO_01', tel);
   const mapRes  = Math.abs(tel?.residuals?.mapResidual ?? 0);
 
   const col = vm === 'THERMAL' ? thermalColor(tel?.engine?.oilTempC || 98, 80, 160)
@@ -825,7 +823,7 @@ export const IntercoolerAssembly = ({ isSelected, onClick, basePos, ef = 0, tel,
 
 export const OilSystemAssembly = ({ isSelected, onClick, basePos, ef = 0, tel, vm }) => {
   const af      = tel?.health?.activeFault || 'NONE';
-  const isFault = af === 'OIL_PUMP_CAVITATION' || af === 'BLOW_BY';
+  const isFault = isComponentFaulted('OIL_SYSTEM', tel);
 
   const col = vm === 'THERMAL' ? thermalColor(tel?.engine?.oilTempC || 98, 80, 150)
             : vm === 'HEALTH'  ? healthColor(tel?.health?.index || 100)
@@ -855,7 +853,7 @@ export const OilSystemAssembly = ({ isSelected, onClick, basePos, ef = 0, tel, v
 export const FuelRailAssembly = ({ isSelected, onClick, basePos, ef = 0, tel }) => {
   const expOff = REGISTRY.FUEL_RAIL.expOff;
   const pos = [basePos[0]+expOff[0]*ef, basePos[1]+expOff[1]*ef, basePos[2]+expOff[2]*ef];
-  const col = isSelected ? '#00F0FF' : '#0EA5E9';
+  const col = isSelected ? '#00F0FF' : isComponentFaulted('FUEL_RAIL', tel) ? '#EF4444' : '#0EA5E9';
 
   return (
     <group position={pos} onClick={e => { e.stopPropagation(); onClick?.('FUEL_RAIL'); }}>
@@ -897,7 +895,7 @@ export const FadecUnit = ({ compId, lane, isSelected, onClick, basePos, ef = 0, 
 export const PrgbAssembly = ({ isSelected, onClick, basePos, ef = 0, tel, vm }) => {
   const expOff = REGISTRY.PRGB_GEARBOX.expOff;
   const pos = [basePos[0]+expOff[0]*ef, basePos[1]+expOff[1]*ef, basePos[2]+expOff[2]*ef];
-  const isFault = tel?.health?.activeFault === 'PRGB_DEGRADATION';
+  const isFault = isComponentFaulted('PRGB_GEARBOX', tel);
   const col = vm === 'HEALTH' ? healthColor(tel?.health?.index || 100) : (isFault ? '#EF4444' : '#475569');
 
   return (
@@ -919,7 +917,7 @@ export const PrgbAssembly = ({ isSelected, onClick, basePos, ef = 0, tel, vm }) 
 export const GeneratorAssembly = ({ isSelected, onClick, basePos, ef = 0, tel, vm }) => {
   const expOff = REGISTRY.UAV_GENERATOR_28V.expOff;
   const pos = [basePos[0]+expOff[0]*ef, basePos[1]+expOff[1]*ef, basePos[2]+expOff[2]*ef];
-  const isFault = tel?.health?.activeFault === 'GENERATOR_FAILURE';
+  const isFault = isComponentFaulted('UAV_GENERATOR_28V', tel);
   const col = isFault ? '#EF4444' : '#D97706';
 
   return (
@@ -935,7 +933,7 @@ export const GeneratorAssembly = ({ isSelected, onClick, basePos, ef = 0, tel, v
 export const RadiatorAssembly = ({ isSelected, onClick, basePos, ef = 0, tel, vm }) => {
   const expOff = REGISTRY.COOLANT_RADIATOR.expOff;
   const pos = [basePos[0]+expOff[0]*ef, basePos[1]+expOff[1]*ef, basePos[2]+expOff[2]*ef];
-  const isFault = tel?.health?.activeFault === 'COOLING_DEGRADATION';
+  const isFault = isComponentFaulted('COOLANT_RADIATOR', tel);
   const temp = tel?.engine?.coolantTempC || 88.5;
   const col = isFault ? '#EF4444' : (isSelected ? '#00F0FF' : '#0F172A');
 

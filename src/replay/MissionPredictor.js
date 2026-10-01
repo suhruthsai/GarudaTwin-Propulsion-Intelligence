@@ -1,17 +1,22 @@
 /**
- * MissionPredictor.js
- * Multi-Physics Thermodynamic, Aerodynamic, and AI/ML Prognostic Engine
- * 
- * Computes:
- * 1. 14 Synchronized Telemetry Parameters across all 8 mission phases
- * 2. Multi-Stress Cumulative Degradation (Thermal, Mechanical, Lubrication, Combustion)
- * 3. Autoencoder Reconstruction Loss (MSE Anomaly Score)
- * 4. Bi-LSTM 95% CI Remaining Useful Life (RUL)
- * 5. Dynamic SVG Degradation Curve & Polygon Coordinates
- * 6. ISA 1976 Aerothermal Derivations (Barometric Pressure, Density Altitude, Turbo PR, Heat Flux)
+ * MissionPredictor.js — DEMO SCENARIO generator for the Mission Debrief tab (hand-authored sortie).
+ *
+ * Engine values for each running phase (CHT, EGT, oil temperature, fuel flow, MAP) come from the SAME
+ * physics as the live digital twin (src/engine/EngineSimulator.js: ISA air data, turbo pressure-ratio
+ * limit, density-dependent cooling) at that phase's altitude, OAT, throttle and RPM, plus the scenario's
+ * scripted fault offsets (SCRIPTED_FAULT below). The health / anomaly-score / RUL curve is a scripted
+ * scenario heuristic — it is NOT produced by the AI models (real AI results: Data Source & Replay tab).
  */
 
 import { AtmosphericPhysicsEngine } from './AtmosphericPhysicsEngine.js';
+import { thermalTargets, nominalFuelLph, isaPressureBar } from '../engine/EngineSimulator.js';
+
+// Scripted anomalies of the demo sortie, added on top of the twin's nominal values (hand-authored)
+const SCRIPTED_FAULT = {
+  3: { egt: 12, cht: 3, oil: 1 },     // ISR orbit: injector #2 pulse irregularity
+  4: { egt: 35, cht: 16, oil: 12 },   // evasive / high load: transient thermal surge
+  5: { egt: 0, cht: 4, oil: 6 },      // RTB: 2X vibration harmonic (bearing) — mainly vibration
+};
 
 export class MissionPredictor {
   /**
@@ -40,10 +45,6 @@ export class MissionPredictor {
     const ambientDelta = ambientTempC - 15.0; // Delta from standard 15°C
 
     // Environmental stress multipliers
-    const thermalStressFactor = Math.max(0.7, 1.0 + (ambientTempC - 15.0) * 0.015);
-    const altitudeStressFactor = Math.max(0.8, 1.0 + (altitudeFt - 14500) / 30000 * 0.5);
-    const payloadStressFactor = Math.max(0.85, (payloadKg / 85.0));
-    const windTurbulenceFactor = Math.max(1.0, 1.0 + (headwindKts - 20) / 100 * 0.4);
 
     // 2. Define the 8 Mission Phase Operating Profiles (scaled by environment)
     const rawPhases = [
@@ -84,29 +85,22 @@ export class MissionPredictor {
       const phaseThr = p.thr;
       const phaseRpm = p.baseRpm;
 
-      // Phase air density at its local altitude
-      const localH = phaseAlt * 0.3048;
-      const localP = 1013.25 * Math.pow(Math.max(0.01, 1 - (0.0065 * localH) / 288.15), 5.25588);
-      const localRho = (localP * 100) / (287.058 * tempK);
-      const localRhoRatio = Math.max(0.35, localRho / 1.225);
+      // Twin physics at this phase's altitude / OAT / throttle / RPM (OAT held at the scenario value)
+      const tw = thermalTargets(phaseThr, phaseRpm, isaPressureBar(phaseAlt), ambientTempC);
+      const sf = SCRIPTED_FAULT[idx] || { egt: 0, cht: 0, oil: 0 };
 
-      // Baseline phase values at nominal conditions
-      const nominalChts = [25.0, 118.5, 112.0, 108.2, 132.8, 115.0, 102.0, 100.4];
-      const nominalEgts = [25, 865, 845, 858, 912, 840, 760, 730];
-      const nominalOilTs = [24.0, 98.5, 96.0, 95.2, 118.4, 106.0, 92.5, 90.3];
-      const nominalOilPs = [0.0, 68.2, 58.0, 52.4, 45.2, 42.0, 46.5, 48.1];
-      const nominalFfs = [0.0, 10.8, 8.4, 6.2, 9.8, 5.4, 3.2, 2.3];
-      const nominalVibs = [0.000, 0.042, 0.035, 0.038, 0.058, 0.082, 0.036, 0.038];
+      // Scripted scenario curves (hand-authored)
+      const nominalOilPs= [0.0, 68.2, 58.0, 52.4, 45.2, 42.0, 46.5, 48.1];
+const nominalVibs = [0.000, 0.042, 0.035, 0.038, 0.058, 0.082, 0.036, 0.038];
       const nominalHealths = [100.0, 99.0, 98.0, 94.0, 86.0, 76.0, 72.0, 70.0];
       const nominalMses = [0.00, 0.01, 0.02, 0.08, 0.28, 0.54, 0.22, 0.14];
       const nominalRuls = [850.0, 848.0, 840.0, 810.0, 720.0, 550.0, 480.0, 401.2];
 
-      // Dynamic offsets based on Ambient Temperature & Altitude & Load
-      const deltaTEnv = ambientTempC - (-28.0); // Offset from baseline -28°C
-      const deltaAltEnv = (altitudeFt - 28000.0) / 1000.0; // kft offset from FL280
+      // Scenario heuristics (health / oil pressure / vibration): offsets from the default FL220, -28 °C case
+      const deltaTEnv = ambientTempC - (-28.0);
       const loadRatio = payloadKg / 85.0;
 
-      let phaseCht, phaseEgt, phaseOilT, phaseOilP, phaseFfGph, phaseVib, phaseMse, phaseHealth, phaseRul;
+      let phaseCht, phaseEgt, phaseOilT, phaseOilP, phaseFfGph, phaseVib, phaseMse, phaseHealth, phaseRul, phaseMap = p.baseMap;
 
       if (idx === 0) {
         // PRE-FLIGHT (Engine OFF)
@@ -120,17 +114,18 @@ export class MissionPredictor {
         phaseHealth = 100.0;
         phaseRul = 850.0;
       } else {
-        // In-flight / Running Engine
-        phaseCht = nominalChts[idx] + deltaTEnv * 0.24 + deltaAltEnv * 0.15 + (loadRatio - 1.0) * 8.0;
-        phaseEgt = nominalEgts[idx] + deltaTEnv * 0.20 + deltaAltEnv * 0.12;
-        phaseOilT = nominalOilTs[idx] + deltaTEnv * 0.18 + (loadRatio - 1.0) * 5.0;
+        // Running engine: twin physics + scripted fault offsets
+        phaseCht = tw.cht + sf.cht;
+        phaseEgt = tw.egt + sf.egt;
+        phaseOilT = tw.oilTemp + sf.oil;
+        phaseMap = tw.map;   // limited by ambient pressure x turbo max pressure ratio
 
         // Viscosity effect on oil pressure: cold increases pressure, hot decreases
         const viscEffect = -deltaTEnv * 0.12;
         phaseOilP = Math.max(26.0, Math.min(78.0, nominalOilPs[idx] + viscEffect));
 
-        // Fuel flow scales with payload and air density compensation
-        phaseFfGph = Math.max(1.5, nominalFfs[idx] * Math.pow(loadRatio, 0.25) * (1.0 + Math.max(0, -deltaAltEnv * 0.015)));
+        // Fuel flow: twin's nominal fuel model at this throttle and delivered power fraction
+        phaseFfGph = nominalFuelLph(phaseThr, tw.pf) / 3.78541;
 
         // Vibration scales with turbulence / headwind
         const windVibEffect = (headwindKts - 38.0) * 0.0003;
@@ -159,8 +154,7 @@ export class MissionPredictor {
       trajectory.push(phaseHealth);
 
       // Pack complete formatted telemetry object
-      const phaseMap = p.baseMap;
-      let telemetryObj = {
+      let telemetryObj= {
         alt: `${phaseAlt} FT`,
         flTag: phaseFl,
         spd: `${phaseSpd} KTS`,
