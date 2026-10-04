@@ -32,7 +32,7 @@ All numbers below are on **held-out test episodes** (15 % of episodes, episode-l
 | **XGBoost fault classifier** (12 classes) | Fault isolation | Macro F1 | **0.981**; per-class recall 0.967–0.972 except sensor drift 0.923; accuracy at severity 0.05–0.15: 96.0% |
 | **XGBoost severity regressor** | Health index (0–100) | MAE | **1.51 points** (1.88 on fault samples); mean health during a sensor drift **99.5** (engine is healthy) |
 | **XGBoost quantile RUL + conformal calibration** | Hours to functional failure | MAE / median % error / 95 % interval coverage | **22.87 h / 26.8% / 94.5%** |
-| **Recovery after a fault is cleared** | Return to `NONE` | Median / p90 time | **8.2 s / 12.4 s** (8-sample window flush, plus ~3 s for the ECU fuel trim to unwind after fuel-related faults — the mixture really is rich until it does) |
+| **Recovery after a fault is mainly cleared** | Return to `NONE` | Median / p90 time | **8.2 s / 12.4 s** (8-sample window flush, plus ~3 s for the ECU fuel trim to unwind after fuel-related faults — the mixture really is rich until it does) |
 | **PyTorch autoencoder** (legacy `/detect-anomaly`, 12 raw inputs, not used by the GCS) | Single-frame anomaly | Recall at 0.08% false alarms | **17.1%** |
 
 **Across the flight envelope (held-out test, by band):**
