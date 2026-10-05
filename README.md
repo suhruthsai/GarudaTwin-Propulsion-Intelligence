@@ -22,6 +22,17 @@ The engine physics runs at 100 Hz simulation time; the gateway broadcasts teleme
 
 All numbers below are on **held-out test episodes** (15 % of episodes, episode-level split, never seen in training) from the GarudaTwin engine simulator — dataset of 378,618 samples in 5,400 episodes flown at 0–23,000 ft and ISA −20 to +25 °C (a quarter of them climbing or descending), including loiter, fixed operating points, rapid throttle transitions, and faults that are cleared mid-episode. They describe performance on this simulator, **not on a real engine**. Full metrics, confusion matrix and calibration: [`ai_health_rul/models/model_card.json`](ai_health_rul/models/model_card.json). Reproduce with `node training/generate_dataset.mjs && python training/train_models.py`.
 
+### 0. Compared with simple limits (same held-out test samples)
+
+810 test episodes, 48,920 scored samples (15,225 healthy); an alarm needs the flag on 2 consecutive samples; recovery samples excluded. "Tuned" limits sit at the highest value seen on healthy validation samples. Source: [`ai_health_rul/models/baseline_comparison.json`](ai_health_rul/models/baseline_comparison.json), produced by `python training/export_split.py && node training/baseline_comparison.mjs`.
+
+| Method | Fault samples detected | Small faults (severity 0.05–0.15) | False alarms on healthy samples | Names the fault |
+| :--- | :--- | :--- | :--- | :--- |
+| Fixed hand-set limits (no model) | 26.3 % | 19.6 % | 2,110 | No |
+| Limits tuned on healthy data (no model) | 68.3 % | 37.1 % | 137 | No |
+| Physics twin + tuned limits (no AI) | 93.1 % | 90.2 % | 5 | No |
+| **Physics twin + AI (GarudaTwin)** | **96.5 %** | **96.0 %** | **0** | **Yes (macro F1 0.98)** |
+
 ### 1. AI / ML Model Results (held-out simulator test episodes)
 
 | Model | Task | Metric | Result |
@@ -330,6 +341,8 @@ If the AI service is not running, the UI shows an **"AI service offline"** banne
 ```bash
 node training/generate_dataset.mjs        # 378,618 labelled samples -> training/data/ (gitignored)
 python training/train_models.py           # trains, calibrates, evaluates, writes model_card.json
+python training/export_split.py           # the same held-out test/validation episodes -> training/data/test_episodes.json
+node training/baseline_comparison.mjs     # simple limits vs twin vs twin + AI on those test samples -> baseline_comparison.json
 ```
 
 ### 4. Running Full Automated Verification Suites

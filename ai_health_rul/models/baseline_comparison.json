@@ -1,0 +1,160 @@
+{
+  "generated": "2026-10-05T03:27:45.463Z",
+  "dataset": "378618 simulated samples, 5400 episodes (GarudaTwin engine simulator); model card 2.0.0, trained 2026-10-01T13:28:26",
+  "evaluation_set": "held-out test episodes (810), split by episode, stratified by fault class, 70/15/15 (training/train_models.py split_episodes), seed 42; recovery samples excluded",
+  "scored_samples": 48920,
+  "healthy_samples": 15225,
+  "fault_samples": 33695,
+  "decision_rule": "alarm when the raw flag holds on 2 consecutive samples of the same episode (as the live service)",
+  "A_fixed_limits_no_model": {
+    "fault_detection_recall": 0.263,
+    "precision": 0.8077,
+    "healthy_false_alarm_rate": 0.13859,
+    "healthy_false_alarms": 2110,
+    "recall_by_severity": {
+      "0.05-0.15": 0.1956,
+      "0.15-0.30": 0.1668,
+      "0.30-0.60": 0.2598,
+      "0.60-1.00": 0.3736
+    },
+    "recall_by_fault": {
+      "BLOW_BY": 0.2644,
+      "COMBUSTION_INSTABILITY": 0.0758,
+      "COOLING_DEGRADATION": 0.3736,
+      "CYL3_INJECTOR": 0.3847,
+      "GENERATOR_FAILURE": 0.622,
+      "INJECTOR_COKING": 0.4065,
+      "MISFIRE": 0.0431,
+      "OIL_PUMP_CAVITATION": 0.3188,
+      "PRGB_DEGRADATION": 0.1256,
+      "SENSOR_DRIFT": 0.1924,
+      "TURBO_WASTEGATE_STUCK": 0.1601
+    },
+    "names_the_fault": false,
+    "limits": "L1 monitor absolute limits (hand-set caution values)"
+  },
+  "B_twin_plus_fixed_limits_no_ai": {
+    "fault_detection_recall": 0.5542,
+    "precision": 0.8985,
+    "healthy_false_alarm_rate": 0.13859,
+    "healthy_false_alarms": 2110,
+    "recall_by_severity": {
+      "0.05-0.15": 0.1997,
+      "0.15-0.30": 0.3618,
+      "0.30-0.60": 0.6726,
+      "0.60-1.00": 0.8175
+    },
+    "recall_by_fault": {
+      "BLOW_BY": 0.5969,
+      "COMBUSTION_INSTABILITY": 0.197,
+      "COOLING_DEGRADATION": 0.6548,
+      "CYL3_INJECTOR": 0.727,
+      "GENERATOR_FAILURE": 0.6729,
+      "INJECTOR_COKING": 0.4065,
+      "MISFIRE": 0.4095,
+      "OIL_PUMP_CAVITATION": 0.7301,
+      "PRGB_DEGRADATION": 0.8378,
+      "SENSOR_DRIFT": 0.2926,
+      "TURBO_WASTEGATE_STUCK": 0.6219
+    },
+    "names_the_fault": false,
+    "limits": "L1 monitor (thresholdHealth) as deployed",
+    "healthy_false_alarm_samples_by_check": {
+      "CHT": 2204,
+      "EGT": 3
+    }
+  },
+  "A2_tuned_limits_no_model": {
+    "fault_detection_recall": 0.6831,
+    "precision": 0.9941,
+    "healthy_false_alarm_rate": 0.009,
+    "healthy_false_alarms": 137,
+    "recall_by_severity": {
+      "0.05-0.15": 0.3706,
+      "0.15-0.30": 0.7361,
+      "0.30-0.60": 0.7257,
+      "0.60-1.00": 0.8138
+    },
+    "recall_by_fault": {
+      "BLOW_BY": 0.8621,
+      "COMBUSTION_INSTABILITY": 0.8213,
+      "COOLING_DEGRADATION": 0.155,
+      "CYL3_INJECTOR": 0.9208,
+      "GENERATOR_FAILURE": 0.9517,
+      "INJECTOR_COKING": 0.2823,
+      "MISFIRE": 0.9086,
+      "OIL_PUMP_CAVITATION": 0.9613,
+      "PRGB_DEGRADATION": 0.9202,
+      "SENSOR_DRIFT": 0.0346,
+      "TURBO_WASTEGATE_STUCK": 0.7433
+    },
+    "names_the_fault": false,
+    "limits": "each raw reading limited at its maximum on healthy validation samples",
+    "limit_values": {
+      "egt_max": 916,
+      "cht_max": 145.3,
+      "oil_press_low": -3.26,
+      "oil_temp": 134.7,
+      "coolant": 129.7,
+      "vibration": 0.326,
+      "map": 1.742,
+      "bus_volts_low": -28.2,
+      "battery_soc_low": -80.1
+    }
+  },
+  "B2_twin_plus_tuned_limits_no_ai": {
+    "fault_detection_recall": 0.9308,
+    "precision": 0.9998,
+    "healthy_false_alarm_rate": 0.00033,
+    "healthy_false_alarms": 5,
+    "recall_by_severity": {
+      "0.05-0.15": 0.902,
+      "0.15-0.30": 0.9155,
+      "0.30-0.60": 0.9458,
+      "0.60-1.00": 0.9477
+    },
+    "recall_by_fault": {
+      "BLOW_BY": 0.9693,
+      "COMBUSTION_INSTABILITY": 0.9418,
+      "COOLING_DEGRADATION": 0.9703,
+      "CYL3_INJECTOR": 0.9696,
+      "GENERATOR_FAILURE": 0.9517,
+      "INJECTOR_COKING": 0.9672,
+      "MISFIRE": 0.972,
+      "OIL_PUMP_CAVITATION": 0.971,
+      "PRGB_DEGRADATION": 0.9486,
+      "SENSOR_DRIFT": 0.6373,
+      "TURBO_WASTEGATE_STUCK": 0.9635
+    },
+    "names_the_fault": false,
+    "limits": "each twin deviation limited at its maximum on healthy validation samples",
+    "limit_values": {
+      "egt": 73.55257435300189,
+      "cht": 1.7796623028706762,
+      "map": 0.019749999999999934,
+      "oil_press": 0.0778726826815177,
+      "oil_temp": 1.5985668469449763,
+      "vibration": 0.031800689655172465,
+      "gen_volts": 0.20000000000000284,
+      "battery_a": 0.6399999999999988,
+      "inj_pct": 0.5294421753351376,
+      "fuel_trim": 0,
+      "coolant": 1.65920735154981
+    }
+  },
+  "validation_healthy_samples_for_tuning": 15787,
+  "C_twin_plus_ai": {
+    "fault_detection_recall": 0.9653,
+    "precision": 1,
+    "healthy_false_alarm_rate": 0,
+    "recall_by_severity": {
+      "0.05-0.15": 0.9603,
+      "0.15-0.30": 0.9629,
+      "0.30-0.60": 0.9665,
+      "0.60-1.00": 0.9692
+    },
+    "names_the_fault": true,
+    "fault_identification_macro_f1": 0.9806,
+    "source": "ai_health_rul/models/model_card.json (metrics.detection_end_to_end, same evaluation set)"
+  }
+}
