@@ -319,8 +319,8 @@ class HealthRulService:
             return PilotAdvisoryOutput(
                 level="CRITICAL",
                 action_plan=[
-                    f"1. EMERGENCY: Fault [{fault}] diagnosed. Initiate Return-to-Base (RTB) or divert.",
-                    f"2. RTB planner emergency profile: 58% throttle, 4200 rpm, 95 kt, -350 fpm to the nearest airfield (estimated RUL {rul_h:.1f} h).",
+                    f"1. CRITICAL: AI diagnosis [{fault}]; check the evidence above. The decision rests with the operator.",
+                    "2. Option for the operator: RTB planner emergency profile (58% throttle, 4200 rpm, 95 kt, -350 fpm to the nearest airfield). Nothing is applied automatically.",
                     "3. Monitor oil pressure, CHT and vibration trends during the recovery.",
                     "4. Notify the GCS mission commander and declare a UAV emergency to ATC.",
                 ],
@@ -333,7 +333,7 @@ class HealthRulService:
                     f"1. CAUTION: Degradation diagnosed [{fault}].",
                     "2. Restrict aggressive throttle transients and high-boost MAP manoeuvres.",
                     "3. Monitor oil pressure and cylinder head temperature trends closely.",
-                    f"4. Plan mission termination within {rul_h:.1f} flight hours.",
+                    "4. Operator to review the mission plan (the remaining-life estimate is research in progress).",
                 ],
                 derate_throttle_pct=68.0, recommended_rpm=4400.0, target_recovery_field="Nearest airfield (RTB planner)",
             )

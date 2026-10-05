@@ -684,9 +684,10 @@ setInterval(() => {
   let status = th.status; // 'NOMINAL' | 'DEGRADED' | 'CRITICAL' | 'NO_DATA'
   let alertMessage = 'All Rotax 915 iS engine subsystems operating within flight envelope.';
   if (status === 'CRITICAL') {
-    alertMessage = `CRITICAL ALERT: Redline exceedance on [${th.exceedances.join(', ')}]. Autonomous RTB protocol recommended.`;
+    // Observation only: the monitor reports what it sees; actions are the operator's decision
+    alertMessage = `CRITICAL: Limit exceeded on [${th.exceedances.join(', ')}]. Check the AI diagnosis and its evidence.`;
   } else if (status === 'DEGRADED') {
-    alertMessage = `CAUTION: Residual exceedance on [${th.exceedances.join(', ')}]. Engine derating recommended.`;
+    alertMessage = `CAUTION: Reading outside its expected range on [${th.exceedances.join(', ')}]. Check the AI diagnosis and its evidence.`;
   }
   const srcStatus = sourceStatus();
   if (source.mode === 'LIVE' && !srcStatus.live.connected) {

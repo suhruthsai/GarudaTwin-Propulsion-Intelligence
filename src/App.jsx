@@ -190,12 +190,14 @@ export default function App() {
           <div className="h-3.5 w-[1px] bg-slate-200"></div>
           <div className="text-slate-600 flex items-center gap-2">
             <span className="font-medium">HEALTH</span>
-            <span className={`font-mono font-bold text-xs px-2 py-0.5 rounded tabular-nums border ${
-              isCritical ? 'text-red-700 bg-red-50 border-red-300' : 
-              isDegraded ? 'text-amber-800 bg-amber-50 border-amber-300' : 
+            <span title={isNoData ? 'No engine data: the last health value is stale and not shown' : undefined}
+              className={`font-mono font-bold text-xs px-2 py-0.5 rounded tabular-nums border ${
+              isNoData ? 'text-slate-500 bg-slate-100 border-slate-300' :
+              isCritical ? 'text-red-700 bg-red-50 border-red-300' :
+              isDegraded ? 'text-amber-800 bg-amber-50 border-amber-300' :
               'text-emerald-800 bg-emerald-50 border-emerald-300'
             }`}>
-              {health.index.toFixed(1)}%
+              {isNoData ? 'STALE' : `${health.index.toFixed(1)}%`}
             </span>
           </div>
         </div>
@@ -423,6 +425,13 @@ export default function App() {
 
       {/* 4. Main Active Viewport Container */}
       <main className="flex-1 min-h-0 p-2.5 overflow-hidden relative bg-[#F8FAFC]">
+        {/* No engine data: every value below is the last one received, so grey it out (still clickable) */}
+        {isNoData && (
+          <div className="pointer-events-none absolute top-4 left-1/2 -translate-x-1/2 z-30 px-3 py-1.5 rounded-md bg-slate-800/90 text-white text-xs font-mono font-semibold tracking-wider shadow">
+            STALE: last values received, no engine data
+          </div>
+        )}
+        <div className={`h-full w-full ${isNoData ? 'grayscale opacity-60' : ''}`}>
         {isDualDocked ? (
           <div className="flex flex-col lg:flex-row h-full gap-2.5 overflow-hidden">
             {/* Primary Viewport Pane */}
@@ -483,6 +492,7 @@ export default function App() {
             <ActiveComponent />
           </div>
         )}
+        </div>
       </main>
 
       {/* Defense-Style Status Tray Footer */}

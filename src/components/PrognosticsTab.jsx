@@ -116,7 +116,11 @@ missionDemandHours,
     operationalWindow = unitAi?.maintenance?.suggestedWindow || 
       (isNominal ? 'Standard scheduled inspection at 50-hour interval.' : 'Immediate in-flight intervention required.');
     priority = isNominal ? 'LOW' : (baseHealth < 40 ? 'CRITICAL' : 'HIGH');
-    urgencyLabel = isNominal ? 'ROUTINE MONITORING' : (baseHealth < 40 ? 'IMMEDIATE RTB' : 'DERATE & INSPECT');
+    // Observation only: the operator decides any action. A sensor fault is a sensor check, not an engine alarm.
+    const isSensorFault = /^SENSOR_/.test(activeFault);
+    urgencyLabel = isNominal ? 'ROUTINE MONITORING'
+      : isSensorFault ? 'SENSOR CROSS-CHECK'
+      : (baseHealth < 40 ? 'OPERATOR REVIEW: CRITICAL' : 'OPERATOR REVIEW');
     action = isNominal ? 'MONITOR' : 'INSPECTION';
 
     // Parameter Evidence: use live mapped evidence from unitAi if present

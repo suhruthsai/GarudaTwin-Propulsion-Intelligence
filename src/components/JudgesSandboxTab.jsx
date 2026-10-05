@@ -424,12 +424,12 @@ export const JudgesSandboxTab = () => {
       airworthinessStatus = 'CRITICAL ABORT';
       airworthinessBadge = 'border-red-300 bg-red-50 text-red-800';
       airworthinessColor = 'text-red-700 font-bold';
-      airworthinessDesc = 'CRITICAL AIRWORTHINESS EXCEEDANCE! Catastrophic failure risk detected. Autonomous emergency landing mandatory.';
+      airworthinessDesc = 'Readings beyond the modelled critical limits (simulator-derived, not certified). Shown for the operator to review; nothing is commanded automatically.';
     } else if (hi < 75 || rulH < 10.0 || egtSpread > 55 || maxCht > 125 || oilPressBar < 2.8 || mapBar > 1.8) {
       airworthinessStatus = 'DERATED';
       airworthinessBadge = 'border-amber-300 bg-amber-50 text-amber-800';
       airworthinessColor = 'text-amber-800 font-bold';
-      airworthinessDesc = 'Subsystem wear exceeds nominal baseline. Derated throttle envelope applied. Return to base advised.';
+      airworthinessDesc = 'Readings outside the modelled normal envelope (simulator-derived limits). Shown for the operator to review; no derate or return-to-base is applied automatically.';
     }
 
     // Rule-based RTB recommendation
@@ -469,7 +469,7 @@ export const JudgesSandboxTab = () => {
       pipeline: pipelineOut,
       airworthiness: {
         status: airworthinessStatus,
-        label: airworthinessStatus === 'NOMINAL' ? 'NOMINAL AIRWORTHY' : airworthinessStatus === 'DERATED' ? 'DERATED FLIGHT RESTRICTION' : 'CRITICAL FLIGHT ABORT',
+        label: airworthinessStatus === 'NOMINAL' ? 'NOMINAL AIRWORTHY' : airworthinessStatus === 'DERATED' ? 'CAUTION: OPERATOR REVIEW' : 'CRITICAL: OPERATOR REVIEW',
         color: airworthinessColor,
         desc: airworthinessDesc,
         badge: airworthinessBadge
